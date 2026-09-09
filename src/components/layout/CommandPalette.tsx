@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   CheckSquare,
   ClipboardList,
   History,
@@ -13,6 +14,7 @@ import {
   LogOut,
   Moon,
   Search,
+  ShieldCheck,
   Sun,
   User,
   Users,
@@ -112,10 +114,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const actions: NavAction[] = [
       { label: 'Dashboard', icon: LayoutDashboard, run: () => go(ROUTES.DASHBOARD) },
       { label: 'Events', icon: CalendarDays, run: () => go(ROUTES.EVENTS) },
+      { label: 'Calendar', icon: CalendarRange, run: () => go(ROUTES.CALENDAR), keywords: ['month', 'schedule', 'due dates'] },
       { label: 'Tasks board', icon: CheckSquare, run: () => go(ROUTES.TASKS) },
       { label: 'Teams', icon: Users, run: () => go(ROUTES.TEAMS) },
       { label: 'Activity feed', icon: History, run: () => go(ROUTES.ACTIVITY), keywords: ['log', 'audit', 'timeline'] },
     ]
+    if (user?.role === 'EVENT_MANAGER') {
+      actions.push({ label: 'Admin · User management', icon: ShieldCheck, run: () => go(ROUTES.ADMIN), keywords: ['users', 'roles', 'deactivate', 'accounts'] })
+    }
     if (user) {
       actions.push({ label: 'My profile', icon: User, run: () => go(ROUTES.PROFILE), keywords: ['account', 'password', 'settings'] })
       actions.push({ label: 'My open tasks', icon: ListFilter, run: () => go(`${ROUTES.TASKS}?assignee=me`), keywords: ['assigned', 'mine'] })

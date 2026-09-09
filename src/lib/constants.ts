@@ -16,8 +16,10 @@ export const ROUTES = {
   EVENTS: '/events',
   TASKS: '/tasks',
   TEAMS: '/teams',
+  CALENDAR: '/calendar',
   ACTIVITY: '/activity',
   PROFILE: '/profile',
+  ADMIN: '/admin',
 } as const
 
 export const SESSION_COOKIE = 'ems_session'
@@ -118,6 +120,10 @@ export const ACTIVITY_ACTIONS = {
   USER_REGISTERED: 'USER_REGISTERED',
   USER_LOGIN: 'USER_LOGIN',
   PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  USER_UPDATED: 'USER_UPDATED',
+  USER_ROLE_CHANGED: 'USER_ROLE_CHANGED',
+  USER_DEACTIVATED: 'USER_DEACTIVATED',
+  USER_REACTIVATED: 'USER_REACTIVATED',
   TEAM_CREATED: 'TEAM_CREATED',
   TEAM_UPDATED: 'TEAM_UPDATED',
   EVENT_CREATED: 'EVENT_CREATED',
@@ -135,6 +141,10 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   USER_REGISTERED: 'Joined the workspace',
   USER_LOGIN: 'Signed in',
   PASSWORD_CHANGED: 'Changed their password',
+  USER_UPDATED: 'Updated a profile',
+  USER_ROLE_CHANGED: 'Changed a user role',
+  USER_DEACTIVATED: 'Deactivated a user',
+  USER_REACTIVATED: 'Reactivated a user',
   TEAM_CREATED: 'Created a team',
   TEAM_UPDATED: 'Updated a team',
   EVENT_CREATED: 'Created an event',
@@ -162,5 +172,5 @@ export const ACTIVITY_GROUP_ACTIONS: Record<string, string[] | null> = {
   EVENTS: ['EVENT_CREATED', 'EVENT_UPDATED', 'EVENT_STATUS_CHANGED'],
   TASKS: ['TASK_CREATED', 'TASK_ASSIGNED', 'TASK_STATUS_CHANGED', 'TASK_COMPLETED', 'COMMENT_ADDED'],
   TEAMS: ['TEAM_CREATED', 'TEAM_UPDATED'],
-  USERS: ['USER_REGISTERED', 'USER_LOGIN', 'PASSWORD_CHANGED'],
+  USERS: ['USER_REGISTERED', 'USER_LOGIN', 'PASSWORD_CHANGED', 'USER_UPDATED', 'USER_ROLE_CHANGED', 'USER_DEACTIVATED', 'USER_REACTIVATED'],
 }

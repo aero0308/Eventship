@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   CheckCircle2,
   Clock,
   ListPlus,
@@ -35,12 +36,15 @@ import {
   EVENT_STATUS_CLASSES,
   EVENT_STATUS_LABELS,
   PRIORITY_LABELS,
+  ROUTES,
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
 import { api } from '@/lib/api-client'
+import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -327,8 +331,17 @@ export function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Upcoming deadlines</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
+              onClick={() => navigate(ROUTES.CALENDAR)}
+            >
+              <CalendarRange className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              View calendar
+            </Button>
           </CardHeader>
           <CardContent>
             {loading ? (

@@ -185,6 +185,25 @@ export const bulkTaskActionSchema = z.object({
   assignedTo: z.uuid().optional(),
 })
 
+// ============ admin: users ============
+
+/** EVENT_MANAGER-only profile updates. Empty string on teamId means "clear". */
+export const updateUserSchema = z
+  .object({
+    role: z.enum(ROLES).optional(),
+    isActive: z.boolean().optional(),
+    teamId: nullableId,
+    fullName: z
+      .string()
+      .trim()
+      .min(1, 'Full name is required')
+      .max(120, 'Full name must be at most 120 characters')
+      .optional(),
+  })
+  .refine((data) => Object.values(data).some((v) => v !== undefined), {
+    message: 'Nothing to update',
+  })
+
 // ============ notification preferences ============
 
 /** Full or partial mute map; unknown keys rejected, values must be booleans. */

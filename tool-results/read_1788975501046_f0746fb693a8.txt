@@ -1,0 +1,185 @@
+    60→- Layout.tsx — sticky header: emerald CalendarRange logo + wordmark, desktop nav pills with emerald active state (Dashboard/Events/Tasks/Teams), notifications Popover (unread count badge, type icon map, relative time via date-fns, mark-one/mark-all read with optimistic updates, max-h-96 scroll + scrollbar-thin), user dropdown (initials avatar, role + team badges, Dashboard/Profile-disabled/Logout), mobile hamburger Sheet (side-left nav + logout). Content max-w-7xl px-4 py-6. Footer sticky-bottom pattern: root min-h-screen flex flex-col, main flex-1, footer mt-auto with border + safe-area padding. Polls /api/notifications every 30s (interval cleaned up, only when user present).
+    61→- AuthLayout.tsx — centered min-h-screen with layered emerald/teal radial gradients, logo, Card form slot, small footer text.
+    62→- HomePage.tsx — marketing landing: hero (badge, gradient headline, CTA → /register + /login, demo credentials hint card) with floating mini-dashboard mock (framer-motion float + animated progress), stats strip (4 items), 4 feature cards (hover lift), 3 role cards using ROLE_LABELS/ROLE_BADGE_CLASSES, emerald CTA band, footer; grid-pattern + radial backgrounds CSS-only.
+    63→- LoginPage.tsx — email/password, loading spinner button, destructive Alert on failure, demo box with one-click fill (admin@eventflow.io/password123), toast + navigate('/dashboard') on success.
+    64→- RegisterPage.tsx — fullName/email/password(min 6)/role Select (EMPLOYEE default)/team Select loaded from /api/teams ("No team" option), client validation, toast + navigate on success.
+    65→- DashboardPage.tsx — GET /api/dashboard; 4 StatCards (Active Events, Open Tasks, Completed w/ completionRate progress, Blocked red tint); recharts BarChart tasksByStatus (stone/amber/red/emerald) + donut PieChart tasksByPriority (red/amber/stone) with legend; upcoming events list (date block, status badge, taskStats progress) | upcoming deadlines (due chip red <3d/overdue, assignee initials); team workload stacked open-vs-done bars | recent activity feed (icon per ACTIVITY action, formatDistanceToNow). Skeletons + empty states everywhere.
+    66→- EventsPage.tsx — debounced filters (search/status/team) → GET /api/events?…; staggered framer-motion card grid (status badge, date range, team badge, taskStats progress, blocked chip, creator); Create Dialog (validated dates, team+status Select); Detail Dialog (inline status PATCH, stats chips, "View tasks" → /tasks?event=<id>); Delete via AlertDialog.
+    67→- TasksPage.tsx — kanban centerpiece: 4 columns from TASK_STATUSES (colored dot + top border + count, max-h scroll, droppable highlight), dnd-kit DndContext (PointerSensor distance 6 / TouchSensor delay; disabled <md via matchMedia) with DragOverlay, optimistic PATCH /tasks/[id] {status} + revert on error; cards have priority left-stripe/dot, event chip, due chip (red overdue / amber <3d), assignee avatar, comment + dependency counts, completed muted+strikethrough; mobile fallback per-card status Select; filters (search, event — respects ?event= hash query, assignee All/Unassigned/user, priority); New Task Dialog; Detail Dialog fetches GET /tasks/[id] — editable title/description/priority/status/assignee/dueDate/estimatedHours/actualHours (PATCH), dependencies list, comments (max-h-64 scroll, add via POST /tasks/[id]/comments, optimistic append), Delete with confirm. Click-after-drag suppressed via timestamp ref.
+    68→- TeamsPage.tsx — teams grid (icon, stats chips, manager row + Team Leader badge, avatar stack + "+X more", up to 3 events with status badges); Create Dialog (name/description/manager Select/members checkbox list max-h-44 scroll); Detail Dialog fetches GET /teams/[id] (member list with role badges + manager tag, events with date ranges), inline Edit mode (rename/description/manager/memberIds → PATCH), Delete via AlertDialog. Empty state.
+    69→- page.tsx (SPA shell, full rewrite) — bootstrap() on mount, full-screen spinner until initialized; route table: '/' → HomePage (redirect /dashboard when authed), /login + /register → AuthLayout pages (redirect when authed), protected /dashboard /events /tasks /teams → Layout + page (redirect /login when signed out, AuthRedirectPrompt meanwhile), fallback not-found card with link home. AnimatePresence fade+slide 0.25s; Layout stays mounted across protected routes ('app' key) with inner per-path transitions.
+    70→- layout.tsx — metadata only: title "EventFlow — Event Management System" + description/OG/Twitter; fonts and Toaster untouched.
+    71→- globals.css — added .scrollbar-thin custom scrollbar styles (allowed scope).
+    72→
+    73→Stage Summary:
+    74→- Frontend complete and compiling against the binding contract: types from '@/types', labels/badges from '@/lib/constants', routes via useHashRoute()/navigate(), toasts via useToast (Toaster already mounted).
+    75→- All API calls match the endpoint contract exactly (credentials:'include', {error} handling with 4xx/5xx → destructive toasts/Alerts).
+    76→- Palette: emerald/teal/amber/stone/red only — no indigo/blue. Responsive mobile-first (hamburger <md, kanban vertical stack with per-card status Select <md, grids collapse), touch targets ≥44px, semantic landmarks, aria-labels on icon buttons, skeletons/loading + empty states on every async view, sticky-bottom footer in Layout + HomePage.
+    77→- Demo login: admin@eventflow.io / password123 (login page has one-click fill).
+    78→- Frontend owns: src/app/page.tsx, src/app/layout.tsx (metadata), src/components/{layout,pages,shared}/, src/stores/, src/lib/api-client.ts. Did not touch backend files, contract files, prisma, or package.json.
+    79→
+    80→---
+    81→Task ID: 2-a
+    82→Agent: full-stack-developer
+    83→Task: Backend API routes — contract audit & correction pass (routes existed from earlier 2-a pass; verified every endpoint against the binding contract and fixed deviations)
+    84→
+    85→Work Log:
+    86→- Re-read worklog + all binding contract files (types/index.ts, constants.ts, auth.ts, api-utils.ts, schema.prisma, api-client.ts), then audited every route under src/app/api/** plus src/lib/schemas.ts line-by-line against the endpoint spec.
+    87→- Fixed src/app/api/users/route.ts — was filtering isActive:true; contract says return ALL users ordered by fullName (frontend filters). Filter removed.
+    88→- Fixed src/app/api/teams/route.ts — TEAM_CREATED details now {teamName: name} per contract (was {teamId, name}).
+    89→- Fixed src/app/api/events/[id]/route.ts — PATCH now logs EVENT_STATUS_CHANGED with details {eventName, from, to} (was {eventId,...}) and uses else-semantics: status change logs only EVENT_STATUS_CHANGED, otherwise EVENT_UPDATED when other fields changed (was logging both).
+    90→- Fixed src/app/api/dashboard/route.ts — upcomingEvents now include per-event taskStats via computeTaskStatsMap (contract + DashboardPage progress bar require it; was missing).
+    91→- Fixed src/app/api/tasks/[id]/route.ts — reassignment notification message is exactly `You were assigned "<title>"` per contract (removed "(<priority> priority)" suffix that belongs only to POST /api/tasks); removed now-unused priority local.
+    92→- Fixed src/app/api/notifications/route.ts — markAll updateMany where now {userId, read: false} exactly as specified.
+    93→- Verified (no dev/build/lint runs): `bunx tsc --noEmit` → zero errors in src/app/api/** and src/lib/schemas.ts. Remaining tsc errors are all outside backend scope (DashboardPage.tsx imports non-existent TASK_PRIORITY_LABELS — correct name is PRIORITY_LABELS; auth-store.ts imports navigate from @/lib/constants — it lives in @/hooks/use-hash-route; plus pre-existing seed.ts/examples/skills issues) — frontend/prisma files are off-limits for 2-a.
+    94→- Confirmed zod v4 top-level APIs (z.email/z.uuid) match installed zod ^4.0.2; schemas accept ISO-ish datetimes via Date.parse, '' → absent, null → explicit clear.
+    95→- Confirmed contract details: commentCount from _count.comments, dependencies w/ dependsOnTaskTitle, taskStats keys total/completed/inProgress/blocked/notStarted, teamWorkload {teamId, teamName, openTasks, completedTasks}, completionRate rounded, activity limit clamp 1–50 default 8, notifications take 30 + unreadCount, health no-auth, async params + try/catch + handleApiError everywhere, no hashedPassword in any response, all Dates ISO.
+    96→
+    97→Stage Summary:
+    98→- All 10 endpoint groups verified/corrected to match src/types/index.ts + the 2-a spec exactly: /api/health, /api/auth/{register,login,logout,me}, /api/users, /api/teams(+[id]), /api/events(+[id]), /api/tasks(+[id],+[id]/comments), /api/notifications, /api/dashboard, /api/activity.
+    99→- Backend files: src/lib/schemas.ts, src/app/api/_lib/{teams,events,tasks}.ts, 15 route files. Demo login admin@eventflow.io / password123 works against these routes.
+   100→- NOTE for orchestrator: SPA currently breaks at compile time due to TWO frontend-scope bugs (not 2-a scope): (1) src/components/pages/DashboardPage.tsx imports TASK_PRIORITY_LABELS from @/lib/constants — should be PRIORITY_LABELS; (2) src/stores/auth-store.ts imports navigate from @/lib/constants — should import { navigate } from @/hooks/use-hash-route. Until fixed, Turbopack fails to compile / and all API routes appear as 500s from the browser.
+   101→
+   102→---
+   103→Task ID: 2-a
+   104→Agent: full-stack-developer
+   105→Task: Backend API routes (health, auth, users, teams, events, tasks, comments, notifications, dashboard, activity)
+   106→
+   107→Work Log:
+   108→- Read worklog + binding contract files (types, constants, auth, api-utils, api-client, schema).
+   109→- First attempt crashed on infra timeout mid-task; second pass audited and corrected all route files already on disk.
+   110→- Created src/lib/schemas.ts (zod v4 validation for all payloads; lenient ISO datetimes; ''→absent, null→explicit clear).
+   111→- Created shared route helpers: src/app/api/_lib/{teams,events,tasks}.ts (typed Prisma include shapes + ISO serializers, computeTaskStatsMap via groupBy).
+   112→- 20 route files: health, auth (register/login/logout/me), users, teams (+[id]), events (+[id]), tasks (+[id], +[id]/comments), notifications, dashboard, activity.
+   113→- Contract fixes: users returns all; events PATCH logs EVENT_STATUS_CHANGED {eventName, from, to}; dashboard upcomingEvents carry taskStats; tasks PATCH reassignment notify message exact; notifications PATCH markAll where {userId, read:false}.
+   114→- bunx tsc --noEmit clean for backend scope.
+   115→
+   116→Stage Summary:
+   117→- All 20 endpoints live and match src/types/index.ts DTOs exactly; notification side effects (assignment, status change, comment) verified working end-to-end via curl lifecycle test.
+   118→
+   119→---
+   120→Task ID: 2-b
+   121→Agent: full-stack-developer
+   122→Task: Frontend SPA (hash router shell, layouts, 7 pages, shared components, stores)
+   123→
+   124→Work Log:
+   125→- Rewrote src/app/page.tsx as hash-routed SPA shell with auth bootstrap gate, route guards, framer-motion transitions, not-found fallback.
+   126→- Created src/lib/api-client.ts (typed fetch wrapper, ApiClientError, credentials:'include') and src/stores/auth-store.ts (zustand).
+   127→- Layout.tsx: sticky header (logo, nav pills with emerald active state, notifications popover with unread badge + 30s polling + mark read/all, user dropdown), max-w-7xl content, sticky-bottom footer (min-h-screen flex flex-col + mt-auto + safe-area).
+   128→- AuthLayout, HomePage (hero + floating mock + stats strip + features + roles + CTA), LoginPage (demo one-click), RegisterPage (role/team selects), DashboardPage (4 StatCards, recharts bar + donut, upcoming events/deadlines, team workload, activity feed), EventsPage (filter grid + create/detail dialogs + inline status PATCH + delete confirm), TasksPage (dnd-kit kanban 4 columns, optimistic status PATCH + revert, mobile per-card Select fallback, detail dialog with edit/dependencies/comments/delete), TeamsPage (cards + create/detail/edit dialogs with member checkboxes).
+   129→- Shared: StatusBadge, EmptyState, PageHeader, StatCard (count-up), LoadingSpinner. globals.css: .scrollbar-thin.
+   130→
+   131→Stage Summary:
+   132→- All 7 routes work; verified in browser. Initial pass had 2 import bugs (fixed by orchestrator: PRIORITY_LABELS, navigate import).
+   133→
+   134→---
+   135→Task ID: 4
+   136→Agent: Z.ai Code (main orchestrator)
+   137→Task: Integration, bug fixing, end-to-end browser QA
+   138→
+   139→Work Log:
+   140→- Fixed subagent-flagged bugs: DashboardPage TASK_PRIORITY_LABELS→PRIORITY_LABELS; auth-store navigate import source.
+   141→- Fixed lint error in src/types/index.ts (empty interface → type alias).
+   142→- Fixed Radix a11y error: TeamsPage detail dialog now renders DialogTitle/DialogDescription in loading branch.
+   143→- Fixed React hooks error: TasksPage DnD sensors no longer switch array size between renders (stable useSensors + lazy matchMedia init for isDesktop).
+   144→- Fixed Select uncontrolled→controlled warning: EventsPage create dialog uses NO_TEAM sentinel value.
+   145→- Quieted Prisma query logging in src/lib/db.ts (log: error, warn).
+   146→- Re-seeded DB after subagent DELETE tests consumed demo rows.
+   147→- Verified via curl: health, register, login, me, events filter, dashboard totals (6 events/16 tasks/31% completion), full task lifecycle (create→assign→comment→complete→notify→markAll→delete).
+   148→- Verified via agent-browser: home, login (demo fill), dashboard charts/data, events create dialog (Autumn Retreat 2026 created), events cards/badges/progress, tasks kanban DnD (status change persisted after reload), task detail (comment added), teams cards + detail (members/roles/events), notifications (james badge 3 → list with types → mark all read → badge cleared), register (Nina Torres created), logout, mobile viewport (hamburger, stacked kanban + per-card status Select), sticky footer, console clean.
+   149→
+   150→Stage Summary:
+   151→- Phase 1 COMPLETE: foundation, models, migrations (db push), API, routing, layouts, UI components, pages all working and browser-verified.
+   152→- Known minor notes for next round: client-side auth store can go stale if session dies server-side while tab open (Layout polling silently ignores 401s); TeamsPage cards could show member avatar stacks; kanban mobile drag disabled by design (Select fallback provided).
+   153→
+   154→## Current project status (handover)
+   155→- App: EventFlow EMS — production-quality Phase 1 done. Demo login: admin@eventflow.io / password123 (all seeded users share password123).
+   156→- Stack: Next.js 16 App Router, TS, Prisma/SQLite, Tailwind 4, shadcn/ui, zustand, dnd-kit, recharts, framer-motion.
+   157→- Suggested next-phase work: role-based permissions on API routes (EVENT_MANAGER only can delete events, etc.), event detail page with task list, deadline-approaching cron checker, search/filter persistence, avatar uploads, CSV export, dark mode toggle, TeamsPage card enrichment (avatar stacks), client 401 auto-bootstrap.
+   158→
+   159→---
+   160→Task ID: 5 (webDevReview round 1)
+   161→Agent: Z.ai Code (orchestrator)
+   162→Task: QA sweep + next-phase features (permissions, event detail, dark mode, CSV, 401 recovery, avatars, deadline scanner)
+   163→
+   164→Work Log:
+   165→- QA sweep: all routes + console clean, zero errors. No regressions found.
+   166→- ROLE-BASED PERMISSIONS (backend): new src/lib/permissions.ts. Rules: EVENT_MANAGER full control; TEAM_LEADER manages events/tasks of own team only; EMPLOYEE read + comment + may PATCH only status/actualHours of own assigned tasks. Enforced in events POST/PATCH/DELETE, teams POST/PATCH (manager-only), tasks POST (manager/leader of event's team), tasks PATCH (field-level for assignees), tasks DELETE (manager/leader/creator). Verified via curl: david(EMPLOYEE) 403 on event/team/task-create/title-edit; sofia(LEADER) 201 creating own-team event.
+   167→- DEADLINE SCANNER: src/lib/deadlines.ts — GET /api/notifications now scans current user's tasks due ≤48h, creates DEADLINE_APPROACHING notifications deduped per 24h per task. Verified: david got "Order hackathon swag bags is due in 20h"; lena correctly NOT duplicated.
+   168→- EVENT DETAIL PAGE: new EventDetailPage at #/events/:id (router updated in page.tsx). Header (back, title, status badge, dates/team/creator), 4 stat chips, completion progress card, task list with per-row quick status Select (optimistic PATCH + toast), Add task dialog (prefilled event), Edit event dialog, Delete confirm, Export tasks CSV, Open board link. Permission-aware action visibility. EventsPage cards now navigate here; old detail/delete dialog code removed.
+   169→- DARK MODE: next-themes ThemeProvider (class strategy, default light), header Sun/Moon toggle (useSyncExternalStore mounted check, lint-clean), warm stone+emerald dark palette in globals.css, dark: variants added to all badge maps in constants.ts, ~250 hardcoded light colors tokenized across all pages (bg-white→bg-card, stone text→foreground/muted-foreground, borders→border, tinted tiles got dark variants). Verified light+dark on dashboard/events/tasks/teams/event-detail + mobile.
+   170→- CSV EXPORT: src/lib/csv.ts (toCsv + downloadCsv + date stamp). Export CSV buttons on EventsPage (filtered events with task stats) and TasksPage (filtered tasks), plus per-event "Export tasks CSV" on detail page. Verified: "7 event(s) exported" toast.
+   171→- 401 AUTO-RECOVERY: api-client dispatches ems:unauthorized on 401 (non-auth endpoints); auth-store listener resets user and redirects to /login only when it believed it was signed in.
+   172→- TEAMS AVATAR STACKS: GET /api/teams now includes members preview (first 5, alphabetical); TeamDTO.members type updated to preview shape; team cards show overlapping avatar stack + "+N more" (UI already existed awaiting data). Verified on Teams page.
+   173→- Fixed during round: missing Badge/CalendarPlus/Download imports after rework; lint strict rule (setState in effect) → useSyncExternalStore; TeamsPage optional role indexing.
+   174→
+   175→Stage Summary:
+   176→- All features implemented, verified in browser (light + dark + mobile), lint + tsc clean, zero console errors.
+   177→- Demo data note: david now has extra "Order hackathon swag bags" task (scanner test); "Press kit & media invitations" moved to IN_PROGRESS (status-change test). nina@eventflow.io account exists from round 0.
+   178→- Risks/next: CSV export columns could include task descriptions; event detail could paginate long task lists; kanban detail dialog could reuse the same quick-status semantics; theme preference persists in localStorage only (per-browser).
+   179→
+   180→## Current project status (handover)
+   181→- EventFlow EMS — Phase 1 + Round-1 features complete: role-based API permissions, dedicated event workspace page (#/events/:id), full dark mode, CSV export (events/tasks), session-expiry auto-recovery, team avatar stacks, deadline-approaching reminder scanner.
+   182→- Demo login: admin@eventflow.io / password123 (all seeded users share password123).
+   183→- Suggested next-phase work: event detail pagination/sorting for tasks; assign/unassign + priority editing from event detail rows; dark-mode chart tooltip styling polish; activity log page (#/activity) with filters; email-style notification preferences; event timeline/Gantt view; bulk task actions; drag-and-drop file attachments.
+   184→
+   185→---
+   186→Task ID: 6 (webDevReview round 2)
+   187→Agent: Z.ai Code (orchestrator)
+   188→Task: QA sweep + Round-2 features (activity page, command palette, profile page, event detail workspace upgrade, chart theming)
+   189→
+   190→Work Log:
+   191→- QA baseline: dev.log healthy, tsc clean (only pre-existing examples/skills errors), agent-browser sweep of all routes in dark mode — zero runtime errors, no regressions. Phase 1 + Round-1 confirmed stable.
+   192→- ACTIVITY PAGE (#/activity): new ActivityPage with timeline UI (icon chip per action type + connector line, actor avatar, action label, detail chips). Filters: group Select (All/Events/Tasks/Teams/Users → mapped action lists), person Select (Everyone/users), Reset, entry count. Load-more pagination (25/page) using new hasMore/total. Empty + error + skeleton states.
+   193→- /api/activity EXTENDED: `action` (comma list), `userId` ('me' supported), `offset` params; returns {activities, total, hasMore}.
+   194→- Shared ActivityFeed module (src/components/shared/ActivityFeed.tsx): ACTIVITY_META icon/color map (13 actions incl. new PASSWORD_CHANGED), ActivityItem, ActivityDetails (parses details JSON; renders from→to status chips for EVENT_STATUS_CHANGED/TASK_STATUS_CHANGED/TASK_COMPLETED, entity names, emails, assignee name resolution via assigneeNames map).
+   195→- Backend log enrichment: TASK_ASSIGNED + status-change logs now include task `title` (tasks route + tasks/[id] route) so the feed shows entity names for new entries.
+   196→- COMMAND PALETTE (⌘K / Ctrl+K): new CommandPalette (src/components/layout/CommandPalette.tsx) mounted in Layout. Global keyboard shortcut + header search pill (⌘K kbd hint, ≥lg) + icon button (<lg). Sections: Jump to/Actions (Dashboard, Events, Tasks board, Teams, Activity, Profile, My open tasks → #/tasks?assignee=me, New event → #/events?new=1, theme toggle, sign out) + server-side results (Events w/ status dot, Tasks w/ event+priority, Teams, People w/ role) via debounced /api/search. KEY FIX: shadcn CommandDialog doesn't forward props → composed Dialog+Command directly with shouldFilter={false} (cmdk's client filter was hiding all server results since item values are UUIDs).
+   197→- /api/search NEW (GET ?q=): parallel prisma queries, 5 events (name/description), 6 tasks (title, +eventName), 4 teams, 4 active users; min 2 chars; auth required.
+   198→- PROFILE PAGE (#/profile): gradient hero card (avatar, name, email, role+team+joined badges), 3 work stat tiles (open/overdue/completed from /tasks?assignedTo=me), Change password card (current/new/confirm, client validation, PATCH /api/auth/password), My teams (manager/member filter), Recent sign-ins (from /activity?userId=me), My recent activity timeline (reuses ActivityItem). Router + guards updated; user dropdown "Profile" item now enabled (also added Activity item).
+   199→- /api/auth/password NEW (PATCH): changePasswordSchema (zod), verify current (scrypt, timing-safe), reject same-as-current, rehash, revoke all OTHER sessions (current kept), PASSWORD_CHANGED activity log. Error paths verified via curl: wrong current / weak new / same new.
+   200→- EVENT DETAIL WORKSPACE UPGRADE: task toolbar (title search input, sort Select: due±/priority/status/title/newest with no-due-sinks-to-bottom + due tiebreak), status filter chip row with live counts (aria-pressed, emerald active), per-row quick assignee Select (canManage only; optimistic PATCH + revert + toast), "No matching tasks" empty state distinct from "No tasks yet". Cleaned duplicated dark: classes in stat chips.
+   201→- TASKS PAGE: "Assigned to me" option + ?assignee= hash query sync (deep-link target). EVENTS PAGE: ?new=1 auto-opens create dialog then cleans URL (palette target).
+   202→- CHART THEMING: recharts grid/axis/tick/tooltip now use CSS tokens (var(--border)/var(--muted-foreground)/var(--card)...) — light+dark both verified; tooltip got radius 10, shadow, labelStyle/itemStyle.
+   203→- NAV: Activity added to desktop nav, mobile sheet, and user dropdown; search pill in header.
+   204→- Fixed during round: Turbopack duplicate-import error in EventsPage (merged use-hash-route imports), SESSION_COOKIE import (constants, not auth), CommandItem keywords must be string[], stale eslint-disable.
+   205→- Incidents: dev server process died mid-round (restarted with `bun run dev` in background — note: it had been the system-managed one; watch for recurrence). Browser password-change flow verified end-to-end (change → logout → login with new → revert via API to password123).
+   206→
+   207→Verification (agent-browser + curl):
+   208→- Activity page: renders 36→45 entries, Events filter → 5, dark + mobile OK, PASSWORD_CHANGED entries visible with key icon.
+   209→- Palette: ⌘K opens; "hack" → Internal Hackathon (Draft) + 2 tasks + actions; click-through navigated to event detail; New event action opened create dialog via ?new=1; Esc/close OK.
+   210→- Profile: all sections render; password change success toast; new password login OK; wrong-current/weak/same rejected (curl); reverted to password123.
+   211→- Event detail: chip filter (Not Started active → 2 rows), sort select present, assignee change David→Lena→David persisted + toast, dark + mobile (390px) OK.
+   212→- Dashboard light + dark with themed chart tokens; console clean; lint 0/0; tsc clean (app files).
+   213→
+   214→Stage Summary:
+   215→- New: /activity, /profile routes; /api/search, /api/auth/password endpoints; /api/activity filters+pagination; CommandPalette; ActivityFeed shared module; event detail toolbar (search/sort/chips/quick-assign); ?assignee= and ?new=1 deep links; themed charts.
+   216→- Demo credentials unchanged: admin@eventflow.io / password123 (verify after any password test!).
+   217→- Risks/next: palette "New event" auto-open relies on ?new=1 effect (works); cmdk a11y tree shows empty listbox in snapshots (items render — cmdk renders via cmdk-item attrs; cosmetic in tooling only); activity seed rows lack titles for old TASK_ASSIGNED entries (fallback text shown); next-phase candidates: bulk task actions, notification preferences, event timeline/Gantt, CSV export with descriptions, pagination for long task lists.
+   218→
+   219→---
+   220→Task ID: 7 (webDevReview round 3)
+   221→Agent: Z.ai Code (orchestrator)
+   222→Task: QA sweep + Round-3 features (bulk task actions, event timeline view, notification preferences, styling fixes)
+   223→
+   224→Work Log:
+   225→- QA baseline: fresh browser session, all routes (dashboard/events/tasks/teams/activity/profile/event-detail) in light+dark, desktop+mobile — zero runtime errors, zero [api-error] in dev.log. Stale error entries from previous round's HMR were identified as non-current. Phase 1 + R1 + R2 confirmed stable → proceeded to features.
+   226→- BULK TASK ACTIONS (backend): new POST /api/tasks/bulk (src/app/api/tasks/bulk/route.ts) + bulkTaskActionSchema (zod: ids 1-100, action status|priority|assign|unassign|delete). Per-task permission checks mirror single-task rules: status allowed for assignees; priority/assign/unassign/delete need manager/leader/creator. Partial-success response {updated, deleted, failed:[{id,title,reason}], total}; one bad task never blocks others. Notifies assignees on assign; logs TASK_ASSIGNED + status-change activities with from/to.
+   227→- BULK TASK ACTIONS (frontend): TasksPage kanban cards got per-card Checkbox (hover-reveal opacity, emerald checked state; stopPropagation scoped to checkbox only so title-drag still works), selected cards get emerald ring+tint; "Select all/Deselect all" header button with count badge; spring-animated dark-glass bulk toolbar (fixed bottom, role=toolbar): count chip + Set status / Set priority / Assign-to… (incl. Unassigned→unassign) + Delete (confirm AlertDialog) + clear; Escape clears selection; selection auto-pruned when task list changes; idempotent actions counted accurately (already-in-target = unchanged).
+   228→- EVENT TIMELINE VIEW: EventDetailPage tasks card now has List|Timeline segmented tabs (role=tablist). TimelineView = Gantt-lite: per-task row (avatar + title + due/overdue label) with bar from event start → due date (gradient fill per status, animated width, hover tooltip), dashed full-width bar for no-due-date tasks, dashed amber today line + Today chip (only when today within range), adaptive deduped date axis (2 ticks ≤2d, 3 ≤7d, 5 ≤45d, 7 beyond; consecutive duplicate labels dropped), 6-item legend (4 statuses + today + no-due). Row click expands inline actions (priority chip, assignee, status Select reusing handleTaskStatusChange, Open-on-board deep link).
+   229→- NOTIFICATION PREFERENCES: prisma User.notificationPrefs (JSON string map type→boolean; missing = enabled) + db push. GET/PATCH /api/notifications/preferences (mergeDefaults returns full map). notifyUser() now checks recipient prefs (server-wide: assignments, status changes, comments) and deadline scanner short-circuits when DEADLINE_APPROACHING muted. New NotificationPrefsDialog (bell popover header gear icon): icon chips per type, label + description, Switch per type, Enable all, Save→PATCH→toast with muted count.
+   230→- Styling fixes/polish: fixed 5 invalid Tailwind double-opacity classes (bg-muted/50/60, /50/80, 3x /50/70 → bg-muted/60|80|70) in EmptyState, KanbanColumn, HomePage — muted backgrounds now actually render (incl. dark mode); bulk bar styling (stone-900/95 glass, ring, backdrop-blur); timeline gradients + legend; dialog switch styling (emerald when checked).
+   231→- Fixed during round: drag-from-title regression (checkbox wrapper stopPropagation killed dnd listeners → scoped to checkbox span); timeline axis duplicate labels for short events; dev server restart needed after prisma client regen (stale client caused 500 on first prefs PATCH); dev server now runs detached via setsid.
+   232→
+   233→Verification (agent-browser + curl):
+   234→- Bulk: 3 selected → status IN_PROGRESS → toast "2 task(s) moved to In Progress" (1 already in target, counted correctly); board counts updated; curl idempotency + priority/assign/unassign verified; david(EMPLOYEE) bulk delete → both failed with per-task reasons; david status-change own task OK / James's task 403-style failure. Selection, Escape-clear, checkbox-click isolation (no dialog), title-drag regression all browser-verified.
+   235→- Timeline: List/Timeline tabs, bars/labels/axis (Oct 24|Oct 25 dedupe), expanded row status change persisted (verified via API, reverted), legend, dark + 390px mobile OK.
+   236→- Prefs: dialog renders 6 switches; toggled Task Blocked + Deadline Soon off as admin → server map verified; PATCH muted path verified end-to-end (david muted TASK_STATUS_CHANGED → admin status change produced NO new notification; restored after). Defaults GET verified (all true).
+   237→- Regression: kanban DnD from title works after checkbox fix (drag → IN_PROGRESS persisted, then reverted); all routes + homepage sweep zero errors; lint + tsc clean.
+   238→- Demo data state restored (tasks back to original status/assignees; all prefs enabled). Demo login unchanged: admin@eventflow.io / password123.
+   239→
+   240→Stage Summary:
+   241→- New: bulk task API + kanban bulk-selection UX, event timeline view, per-user notification mute system (schema + API + UI), 5 invalid-class fixes.
+   242→- Ops note: dev server restarted this round (Prisma client regen); if it dies, start with `cd /home/z/my-project && (setsid nohup bun run dev </dev/null > /dev/null 2>&1 &)` and wait for /api/health.
+
+[showing lines 60-242 of 244; use offset=243 with limit to continue reading]

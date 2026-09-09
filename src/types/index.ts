@@ -27,6 +27,16 @@ export interface UserDTO {
   updatedAt: string
 }
 
+/** Admin directory row: user + task workload + last sign-in. */
+export interface UserWithStatsDTO extends UserDTO {
+  stats: {
+    openTasks: number
+    overdueTasks: number
+    completedTasks: number
+  }
+  lastLoginAt: string | null
+}
+
 export interface TeamDTO {
   id: string
   name: string
@@ -149,6 +159,16 @@ export interface SearchResultDTO {
   users: SearchResultUserDTO[]
 }
 
+/** GET /api/calendar — one month of due tasks + overlapping events. */
+export interface CalendarResponseDTO {
+  month: string
+  rangeStart: string
+  rangeEnd: string
+  tasks: TaskDTO[]
+  events: EventDTO[]
+  summary: { dueTasks: number; completed: number; overdue: number; events: number }
+}
+
 export interface DashboardStatsDTO {
   totals: {
     events: number
@@ -234,4 +254,11 @@ export interface CreateTeamPayload {
 
 export interface CreateCommentPayload {
   content: string
+}
+
+export interface UpdateUserPayload {
+  role?: Role
+  isActive?: boolean
+  teamId?: string | null
+  fullName?: string
 }

@@ -12,6 +12,10 @@ import {
   MessageSquare,
   Pencil,
   RefreshCw,
+  ShieldCheck,
+  ShieldOff,
+  ShieldQuestion,
+  UserCog,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -22,6 +26,8 @@ import {
   EVENT_STATUS_CLASSES,
   EVENT_STATUS_LABELS,
   PRIORITY_LABELS,
+  ROLE_BADGE_CLASSES,
+  ROLE_LABELS,
   TASK_STATUS_CLASSES,
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
@@ -33,6 +39,10 @@ export const ACTIVITY_META: Record<string, { icon: LucideIcon; classes: string }
   USER_REGISTERED: { icon: UserPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   USER_LOGIN: { icon: LogIn, classes: 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300' },
   PASSWORD_CHANGED: { icon: KeyRound, classes: 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300' },
+  USER_UPDATED: { icon: UserCog, classes: 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300' },
+  USER_ROLE_CHANGED: { icon: ShieldQuestion, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  USER_DEACTIVATED: { icon: ShieldOff, classes: 'bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300' },
+  USER_REACTIVATED: { icon: ShieldCheck, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   TEAM_CREATED: { icon: Users, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
   TEAM_UPDATED: { icon: Users, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
   EVENT_CREATED: { icon: CalendarPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
@@ -59,6 +69,7 @@ interface ParsedDetails {
   to?: string
   eventId?: string
   taskId?: string
+  fullName?: string
 }
 
 function parseDetails(raw: string | null): ParsedDetails {
@@ -124,6 +135,20 @@ export function ActivityDetails({ activity }: { activity: ActivityLogDTO }) {
             {TASK_STATUS_LABELS[d.to] ?? d.to}
           </Chip>
         </span>
+      ) : null}
+      {activity.action === 'USER_ROLE_CHANGED' && d.from && d.to ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Chip className={ROLE_BADGE_CLASSES[d.from] ?? ''}>
+            {ROLE_LABELS[d.from] ?? d.from}
+          </Chip>
+          <span aria-hidden="true">→</span>
+          <Chip className={ROLE_BADGE_CLASSES[d.to] ?? ''}>
+            {ROLE_LABELS[d.to] ?? d.to}
+          </Chip>
+        </span>
+      ) : null}
+      {(activity.action === 'USER_DEACTIVATED' || activity.action === 'USER_REACTIVATED' || activity.action === 'USER_ROLE_CHANGED' || activity.action === 'USER_UPDATED') && d.fullName ? (
+        <span className="max-w-[16rem] truncate font-medium text-foreground/80">{d.fullName}</span>
       ) : null}
       {d.assignedTo ? <span>to a team member</span> : null}
       {d.email ? <span className="truncate">{d.email}</span> : null}
