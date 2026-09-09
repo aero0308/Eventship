@@ -1,0 +1,168 @@
+/**
+ * Zod validation schemas for all API route payloads.
+ * Enum unions are imported from constants so backend and frontend stay in sync.
+ */
+import { z } from 'zod'
+import { EVENT_STATUSES, ROLES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/constants'
+
+// ============ field helpers ============
+
+/** Accepts anything Date.parse understands (ISO datetime, datetime-local, date-only). */
+const isoDateTime = z
+  .string()
+  .refine((value) => !Number.isNaN(Date.parse(value)), 'Invalid datetime, expected an ISO string')
+
+/**
+ * Optional FK / scalar fields: '' is treated as "absent" (HTML forms),
+ * null is preserved so PATCH can explicitly clear a value.
+ */
+const nullableId = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.union([z.uuid(), z.null()]).optional()
+)
+
+const nullableDateTime = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.union([isoDateTime, z.null()]).optional()
+)
+
+const nullablePositiveNumber = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.union([z.coerce.number().positive('Must be a positive number'), z.null()]).optional()
+)
+
+/** Optional long text: '' normalizes to null (cleared). */
+const nullableText = (max: number) =>
+  z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.string().trim().max(max, `Must be at most ${max} characters`).nullable().optional()
+  )
+
+// ============ auth ============
+
+/** Trims + lowercases BEFORE validation so z.email() never sees padded input. */
+const emailField = z.preprocess(
+  (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+  z.email()
+)
+
+export const registerSchema = z.object({
+  email: emailField,
+  fullName: z
+    .string()
+    .trim()
+    .min(1, 'Full name is required')
+    .max(120, 'Full name must be at most 120 characters'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  role: z.enum(ROLES).default('EMPLOYEE'),
+  teamId: nullableId,
+})
+
+export const loginSchema = z.object({
+  email: emailField,
+  password: z.string().min(1, 'Password is required'),
+})
+
+// ============ teams ============
+
+export const createTeamSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Team name is required')
+    .max(80, 'Team name must be at most 80 characters'),
+  description: nullableText(500),
+  managerId: nullableId,
+  memberIds: z.array(z.uuid()).optional(),
+})
+
+export const updateTeamSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Team name is required')
+    .max(80, 'Team name must be at most 80 characters')
+    .optional(),
+  description: nullableText(500),
+  managerId: nullableId,
+  memberIds: z.array(z.uuid()).optional(),
+})
+
+// ============ events ============
+
+export const createEventSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Event name is required')
+    .max(120, 'Event name must be at most 120 characters'),
+  description: nullableText(2000),
+  startDate: isoDateTime,
+  endDate: isoDateTime,
+  status: z.enum(EVENT_STATUSES).default('DRAFT'),
+  teamId: z.uuid(),
+})
+
+export const updateEventSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Event name is required')
+    .max(120, 'Event name must be at most 120 characters')
+    .optional(),
+  description: nullableText(2000),
+  startDate: isoDateTime.optional(),
+  endDate: isoDateTime.optional(),
+  status: z.enum(EVENT_STATUSES).optional(),
+  teamId: z.uuid().optional(),
+})
+
+// ============ tasks ============
+
+export const createTaskSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Task title is required')
+    .max(160, 'Task title must be at most 160 characters'),
+  description: nullableText(4000),
+  priority: z.enum(TASK_PRIORITIES).default('MEDIUM'),
+  status: z.enum(TASK_STATUSES).default('NOT_STARTED'),
+  eventId: z.uuid(),
+  assignedTo: nullableId,
+  dueDate: nullableDateTime,
+  estimatedHours: nullablePositiveNumber,
+})
+
+export const updateTaskSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Task title is required')
+    .max(160, 'Task title must be at most 160 characters')
+    .optional(),
+  description: nullableText(4000),
+  priority: z.enum(TASK_PRIORITIES).optional(),
+  status: z.enum(TASK_STATUSES).optional(),
+  eventId: z.uuid().optional(),
+  assignedTo: nullableId,
+  dueDate: nullableDateTime,
+  estimatedHours: nullablePositiveNumber,
+  actualHours: nullablePositiveNumber,
+  dependsOnTaskIds: z.array(z.uuid()).optional(),
+})
+
+// ============ comments & notifications ============
+
+export const createCommentSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Comment cannot be empty')
+    .max(2000, 'Comment must be at most 2000 characters'),
+})
+
+export const notificationPatchSchema = z.object({
+  id: z.uuid().optional(),
+  markAll: z.boolean().optional(),
+})

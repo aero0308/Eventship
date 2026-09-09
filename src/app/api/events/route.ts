@@ -1,0 +1,80 @@
+import { db } from '@/lib/db'
+import { EVENT_STATUSES, ACTIVITY_ACTIONS } from '@/lib/constants'
+import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { createEventSchema } from '@/lib/schemas'
+import {
+  computeTaskStatsMap,
+  emptyTaskStats,
+  eventInclude,
+  serializeEvent,
+} from '../_lib/events'
+import type { Prisma } from '@prisma/client'
+
+export async function GET(request: Request) {
+  try {
+    await requireUser()
+    const { searchParams } = new URL(request.url)
+
+    const where: Prisma.EventWhereInput = {}
+    const status = searchParams.get('status')
+    if (status && (EVENT_STATUSES as readonly string[]).includes(status)) where.status = status
+    const teamId = searchParams.get('teamId')
+    if (teamId) where.teamId = teamId
+    const search = searchParams.get('search')
+    // SQLite `contains` matching is case-insensitive for ASCII text.
+    if (search) where.name = { contains: search }
+
+    const events = await db.event.findMany({
+      where,
+      orderBy: { startDate: 'desc' },
+      include: eventInclude,
+    })
+    const statsMap = await computeTaskStatsMap(events.map((event) => event.id))
+    return ok({
+      events: events.map((event) => serializeEvent(event, statsMap.get(event.id) ?? emptyTaskStats())),
+    })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = await requireUser()
+    const body = await parseBody(request, createEventSchema)
+
+    const startDate = new Date(body.startDate)
+    const endDate = new Date(body.endDate)
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new ApiError(400, 'End date must be on or after start date')
+    }
+
+    const team = await db.team.findUnique({ where: { id: body.teamId } })
+    if (!team) throw new ApiError(404, 'Team not found')
+
+    const created = await db.event.create({
+      data: {
+        name: body.name,
+        description: body.description ?? null,
+        startDate,
+        endDate,
+        status: body.status,
+        teamId: body.teamId,
+        createdBy: user.id,
+      },
+    })
+
+    await logActivity(user.id, ACTIVITY_ACTIONS.EVENT_CREATED, {
+      eventId: created.id,
+      name: created.name,
+    })
+
+    const event = await db.event.findUniqueOrThrow({
+      where: { id: created.id },
+      include: eventInclude,
+    })
+    return ok({ event: serializeEvent(event, emptyTaskStats()) }, 201)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}

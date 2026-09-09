@@ -1,0 +1,144 @@
+import { db } from '@/lib/db'
+import { TASK_STATUS_LABELS, ACTIVITY_ACTIONS } from '@/lib/constants'
+import {
+  ApiError,
+  handleApiError,
+  logActivity,
+  notifyUser,
+  ok,
+  parseBody,
+  requireUser,
+} from '@/lib/api-utils'
+import { updateTaskSchema } from '@/lib/schemas'
+import {
+  serializeTaskDetail,
+  taskDetailInclude,
+  type TaskWithComments,
+} from '../../_lib/tasks'
+import type { Prisma } from '@prisma/client'
+
+async function fetchTaskDetail(id: string): Promise<TaskWithComments | null> {
+  const task = await db.task.findUnique({ where: { id }, include: taskDetailInclude })
+  return task
+}
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await requireUser()
+    const { id } = await params
+    const task = await fetchTaskDetail(id)
+    if (!task) throw new ApiError(404, 'Task not found')
+    return ok({ task: serializeTaskDetail(task) })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser()
+    const { id } = await params
+    const existing = await db.task.findUnique({ where: { id } })
+    if (!existing) throw new ApiError(404, 'Task not found')
+
+    const body = await parseBody(request, updateTaskSchema)
+
+    if (body.eventId && body.eventId !== existing.eventId) {
+      const event = await db.event.findUnique({ where: { id: body.eventId } })
+      if (!event) throw new ApiError(404, 'Event not found')
+    }
+
+    const assignedToChanged = body.assignedTo !== undefined && body.assignedTo !== existing.assignedTo
+    if (assignedToChanged && body.assignedTo) {
+      const assignee = await db.user.findUnique({ where: { id: body.assignedTo } })
+      if (!assignee) throw new ApiError(404, 'Assignee not found')
+    }
+
+    if (body.dependsOnTaskIds) {
+      const depIds = [...new Set(body.dependsOnTaskIds)]
+      if (depIds.includes(id)) throw new ApiError(400, 'A task cannot depend on itself')
+      const found = await db.task.findMany({ where: { id: { in: depIds } }, select: { id: true } })
+      if (found.length !== depIds.length) {
+        throw new ApiError(404, 'One or more dependency tasks not found')
+      }
+    }
+
+    // Resulting title used in notification messages.
+    const title = body.title ?? existing.title
+
+    const data: Prisma.TaskUpdateInput = {}
+    if (body.title !== undefined) data.title = body.title
+    if (body.description !== undefined) data.description = body.description
+    if (body.priority !== undefined) data.priority = body.priority
+    if (body.status !== undefined) data.status = body.status
+    if (body.eventId !== undefined) data.event = { connect: { id: body.eventId } }
+    if (body.assignedTo !== undefined) {
+      data.assignee = body.assignedTo
+        ? { connect: { id: body.assignedTo } }
+        : { disconnect: true }
+    }
+    if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null
+    if (body.estimatedHours !== undefined) data.estimatedHours = body.estimatedHours
+    if (body.actualHours !== undefined) data.actualHours = body.actualHours
+    if (body.dependsOnTaskIds) {
+      data.dependencies = {
+        deleteMany: {},
+        create: [...new Set(body.dependsOnTaskIds)].map((depId) => ({ dependsOnTaskId: depId })),
+      }
+    }
+
+    await db.task.update({ where: { id }, data })
+
+    if (assignedToChanged && body.assignedTo) {
+      // Contract message: no priority suffix on reassignment.
+      await notifyUser(body.assignedTo, 'TASK_ASSIGNED', `You were assigned "${title}"`)
+      await logActivity(user.id, ACTIVITY_ACTIONS.TASK_ASSIGNED, {
+        taskId: id,
+        assignedTo: body.assignedTo,
+      })
+    }
+
+    const statusChanged = body.status !== undefined && body.status !== existing.status
+    if (statusChanged && body.status) {
+      const notifyType =
+        body.status === 'COMPLETED'
+          ? 'TASK_COMPLETED'
+          : body.status === 'BLOCKED'
+            ? 'TASK_BLOCKED'
+            : 'TASK_STATUS_CHANGED'
+      const label = TASK_STATUS_LABELS[body.status] ?? body.status
+      const message = `"${title}" moved to ${label}`
+
+      const recipients = new Set<string>([existing.createdBy])
+      const currentAssignee = body.assignedTo !== undefined ? body.assignedTo : existing.assignedTo
+      if (currentAssignee) recipients.add(currentAssignee)
+      recipients.delete(user.id)
+      for (const recipientId of recipients) {
+        await notifyUser(recipientId, notifyType, message)
+      }
+
+      await logActivity(user.id, notifyType, { taskId: id, from: existing.status, to: body.status })
+    }
+
+    const task = await fetchTaskDetail(id)
+    if (!task) throw new ApiError(404, 'Task not found')
+    return ok({ task: serializeTaskDetail(task) })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await requireUser()
+    const { id } = await params
+    const existing = await db.task.findUnique({ where: { id }, select: { id: true } })
+    if (!existing) throw new ApiError(404, 'Task not found')
+
+    // Comments and dependencies cascade-delete via schema relations.
+    await db.task.delete({ where: { id } })
+    return ok({ success: true })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
