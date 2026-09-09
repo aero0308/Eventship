@@ -63,18 +63,18 @@ const PRIORITY_CHART_COLORS: Record<string, string> = {
 }
 
 const ACTIVITY_ICONS: Record<string, { icon: LucideIcon; classes: string }> = {
-  USER_REGISTERED: { icon: UserPlus, classes: 'bg-teal-100 text-teal-700' },
-  USER_LOGIN: { icon: LogIn, classes: 'bg-stone-100 text-stone-600' },
-  TEAM_CREATED: { icon: Users, classes: 'bg-teal-100 text-teal-700' },
-  TEAM_UPDATED: { icon: Users, classes: 'bg-stone-100 text-stone-600' },
-  EVENT_CREATED: { icon: CalendarPlus, classes: 'bg-emerald-100 text-emerald-700' },
-  EVENT_UPDATED: { icon: CalendarDays, classes: 'bg-stone-100 text-stone-600' },
-  EVENT_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700' },
-  TASK_CREATED: { icon: ListPlus, classes: 'bg-emerald-100 text-emerald-700' },
-  TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700' },
-  TASK_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700' },
-  TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-emerald-100 text-emerald-700' },
-  COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-stone-100 text-stone-600' },
+  USER_REGISTERED: { icon: UserPlus, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
+  USER_LOGIN: { icon: LogIn, classes: 'bg-muted text-muted-foreground' },
+  TEAM_CREATED: { icon: Users, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
+  TEAM_UPDATED: { icon: Users, classes: 'bg-muted text-muted-foreground' },
+  EVENT_CREATED: { icon: CalendarPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  EVENT_UPDATED: { icon: CalendarDays, classes: 'bg-muted text-muted-foreground' },
+  EVENT_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  TASK_CREATED: { icon: ListPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  TASK_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-muted text-muted-foreground' },
 }
 
 const ACTIVITY_TEXT: Record<string, string> = {
@@ -236,10 +236,10 @@ export function DashboardPage() {
                 </div>
                 <ul className="space-y-1.5">
                   {priorityData.map((entry) => (
-                    <li key={entry.key} className="flex items-center gap-2 text-sm text-stone-600">
+                    <li key={entry.key} className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e' }} aria-hidden="true" />
                       {entry.name}
-                      <span className="font-semibold text-stone-900">{entry.value}</span>
+                      <span className="font-semibold text-foreground">{entry.value}</span>
                     </li>
                   ))}
                 </ul>
@@ -272,22 +272,22 @@ export function DashboardPage() {
                   const completed = event.taskStats?.completed ?? 0
                   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
                   return (
-                    <li key={event.id} className="flex items-center gap-3 rounded-lg border border-stone-200 p-3">
-                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                    <li key={event.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 ring-1 ring-emerald-100">
                         <span className="text-[10px] font-semibold uppercase leading-none">{format(start, 'MMM')}</span>
                         <span className="text-lg font-bold leading-tight">{format(start, 'd')}</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-stone-900">{event.name}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">{event.name}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <Badge variant="outline" className={cn('text-[10px]', EVENT_STATUS_CLASSES[event.status])}>
                             {EVENT_STATUS_LABELS[event.status] ?? event.status}
                           </Badge>
-                          {event.team ? <Badge variant="outline" className="border-stone-200 bg-stone-50 text-[10px] text-stone-600">{event.team.name}</Badge> : null}
+                          {event.team ? <Badge variant="outline" className="border-border bg-muted/50 text-[10px] text-muted-foreground">{event.team.name}</Badge> : null}
                         </div>
                       </div>
                       <div className="hidden w-28 shrink-0 sm:block">
-                        <div className="flex items-center justify-between text-[10px] text-stone-500">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                           <span>Tasks</span>
                           <span>
                             {completed}/{total}
@@ -323,10 +323,10 @@ export function DashboardPage() {
                   const overdue = days !== null && days < 0
                   const urgent = days !== null && days >= 0 && days < 3
                   return (
-                    <li key={task.id} className="flex items-center gap-3 rounded-lg border border-stone-200 p-3">
+                    <li key={task.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-stone-900">{task.title}</p>
-                        <p className="mt-0.5 truncate text-xs text-stone-500">{task.event?.name ?? 'Unknown event'}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">{task.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{task.event?.name ?? 'Unknown event'}</p>
                       </div>
                       {days !== null ? (
                         <Badge
@@ -337,14 +337,14 @@ export function DashboardPage() {
                               ? 'border-red-200 bg-red-50 text-red-700'
                               : urgent
                                 ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                : 'border-stone-200 bg-stone-50 text-stone-600'
+                                : 'border-border bg-muted/50 text-muted-foreground'
                           )}
                         >
                           {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}
                         </Badge>
                       ) : null}
                       <span
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-100 text-[10px] font-semibold text-stone-600"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground"
                         title={task.assignee?.fullName ?? 'Unassigned'}
                         aria-label={task.assignee ? `Assigned to ${task.assignee.fullName}` : 'Unassigned'}
                       >
@@ -382,14 +382,14 @@ export function DashboardPage() {
                   return (
                     <li key={team.teamId}>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="truncate font-medium text-stone-800">{team.teamName}</span>
-                        <span className="shrink-0 text-xs text-stone-500">
+                        <span className="truncate font-medium text-foreground">{team.teamName}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           <span className="font-semibold text-amber-700">{team.openTasks} open</span>
                           {' · '}
                           <span className="font-semibold text-emerald-700">{team.completedTasks} done</span>
                         </span>
                       </div>
-                      <div className="mt-1.5 flex h-2.5 w-full overflow-hidden rounded-full bg-stone-100" role="img" aria-label={`${team.teamName}: ${team.openTasks} open, ${team.completedTasks} completed`}>
+                      <div className="mt-1.5 flex h-2.5 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={`${team.teamName}: ${team.openTasks} open, ${team.completedTasks} completed`}>
                         <div className="h-full bg-amber-400" style={{ width: `${100 - donePercent}%` }} />
                         <div className="h-full bg-emerald-500" style={{ width: `${donePercent}%` }} />
                       </div>
@@ -428,12 +428,12 @@ export function DashboardPage() {
                         <Icon className="h-4 w-4" aria-hidden="true" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm leading-snug text-stone-700">
-                          <span className="font-semibold text-stone-900">{activity.user?.fullName ?? 'Someone'}</span>{' '}
+                        <p className="text-sm leading-snug text-foreground">
+                          <span className="font-semibold text-foreground">{activity.user?.fullName ?? 'Someone'}</span>{' '}
                           {ACTIVITY_TEXT[activity.action] ?? activity.action.toLowerCase().replace(/_/g, ' ')}
-                          {activity.details ? <span className="text-stone-500"> — {activity.details}</span> : null}
+                          {activity.details ? <span className="text-muted-foreground"> — {activity.details}</span> : null}
                         </p>
-                        <p className="mt-0.5 text-xs text-stone-400">
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
                           {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
                         </p>
                       </div>

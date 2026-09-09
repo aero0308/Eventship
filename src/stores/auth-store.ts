@@ -3,6 +3,9 @@
 /**
  * Global auth state (zustand). Nothing is persisted — the session lives in an
  * httpOnly cookie; bootstrap() resolves the current user from /api/auth/me.
+ * A 401 from any non-auth API call (session expired/revoked server-side)
+ * dispatches 'ems:unauthorized' from the api-client; the listener below resets
+ * the store and redirects to /login so the UI never sits in a stale session.
  */
 
 import { create } from 'zustand'
@@ -29,6 +32,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialized: false,
 
   bootstrap: async () => {
+    // Auto-recovery: session died server-side while the tab was open.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('ems:unauthorized', () => {
+        const current = useAuthStore.getState().user
+        useAuthStore.setState({ user: null })
+        if (current) {
+          // Only bounce when we thought we were signed in (avoid loops on public pages).
+          navigate(ROUTES.LOGIN)
+        }
+      })
+    }
     try {
       const data = await api.get<{ user: UserDTO }>('/auth/me')
       set({ user: data.user, initialized: true })

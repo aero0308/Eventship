@@ -155,3 +155,29 @@ Stage Summary:
 - App: EventFlow EMS — production-quality Phase 1 done. Demo login: admin@eventflow.io / password123 (all seeded users share password123).
 - Stack: Next.js 16 App Router, TS, Prisma/SQLite, Tailwind 4, shadcn/ui, zustand, dnd-kit, recharts, framer-motion.
 - Suggested next-phase work: role-based permissions on API routes (EVENT_MANAGER only can delete events, etc.), event detail page with task list, deadline-approaching cron checker, search/filter persistence, avatar uploads, CSV export, dark mode toggle, TeamsPage card enrichment (avatar stacks), client 401 auto-bootstrap.
+
+---
+Task ID: 5 (webDevReview round 1)
+Agent: Z.ai Code (orchestrator)
+Task: QA sweep + next-phase features (permissions, event detail, dark mode, CSV, 401 recovery, avatars, deadline scanner)
+
+Work Log:
+- QA sweep: all routes + console clean, zero errors. No regressions found.
+- ROLE-BASED PERMISSIONS (backend): new src/lib/permissions.ts. Rules: EVENT_MANAGER full control; TEAM_LEADER manages events/tasks of own team only; EMPLOYEE read + comment + may PATCH only status/actualHours of own assigned tasks. Enforced in events POST/PATCH/DELETE, teams POST/PATCH (manager-only), tasks POST (manager/leader of event's team), tasks PATCH (field-level for assignees), tasks DELETE (manager/leader/creator). Verified via curl: david(EMPLOYEE) 403 on event/team/task-create/title-edit; sofia(LEADER) 201 creating own-team event.
+- DEADLINE SCANNER: src/lib/deadlines.ts — GET /api/notifications now scans current user's tasks due ≤48h, creates DEADLINE_APPROACHING notifications deduped per 24h per task. Verified: david got "Order hackathon swag bags is due in 20h"; lena correctly NOT duplicated.
+- EVENT DETAIL PAGE: new EventDetailPage at #/events/:id (router updated in page.tsx). Header (back, title, status badge, dates/team/creator), 4 stat chips, completion progress card, task list with per-row quick status Select (optimistic PATCH + toast), Add task dialog (prefilled event), Edit event dialog, Delete confirm, Export tasks CSV, Open board link. Permission-aware action visibility. EventsPage cards now navigate here; old detail/delete dialog code removed.
+- DARK MODE: next-themes ThemeProvider (class strategy, default light), header Sun/Moon toggle (useSyncExternalStore mounted check, lint-clean), warm stone+emerald dark palette in globals.css, dark: variants added to all badge maps in constants.ts, ~250 hardcoded light colors tokenized across all pages (bg-white→bg-card, stone text→foreground/muted-foreground, borders→border, tinted tiles got dark variants). Verified light+dark on dashboard/events/tasks/teams/event-detail + mobile.
+- CSV EXPORT: src/lib/csv.ts (toCsv + downloadCsv + date stamp). Export CSV buttons on EventsPage (filtered events with task stats) and TasksPage (filtered tasks), plus per-event "Export tasks CSV" on detail page. Verified: "7 event(s) exported" toast.
+- 401 AUTO-RECOVERY: api-client dispatches ems:unauthorized on 401 (non-auth endpoints); auth-store listener resets user and redirects to /login only when it believed it was signed in.
+- TEAMS AVATAR STACKS: GET /api/teams now includes members preview (first 5, alphabetical); TeamDTO.members type updated to preview shape; team cards show overlapping avatar stack + "+N more" (UI already existed awaiting data). Verified on Teams page.
+- Fixed during round: missing Badge/CalendarPlus/Download imports after rework; lint strict rule (setState in effect) → useSyncExternalStore; TeamsPage optional role indexing.
+
+Stage Summary:
+- All features implemented, verified in browser (light + dark + mobile), lint + tsc clean, zero console errors.
+- Demo data note: david now has extra "Order hackathon swag bags" task (scanner test); "Press kit & media invitations" moved to IN_PROGRESS (status-change test). nina@eventflow.io account exists from round 0.
+- Risks/next: CSV export columns could include task descriptions; event detail could paginate long task lists; kanban detail dialog could reuse the same quick-status semantics; theme preference persists in localStorage only (per-browser).
+
+## Current project status (handover)
+- EventFlow EMS — Phase 1 + Round-1 features complete: role-based API permissions, dedicated event workspace page (#/events/:id), full dark mode, CSV export (events/tasks), session-expiry auto-recovery, team avatar stacks, deadline-approaching reminder scanner.
+- Demo login: admin@eventflow.io / password123 (all seeded users share password123).
+- Suggested next-phase work: event detail pagination/sorting for tasks; assign/unassign + priority editing from event detail rows; dark-mode chart tooltip styling polish; activity log page (#/activity) with filters; email-style notification preferences; event timeline/Gantt view; bulk task actions; drag-and-drop file attachments.

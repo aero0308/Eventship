@@ -40,9 +40,9 @@ export const ROLE_LABELS: Record<string, string> = {
 }
 
 export const ROLE_BADGE_CLASSES: Record<string, string> = {
-  EVENT_MANAGER: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  TEAM_LEADER: 'bg-amber-100 text-amber-800 border-amber-200',
-  EMPLOYEE: 'bg-stone-100 text-stone-700 border-stone-200',
+  EVENT_MANAGER: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25',
+  TEAM_LEADER: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
+  EMPLOYEE: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-500/15 dark:text-stone-300 dark:border-stone-500/25',
 }
 
 export const EVENT_STATUS_LABELS: Record<string, string> = {
@@ -55,11 +55,11 @@ export const EVENT_STATUS_LABELS: Record<string, string> = {
 
 /** Tailwind classes for event status badges (no indigo/blue per design policy). */
 export const EVENT_STATUS_CLASSES: Record<string, string> = {
-  DRAFT: 'bg-stone-100 text-stone-700 border-stone-200',
-  PLANNING: 'bg-amber-100 text-amber-800 border-amber-200',
-  IN_PROGRESS: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  COMPLETED: 'bg-teal-100 text-teal-800 border-teal-200',
-  CANCELLED: 'bg-red-100 text-red-700 border-red-200',
+  DRAFT: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-500/15 dark:text-stone-300 dark:border-stone-500/25',
+  PLANNING: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
+  IN_PROGRESS: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25',
+  COMPLETED: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25',
+  CANCELLED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25',
 }
 
 export const TASK_STATUS_LABELS: Record<string, string> = {
@@ -70,10 +70,10 @@ export const TASK_STATUS_LABELS: Record<string, string> = {
 }
 
 export const TASK_STATUS_CLASSES: Record<string, string> = {
-  NOT_STARTED: 'bg-stone-100 text-stone-700 border-stone-200',
-  IN_PROGRESS: 'bg-amber-100 text-amber-800 border-amber-200',
-  BLOCKED: 'bg-red-100 text-red-700 border-red-200',
-  COMPLETED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  NOT_STARTED: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-500/15 dark:text-stone-300 dark:border-stone-500/25',
+  IN_PROGRESS: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
+  BLOCKED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25',
+  COMPLETED: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25',
 }
 
 export const PRIORITY_LABELS: Record<string, string> = {
@@ -83,9 +83,9 @@ export const PRIORITY_LABELS: Record<string, string> = {
 }
 
 export const PRIORITY_CLASSES: Record<string, string> = {
-  HIGH: 'bg-red-100 text-red-700 border-red-200',
-  MEDIUM: 'bg-amber-100 text-amber-800 border-amber-200',
-  LOW: 'bg-stone-100 text-stone-600 border-stone-200',
+  HIGH: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25',
+  MEDIUM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
+  LOW: 'bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-500/15 dark:text-stone-300 dark:border-stone-500/25',
 }
 
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {

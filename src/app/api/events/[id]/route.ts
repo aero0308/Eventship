@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { canManageEvents, assertAccess } from '@/lib/permissions'
 import { updateEventSchema } from '@/lib/schemas'
 import {
   computeTaskStatsMap,
@@ -39,6 +40,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params
     const existing = await db.event.findUnique({ where: { id } })
     if (!existing) throw new ApiError(404, 'Event not found')
+    assertAccess(
+      canManageEvents(user, existing.teamId),
+      'Only event managers or the owning team leader can edit this event'
+    )
 
     const body = await parseBody(request, updateEventSchema)
 
@@ -95,10 +100,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser()
+    const user = await requireUser()
     const { id } = await params
-    const existing = await db.event.findUnique({ where: { id }, select: { id: true } })
+    const existing = await db.event.findUnique({ where: { id }, select: { id: true, teamId: true } })
     if (!existing) throw new ApiError(404, 'Event not found')
+    assertAccess(
+      canManageEvents(user, existing.teamId),
+      'Only event managers or the owning team leader can delete this event'
+    )
 
     // Tasks (and their comments/dependencies) cascade-delete via schema relations.
     await db.event.delete({ where: { id } })

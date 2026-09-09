@@ -10,6 +10,7 @@ import {
   requireUser,
 } from '@/lib/api-utils'
 import { updateTaskSchema } from '@/lib/schemas'
+import { canFullyManageTask, assertAccess } from '@/lib/permissions'
 import {
   serializeTaskDetail,
   taskDetailInclude,
@@ -38,10 +39,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const user = await requireUser()
     const { id } = await params
-    const existing = await db.task.findUnique({ where: { id } })
+    const existing = await db.task.findUnique({
+      where: { id },
+      include: { event: { select: { teamId: true } } },
+    })
     if (!existing) throw new ApiError(404, 'Task not found')
 
     const body = await parseBody(request, updateTaskSchema)
+
+    // Permission model: managers / owning team leaders / creators edit everything;
+    // the assignee may only update status + actualHours; everyone else 403.
+    const fullManager = canFullyManageTask(user, existing, existing.event.teamId)
+    const isAssignee = existing.assignedTo === user.id
+    if (!fullManager && !isAssignee) {
+      throw new ApiError(403, 'You do not have permission to edit this task')
+    }
+    if (!fullManager) {
+      const restricted = Object.keys(body).filter(
+        (key) => key !== 'status' && key !== 'actualHours'
+      )
+      if (restricted.length > 0) {
+        throw new ApiError(403, 'Assignees can only update task status and actual hours')
+      }
+    }
 
     if (body.eventId && body.eventId !== existing.eventId) {
       const event = await db.event.findUnique({ where: { id: body.eventId } })
@@ -130,10 +150,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser()
+    const user = await requireUser()
     const { id } = await params
-    const existing = await db.task.findUnique({ where: { id }, select: { id: true } })
+    const existing = await db.task.findUnique({
+      where: { id },
+      select: { id: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
+    })
     if (!existing) throw new ApiError(404, 'Task not found')
+    assertAccess(
+      canFullyManageTask(user, existing, existing.event.teamId),
+      'Only event managers, the owning team leader, or the task creator can delete this task'
+    )
 
     // Comments and dependencies cascade-delete via schema relations.
     await db.task.delete({ where: { id } })

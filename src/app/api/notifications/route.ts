@@ -1,10 +1,13 @@
 import { db } from '@/lib/db'
 import { ApiError, handleApiError, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { scanDeadlineApproaching } from '@/lib/deadlines'
 import { notificationPatchSchema } from '@/lib/schemas'
 
 export async function GET() {
   try {
     const user = await requireUser()
+    // Best-effort enrichment: remind about tasks due within 48h (deduped per day).
+    await scanDeadlineApproaching(user.id)
     const [notifications, unreadCount] = await Promise.all([
       db.notification.findMany({
         where: { userId: user.id },

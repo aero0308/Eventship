@@ -174,7 +174,7 @@ export function RegisterPage() {
         {loading ? 'Creating account…' : 'Create account'}
       </Button>
 
-      <p className="text-center text-sm text-stone-500">
+      <p className="text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <button
           type="button"

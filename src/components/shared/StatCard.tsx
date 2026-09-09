@@ -19,10 +19,10 @@ interface StatCardProps {
 }
 
 const TINT_CLASSES: Record<StatTint, string> = {
-  emerald: 'bg-emerald-100 text-emerald-700',
-  amber: 'bg-amber-100 text-amber-700',
+  emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
   red: 'bg-red-100 text-red-600',
-  stone: 'bg-stone-100 text-stone-600',
+  stone: 'bg-muted text-muted-foreground',
 }
 
 function useCountUp(target: number, duration = 650): number {
@@ -57,15 +57,15 @@ export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', prog
       <div className={cn('h-full rounded-xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md', className)}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
-            <p className="mt-1 text-3xl font-bold tracking-tight text-stone-900">{display}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="mt-1 text-3xl font-bold tracking-tight text-foreground">{display}</p>
           </div>
           <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', TINT_CLASSES[tint])}>
             <Icon className="h-5 w-5" aria-hidden="true" />
           </span>
         </div>
         {typeof progress === 'number' ? (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-stone-100" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}>
             <motion.div
               className="h-full rounded-full bg-emerald-500"
               initial={{ width: 0 }}
@@ -74,7 +74,7 @@ export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', prog
             />
           </div>
         ) : null}
-        {sub ? <p className="mt-2 text-xs text-stone-500">{sub}</p> : null}
+        {sub ? <p className="mt-2 text-xs text-muted-foreground">{sub}</p> : null}
       </div>
     </motion.div>
   )

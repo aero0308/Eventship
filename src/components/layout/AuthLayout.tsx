@@ -14,7 +14,7 @@ interface AuthLayoutProps {
 /** Centered auth shell with a soft emerald backdrop — no header nav. */
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-stone-50 px-4 py-10">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-muted/50 px-4 py-10">
       {/* Layered emerald/teal radial gradients */}
       <div
         aria-hidden="true"
@@ -35,21 +35,21 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
           <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/25">
             <CalendarRange className="h-6 w-6" aria-hidden="true" />
           </span>
-          <span className="text-xl font-bold tracking-tight text-stone-900">{APP_NAME}</span>
-          <span className="text-xs text-stone-500">{APP_TAGLINE}</span>
+          <span className="text-xl font-bold tracking-tight text-foreground">{APP_NAME}</span>
+          <span className="text-xs text-muted-foreground">{APP_TAGLINE}</span>
         </div>
 
-        <Card className="w-full border-stone-200 shadow-lg shadow-stone-900/5">
+        <Card className="w-full border-border shadow-lg shadow-stone-900/5">
           <CardContent className="p-6">
             <div className="mb-5">
-              <h1 className="text-xl font-bold tracking-tight text-stone-900">{title}</h1>
-              {subtitle ? <p className="mt-1 text-sm text-stone-500">{subtitle}</p> : null}
+              <h1 className="text-xl font-bold tracking-tight text-foreground">{title}</h1>
+              {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
             </div>
             {children}
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-xs text-stone-400">
+        <p className="mt-6 text-xs text-muted-foreground/70">
           {APP_NAME} — Event Management System · {new Date().getFullYear()}
         </p>
       </motion.div>

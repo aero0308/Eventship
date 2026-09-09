@@ -101,7 +101,7 @@ export function LoginPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="mt-2 h-9 border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100"
+          className="mt-2 h-9 border-emerald-300 bg-card text-emerald-800 hover:bg-emerald-100"
           onClick={fillDemo}
         >
           <Wand2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -109,7 +109,7 @@ export function LoginPage() {
         </Button>
       </div>
 
-      <p className="text-center text-sm text-stone-500">
+      <p className="text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{' '}
         <button
           type="button"

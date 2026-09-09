@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { canManageEvents, assertAccess } from '@/lib/permissions'
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -67,6 +68,10 @@ export async function POST(request: Request) {
 
     const event = await db.event.findUnique({ where: { id: body.eventId } })
     if (!event) throw new ApiError(404, 'Event not found')
+    assertAccess(
+      canManageEvents(user, event.teamId),
+      'Only event managers or the owning team leader can create tasks for this event'
+    )
 
     if (body.assignedTo) {
       const assignee = await db.user.findUnique({ where: { id: body.assignedTo } })

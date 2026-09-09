@@ -33,7 +33,7 @@ export interface TeamDTO {
   description: string | null
   managerId: string | null
   manager?: Pick<UserDTO, 'id' | 'fullName' | 'email'> | null
-  members?: Pick<UserDTO, 'id' | 'fullName' | 'email' | 'role'>[]
+  members?: { id: string; fullName: string; email?: string; role?: string }[]
   events?: EventDTO[]
   memberCount?: number
   eventCount?: number

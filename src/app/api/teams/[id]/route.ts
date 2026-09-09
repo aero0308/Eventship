@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
 import { updateTeamSchema } from '@/lib/schemas'
+import { canManageTeams, assertAccess } from '@/lib/permissions'
 import {
   serializeTeamDetail,
   teamDetailInclude,
@@ -28,6 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser()
+    assertAccess(canManageTeams(user), 'Only event managers can edit teams')
     const { id } = await params
     const existing = await fetchTeamDetail(id)
     if (!existing) throw new ApiError(404, 'Team not found')

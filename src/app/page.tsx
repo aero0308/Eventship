@@ -14,6 +14,7 @@ import { LoginPage } from '@/components/pages/LoginPage'
 import { RegisterPage } from '@/components/pages/RegisterPage'
 import { DashboardPage } from '@/components/pages/DashboardPage'
 import { EventsPage } from '@/components/pages/EventsPage'
+import { EventDetailPage } from '@/components/pages/EventDetailPage'
 import { TasksPage } from '@/components/pages/TasksPage'
 import { TeamsPage } from '@/components/pages/TeamsPage'
 import { Button } from '@/components/ui/button'
@@ -41,7 +42,7 @@ function MotionPage({ transitionKey, children }: { transitionKey: string; childr
 /** Shown on protected routes while the redirect to /login happens. */
 function AuthRedirectPrompt() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-stone-50 px-4 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-background px-4 text-center">
       <LoadingSpinner label="Checking your session…" />
       <p className="max-w-sm text-sm text-stone-500">You need to be signed in to view this page.</p>
       <Button className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => navigate(ROUTES.LOGIN)}>
@@ -53,7 +54,7 @@ function AuthRedirectPrompt() {
 
 function NotFoundCard({ path }: { path: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -79,6 +80,7 @@ function NotFoundCard({ path }: { path: string }) {
 export default function Page() {
   const path = useHashRoute()
   const pathname = path.split('?')[0] || '/'
+  const eventDetailId = pathname.match(/^\/events\/([^/]+)$/)?.[1] ?? null
   const user = useAuthStore((s) => s.user)
   const initialized = useAuthStore((s) => s.initialized)
   const bootstrap = useAuthStore((s) => s.bootstrap)
@@ -91,18 +93,19 @@ export default function Page() {
   // signed-out users away from protected pages.
   useEffect(() => {
     if (!initialized) return
+    const isProtected = PROTECTED_PATHS.includes(pathname) || eventDetailId !== null
     if (user && (pathname === ROUTES.HOME || pathname === ROUTES.LOGIN || pathname === ROUTES.REGISTER)) {
       navigate(ROUTES.DASHBOARD, true)
       return
     }
-    if (!user && PROTECTED_PATHS.includes(pathname)) {
+    if (!user && isProtected) {
       navigate(ROUTES.LOGIN, true)
     }
-  }, [initialized, user, pathname])
+  }, [initialized, user, pathname, eventDetailId])
 
   if (!initialized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <LoadingSpinner size="h-8 w-8" label="Loading EventFlow…" />
       </div>
     )
@@ -110,7 +113,7 @@ export default function Page() {
 
   const isHome = pathname === ROUTES.HOME
   const isAuthRoute = pathname === ROUTES.LOGIN || pathname === ROUTES.REGISTER
-  const isProtectedRoute = PROTECTED_PATHS.includes(pathname)
+  const isProtectedRoute = PROTECTED_PATHS.includes(pathname) || eventDetailId !== null
 
   let content: ReactNode
   let transitionKey: string
@@ -139,10 +142,11 @@ export default function Page() {
       content = (
         <Layout>
           <MotionPage transitionKey={pathname}>
-            {pathname === ROUTES.DASHBOARD && <DashboardPage />}
-            {pathname === ROUTES.EVENTS && <EventsPage />}
-            {pathname === ROUTES.TASKS && <TasksPage />}
-            {pathname === ROUTES.TEAMS && <TeamsPage />}
+            {eventDetailId !== null && <EventDetailPage eventId={eventDetailId} />}
+            {eventDetailId === null && pathname === ROUTES.DASHBOARD && <DashboardPage />}
+            {eventDetailId === null && pathname === ROUTES.EVENTS && <EventsPage />}
+            {eventDetailId === null && pathname === ROUTES.TASKS && <TasksPage />}
+            {eventDetailId === null && pathname === ROUTES.TEAMS && <TeamsPage />}
           </MotionPage>
         </Layout>
       )

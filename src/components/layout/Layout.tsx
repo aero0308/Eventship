@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
@@ -22,6 +22,8 @@ import {
   Users,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { useTheme } from 'next-themes'
+import { Moon, Sun } from 'lucide-react'
 import type { NotificationDTO, NotificationType } from '@/types'
 import { ROUTES, ROLE_BADGE_CLASSES, ROLE_LABELS } from '@/lib/constants'
 import { api } from '@/lib/api-client'
@@ -41,6 +43,32 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
+const subscribeNoop = () => () => undefined
+
+/** Light/dark switcher. Renders a stable placeholder until hydrated to avoid mismatch. */
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  // subscribe-only store: false during SSR/hydration pass, true on the client after mount.
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  )
+
+  const isDark = resolvedTheme === 'dark'
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-11 w-11 text-muted-foreground hover:text-foreground"
+      aria-label={mounted ? `Switch to ${isDark ? 'light' : 'dark'} mode` : 'Toggle color theme'}
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+    >
+      {mounted && isDark ? <Sun className="h-5 w-5" aria-hidden="true" /> : <Moon className="h-5 w-5" aria-hidden="true" />}
+    </Button>
+  )
+}
+
 interface NavItem {
   path: string
   label: string
@@ -55,12 +83,12 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const NOTIFICATION_STYLE: Record<NotificationType, { icon: LucideIcon; classes: string }> = {
-  TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700' },
-  TASK_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-emerald-100 text-emerald-700' },
-  TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-teal-100 text-teal-700' },
+  TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  TASK_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
   TASK_BLOCKED: { icon: AlertTriangle, classes: 'bg-red-100 text-red-600' },
-  COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-stone-100 text-stone-600' },
-  DEADLINE_APPROACHING: { icon: Clock, classes: 'bg-amber-100 text-amber-700' },
+  COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-muted text-muted-foreground' },
+  DEADLINE_APPROACHING: { icon: Clock, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
 }
 
 export function initialsOf(name: string): string {
@@ -143,8 +171,8 @@ export function Layout({ children }: LayoutProps) {
   const isActive = (itemPath: string) => pathname === itemPath
 
   return (
-    <div className="flex min-h-screen flex-col bg-stone-50">
-      <header className="sticky top-0 z-40 w-full border-b border-stone-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+    <div className="flex min-h-screen flex-col bg-muted/50">
+      <header className="sticky top-0 z-40 w-full border-b border-border bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4">
           {/* Logo + desktop nav */}
           <div className="flex min-w-0 items-center">
@@ -157,7 +185,7 @@ export function Layout({ children }: LayoutProps) {
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                 <CalendarRange className="h-5 w-5" aria-hidden="true" />
               </span>
-              <span className="text-lg font-bold tracking-tight text-stone-900">EventFlow</span>
+              <span className="text-lg font-bold tracking-tight text-foreground">EventFlow</span>
             </button>
 
             <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -171,7 +199,7 @@ export function Layout({ children }: LayoutProps) {
                     'inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors',
                     isActive(item.path)
                       ? 'bg-emerald-100 text-emerald-800'
-                      : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
                   <item.icon className="h-4 w-4" aria-hidden="true" />
@@ -183,13 +211,15 @@ export function Layout({ children }: LayoutProps) {
 
           {/* Right cluster */}
           <div className="flex items-center gap-1.5">
+            {/* Theme toggle */}
+            <ThemeToggle />
             {/* Notifications */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-11 w-11 text-stone-600 hover:text-stone-900"
+                  className="relative h-11 w-11 text-muted-foreground hover:text-foreground"
                   aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
                 >
                   <Bell className="h-5 w-5" aria-hidden="true" />
@@ -201,8 +231,8 @@ export function Layout({ children }: LayoutProps) {
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[22rem] p-0">
-                <div className="flex items-center justify-between gap-2 border-b border-stone-200 px-4 py-3">
-                  <p className="text-sm font-semibold text-stone-900">Notifications</p>
+                <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold text-foreground">Notifications</p>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -216,16 +246,16 @@ export function Layout({ children }: LayoutProps) {
                 </div>
                 <div className="scrollbar-thin max-h-96 overflow-y-auto">
                   {notifLoading && notifications.length === 0 ? (
-                    <div className="flex items-center justify-center py-10 text-stone-400">
+                    <div className="flex items-center justify-center py-10 text-muted-foreground/70">
                       <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
                     </div>
                   ) : notifications.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                       <Inbox className="h-8 w-8 text-stone-300" aria-hidden="true" />
-                      <p className="text-sm text-stone-500">You&apos;re all caught up.</p>
+                      <p className="text-sm text-muted-foreground">You&apos;re all caught up.</p>
                     </div>
                   ) : (
-                    <ul className="divide-y divide-stone-100">
+                    <ul className="divide-y divide-border/60">
                       {notifications.map((n) => {
                         const style = NOTIFICATION_STYLE[n.type] ?? NOTIFICATION_STYLE.COMMENT_ADDED
                         const Icon = style.icon
@@ -235,7 +265,7 @@ export function Layout({ children }: LayoutProps) {
                               type="button"
                               onClick={() => void markRead(n.id)}
                               className={cn(
-                                'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-stone-50',
+                                'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50',
                                 !n.read && 'bg-emerald-50/50'
                               )}
                               title={n.read ? undefined : 'Mark as read'}
@@ -245,11 +275,11 @@ export function Layout({ children }: LayoutProps) {
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-2">
-                                  <span className="truncate text-xs font-semibold text-stone-700">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
+                                  <span className="truncate text-xs font-semibold text-foreground">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
                                   {!n.read ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="unread" /> : null}
                                 </span>
-                                <span className="mt-0.5 block text-sm leading-snug text-stone-700">{n.message}</span>
-                                <span className="mt-1 block text-xs text-stone-400">
+                                <span className="mt-0.5 block text-sm leading-snug text-foreground">{n.message}</span>
+                                <span className="mt-1 block text-xs text-muted-foreground/70">
                                   {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                                 </span>
                               </span>
@@ -268,21 +298,21 @@ export function Layout({ children }: LayoutProps) {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex min-h-11 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-stone-100"
+                  className="flex min-h-11 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-accent"
                   aria-label="Open user menu"
                 >
-                  <Avatar className="h-8 w-8 border border-stone-200">
+                  <Avatar className="h-8 w-8 border border-border">
                     <AvatarFallback className="bg-emerald-600 text-xs font-semibold text-white">{initials}</AvatarFallback>
                   </Avatar>
-                  <span className="hidden max-w-32 truncate text-sm font-medium text-stone-700 sm:block">
+                  <span className="hidden max-w-32 truncate text-sm font-medium text-foreground sm:block">
                     {user?.fullName}
                   </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel className="font-normal">
-                  <p className="truncate text-sm font-semibold text-stone-900">{user?.fullName}</p>
-                  <p className="truncate text-xs text-stone-500">{user?.email}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">{user?.fullName}</p>
+                  <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {user ? (
                       <Badge variant="outline" className={cn('text-[11px]', ROLE_BADGE_CLASSES[user.role])}>
@@ -290,7 +320,7 @@ export function Layout({ children }: LayoutProps) {
                       </Badge>
                     ) : null}
                     {user?.team ? (
-                      <Badge variant="outline" className="border-stone-200 bg-stone-50 text-[11px] text-stone-600">
+                      <Badge variant="outline" className="border-border bg-muted/50 text-[11px] text-muted-foreground">
                         <Users className="mr-1 h-3 w-3" aria-hidden="true" />
                         {user.team.name}
                       </Badge>
@@ -317,12 +347,12 @@ export function Layout({ children }: LayoutProps) {
             {/* Mobile hamburger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-11 w-11 text-stone-600 md:hidden" aria-label="Open navigation menu">
+                <Button variant="ghost" size="icon" className="h-11 w-11 text-muted-foreground md:hidden" aria-label="Open navigation menu">
                   <Menu className="h-5 w-5" aria-hidden="true" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 p-0">
-                <SheetHeader className="border-b border-stone-200 p-4 text-left">
+                <SheetHeader className="border-b border-border p-4 text-left">
                   <SheetTitle className="flex items-center gap-2.5">
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
                       <CalendarRange className="h-5 w-5" aria-hidden="true" />
@@ -341,7 +371,7 @@ export function Layout({ children }: LayoutProps) {
                         'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
                         isActive(item.path)
                           ? 'bg-emerald-100 text-emerald-800'
-                          : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       )}
                     >
                       <item.icon className="h-4 w-4" aria-hidden="true" />
@@ -351,17 +381,17 @@ export function Layout({ children }: LayoutProps) {
                 </nav>
                 <Separator />
                 <div className="flex items-center gap-3 p-4">
-                  <Avatar className="h-9 w-9 border border-stone-200">
+                  <Avatar className="h-9 w-9 border border-border">
                     <AvatarFallback className="bg-emerald-600 text-xs font-semibold text-white">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-stone-900">{user?.fullName}</p>
-                    <p className="truncate text-xs text-stone-500">{user ? ROLE_LABELS[user.role] : ''}</p>
+                    <p className="truncate text-sm font-semibold text-foreground">{user?.fullName}</p>
+                    <p className="truncate text-xs text-muted-foreground">{user ? ROLE_LABELS[user.role] : ''}</p>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-10 w-10 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    className="h-10 w-10 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
                     onClick={() => void handleLogout()}
                     aria-label="Log out"
                   >
@@ -378,9 +408,9 @@ export function Layout({ children }: LayoutProps) {
         <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
       </main>
 
-      <footer className="mt-auto border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 text-center text-xs text-stone-500 sm:flex-row sm:text-left">
-          <span className="font-medium text-stone-600">EventFlow — Event Management System</span>
+      <footer className="mt-auto border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
+          <span className="font-medium text-muted-foreground">EventFlow — Event Management System</span>
           <span>© {new Date().getFullYear()} EventFlow. Plan events. Coordinate teams. Ship on time.</span>
         </div>
       </footer>

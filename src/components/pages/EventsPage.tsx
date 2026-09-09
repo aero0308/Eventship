@@ -5,11 +5,10 @@ import { motion } from 'framer-motion'
 import {
   CalendarDays,
   CalendarPlus,
+  Download,
   Loader2,
   Plus,
   Search,
-  SquarePen,
-  Trash2,
   Users,
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -21,20 +20,11 @@ import {
   ROUTES,
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { navigate } from '@/hooks/use-hash-route'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,7 +40,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -107,14 +96,6 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Detail dialog
-  const [detail, setDetail] = useState<EventDTO | null>(null)
-  const [statusUpdating, setStatusUpdating] = useState(false)
-
-  // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState<EventDTO | null>(null)
-  const [deleting, setDeleting] = useState(false)
-
   const loadTeams = useCallback(async () => {
     try {
       const data = await api.get<{ teams: TeamDTO[] }>('/teams')
@@ -154,10 +135,6 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
     teams.forEach((team) => map.set(team.id, team.name))
     return map
   }, [teams])
-
-  const refreshAfterMutation = (updated: EventDTO) => {
-    setEvents((list) => list.map((event) => (event.id === updated.id ? { ...event, ...updated } : event)))
-  }
 
   const openCreate = () => {
     setForm(EMPTY_FORM)
@@ -207,39 +184,25 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
     }
   }
 
-  const handleDetailStatusChange = async (next: EventStatus) => {
-    if (!detail) return
-    const previous = detail
-    setStatusUpdating(true)
-    setDetail({ ...detail, status: next })
-    try {
-      const data = await api.patch<{ event: EventDTO }>(`/events/${detail.id}`, { status: next })
-      refreshAfterMutation(data.event)
-      toast({ title: 'Status updated', description: `“${data.event.name}” is now ${EVENT_STATUS_LABELS[next] ?? next}.` })
-    } catch (error) {
-      setDetail(previous)
-      const message = error instanceof ApiClientError ? error.message : 'Failed to update the status.'
-      toast({ title: 'Update failed', description: message, variant: 'destructive' })
-    } finally {
-      setStatusUpdating(false)
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    try {
-      await api.del(`/events/${deleteTarget.id}`)
-      setEvents((list) => list.filter((event) => event.id !== deleteTarget.id))
-      setDetail(null)
-      setDeleteTarget(null)
-      toast({ title: 'Event deleted', description: `“${deleteTarget.name}” has been removed.` })
-    } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : 'Failed to delete the event.'
-      toast({ title: 'Delete failed', description: message, variant: 'destructive' })
-    } finally {
-      setDeleting(false)
-    }
+  const handleExport = () => {
+    const rows: (string | number | null)[][] = [
+      ['Name', 'Status', 'Team', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Created by'],
+      ...events.map((event) => [
+        event.name,
+        EVENT_STATUS_LABELS[event.status] ?? event.status,
+        event.team?.name ?? teamNameById.get(event.teamId) ?? '',
+        format(new Date(event.startDate), 'yyyy-MM-dd'),
+        format(new Date(event.endDate), 'yyyy-MM-dd'),
+        event.taskStats?.total ?? event.taskCount ?? 0,
+        event.taskStats?.completed ?? 0,
+        event.taskStats?.inProgress ?? 0,
+        event.taskStats?.blocked ?? 0,
+        event.taskStats?.notStarted ?? 0,
+        event.creator?.fullName ?? '',
+      ]),
+    ]
+    downloadCsv(`eventflow-events-${csvDateStamp()}`, rows)
+    toast({ title: 'Export ready', description: `${events.length} event(s) exported to CSV.` })
   }
 
   return (
@@ -248,17 +211,23 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
         title="Events"
         subtitle="Plan, track and complete every event your teams run."
         actions={
-          <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            New Event
-          </Button>
+          <>
+            <Button variant="outline" onClick={handleExport} disabled={events.length === 0} className="min-h-11">
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              Export CSV
+            </Button>
+            <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              New Event
+            </Button>
+          </>
         }
       />
 
       {/* Filter bar */}
       <section className="mb-6 flex flex-col gap-3 sm:flex-row" aria-label="Event filters">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
           <Input
             type="search"
             value={search}
@@ -331,36 +300,36 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
               >
                 <Card
                   className="h-full cursor-pointer gap-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
-                  onClick={() => setDetail(event)}
+                  onClick={() => navigate(`${ROUTES.EVENTS}/${event.id}`)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setDetail(event)
+                      navigate(`${ROUTES.EVENTS}/${event.id}`)
                     }
                   }}
                   aria-label={`Open details for ${event.name}`}
                 >
                   <CardContent className="flex h-full flex-col px-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-stone-900">{event.name}</h3>
+                      <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{event.name}</h3>
                       <StatusBadge label={EVENT_STATUS_LABELS[event.status] ?? event.status} className={EVENT_STATUS_CLASSES[event.status]} />
                     </div>
 
                     {event.description ? (
-                      <p className="mt-1.5 line-clamp-2 min-h-10 text-sm text-stone-500">{event.description}</p>
+                      <p className="mt-1.5 line-clamp-2 min-h-10 text-sm text-muted-foreground">{event.description}</p>
                     ) : (
-                      <p className="mt-1.5 min-h-10 text-sm italic text-stone-400">No description</p>
+                      <p className="mt-1.5 min-h-10 text-sm italic text-muted-foreground/70">No description</p>
                     )}
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-stone-100 px-2 py-1 font-medium text-stone-700">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
                         <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
                         {formatRange(event.startDate, event.endDate)}
                       </span>
                       {event.team ? (
-                        <Badge variant="outline" className="border-stone-200 bg-stone-50 font-normal text-stone-600">
+                        <Badge variant="outline" className="border-border bg-muted/50 font-normal text-muted-foreground">
                           <Users className="mr-1 h-3 w-3" aria-hidden="true" />
                           {teamNameById.get(event.team.id) ?? event.team.name}
                         </Badge>
@@ -368,10 +337,10 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                     </div>
 
                     <div className="mt-3">
-                      <div className="flex items-center justify-between text-xs text-stone-500">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>
-                          <span className="font-semibold text-stone-700">{completed}</span> of{' '}
-                          <span className="font-semibold text-stone-700">{total}</span> tasks done
+                          <span className="font-semibold text-foreground">{completed}</span> of{' '}
+                          <span className="font-semibold text-foreground">{total}</span> tasks done
                         </span>
                         <span>{percent}%</span>
                       </div>
@@ -379,7 +348,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="border-stone-200 bg-white text-[11px] font-normal text-stone-600">
+                      <Badge variant="outline" className="border-border bg-card text-[11px] font-normal text-muted-foreground">
                         {total} tasks
                       </Badge>
                       {blocked > 0 ? (
@@ -388,7 +357,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                         </Badge>
                       ) : null}
                       {event.creator ? (
-                        <span className="ml-auto text-[11px] text-stone-400">by {event.creator.fullName}</span>
+                        <span className="ml-auto text-[11px] text-muted-foreground/70">by {event.creator.fullName}</span>
                       ) : null}
                     </div>
                   </CardContent>
@@ -472,7 +441,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                     <SelectValue placeholder="Choose a team" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_TEAM} disabled className="text-stone-400">
+                    <SelectItem value={NO_TEAM} disabled className="text-muted-foreground/70">
                       Choose a team…
                     </SelectItem>
                     {teams.map((team) => (
@@ -513,116 +482,6 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
         </DialogContent>
       </Dialog>
 
-      {/* ============ Detail dialog ============ */}
-      <Dialog open={detail !== null} onOpenChange={(open) => !open && setDetail(null)}>
-        <DialogContent className="sm:max-w-lg">
-          {detail ? (
-            <>
-              <DialogHeader>
-                <div className="flex flex-wrap items-center gap-2">
-                  <DialogTitle className="text-lg">{detail.name}</DialogTitle>
-                  <StatusBadge label={EVENT_STATUS_LABELS[detail.status] ?? detail.status} className={EVENT_STATUS_CLASSES[detail.status]} />
-                </div>
-                <DialogDescription>
-                  {formatRange(detail.startDate, detail.endDate)}
-                  {detail.team ? ` · ${teamNameById.get(detail.team.id) ?? detail.team.name}` : ''}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {detail.description ? (
-                  <p className="text-sm leading-relaxed text-stone-600">{detail.description}</p>
-                ) : null}
-
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  {[
-                    { label: 'Tasks', value: detail.taskStats?.total ?? detail.taskCount ?? 0, classes: 'bg-stone-50 text-stone-700' },
-                    { label: 'Completed', value: detail.taskStats?.completed ?? 0, classes: 'bg-emerald-50 text-emerald-700' },
-                    { label: 'Blocked', value: detail.taskStats?.blocked ?? 0, classes: 'bg-red-50 text-red-600' },
-                  ].map((chip) => (
-                    <div key={chip.label} className={cn('rounded-lg px-3 py-2', chip.classes)}>
-                      <p className="text-lg font-bold leading-none">{chip.value}</p>
-                      <p className="mt-1 text-[11px] font-medium">{chip.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator />
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Label htmlFor="detail-status" className="text-sm text-stone-600">
-                    Status
-                  </Label>
-                  <Select value={detail.status} onValueChange={(value) => void handleDetailStatusChange(value as EventStatus)} disabled={statusUpdating}>
-                    <SelectTrigger id="detail-status" className="h-10 w-44" aria-label="Change event status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EVENT_STATUSES.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {EVENT_STATUS_LABELS[status]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {statusUpdating ? <Loader2 className="h-4 w-4 animate-spin text-stone-400" aria-hidden="true" /> : null}
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-500">
-                  <span>Created {detail.creator ? `by ${detail.creator.fullName}` : ''} · {format(new Date(detail.createdAt), 'MMM d, yyyy')}</span>
-                </div>
-              </div>
-
-              <DialogFooter className="gap-2 pt-2 sm:justify-between">
-                <Button
-                  variant="outline"
-                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                  onClick={() => setDeleteTarget(detail)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Delete
-                </Button>
-                <Button
-                  className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={() => {
-                    setDetail(null)
-                    navigate(`${ROUTES.TASKS}?event=${detail.id}`)
-                  }}
-                >
-                  <SquarePen className="mr-2 h-4 w-4" aria-hidden="true" />
-                  View tasks
-                </Button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      {/* ============ Delete confirm ============ */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this event?</AlertDialogTitle>
-            <AlertDialogDescription>
-              “{deleteTarget?.name}” and its related tasks will be permanently removed. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-11">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                void handleDelete()
-              }}
-              className="min-h-11 bg-red-600 text-white hover:bg-red-700"
-              disabled={deleting}
-            >
-              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
-              {deleting ? 'Deleting…' : 'Delete event'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

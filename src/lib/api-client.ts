@@ -65,6 +65,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       isRecord(data) && typeof data['error'] === 'string'
         ? data['error']
         : `Request failed with status ${response.status}`
+    // Session died server-side (expired, revoked, deactivation): tell the app so it
+    // can reset the auth store and bounce to login. Auth endpoints are excluded —
+    // login/register/me handle their own 401s.
+    if (response.status === 401 && !path.startsWith('/auth/')) {
+      window.dispatchEvent(new CustomEvent('ems:unauthorized', { detail: { message } }))
+    }
     throw new ApiClientError(response.status, message)
   }
 

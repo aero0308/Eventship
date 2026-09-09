@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
 import { createTeamSchema } from '@/lib/schemas'
+import { canManageTeams, assertAccess } from '@/lib/permissions'
 import {
   serializeTeamDetail,
   teamDetailInclude,
@@ -25,6 +26,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await requireUser()
+    assertAccess(canManageTeams(user), 'Only event managers can create teams')
     const body = await parseBody(request, createTeamSchema)
 
     if (body.managerId) {

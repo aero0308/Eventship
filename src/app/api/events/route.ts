@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { EVENT_STATUSES, ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { canManageEvents, assertAccess } from '@/lib/permissions'
 import { createEventSchema } from '@/lib/schemas'
 import {
   computeTaskStatsMap,
@@ -51,6 +52,10 @@ export async function POST(request: Request) {
 
     const team = await db.team.findUnique({ where: { id: body.teamId } })
     if (!team) throw new ApiError(404, 'Team not found')
+    assertAccess(
+      canManageEvents(user, team.id),
+      'Only event managers or the owning team leader can create events for this team'
+    )
 
     const created = await db.event.create({
       data: {

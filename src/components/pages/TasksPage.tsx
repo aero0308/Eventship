@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { motion } from 'framer-motion'
 import {
   Clock,
+  Download,
   Link2,
   ListTodo,
   Loader2,
@@ -29,6 +30,7 @@ import {
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -114,12 +116,12 @@ function dueChip(task: TaskDTO): { label: string; classes: string } | null {
   const days = differenceInCalendarDays(due, new Date())
   const done = task.status === 'COMPLETED'
   if (done) {
-    return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-stone-200 bg-stone-50 text-stone-400' }
+    return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-border bg-muted/50 text-muted-foreground/70' }
   }
   if (days < 0) return { label: `${Math.abs(days)}d overdue`, classes: 'border-red-200 bg-red-50 text-red-700' }
   if (days === 0) return { label: 'Due today', classes: 'border-amber-200 bg-amber-50 text-amber-800' }
   if (days < 3) return { label: `${days}d left`, classes: 'border-amber-200 bg-amber-50 text-amber-800' }
-  return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-stone-200 bg-stone-50 text-stone-600' }
+  return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-border bg-muted/50 text-muted-foreground' }
 }
 
 // ============ Draggable task card ============
@@ -161,7 +163,7 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
       >
         <CardContent className="px-3" {...(canDrag ? listeners : {})} {...attributes}>
           <div className="flex items-start justify-between gap-2">
-            <p className={cn('line-clamp-2 text-sm font-semibold text-stone-800', task.status === 'COMPLETED' && 'line-through decoration-stone-300')}>
+            <p className={cn('line-clamp-2 text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'line-through decoration-stone-300')}>
               {task.title}
             </p>
             <span
@@ -172,7 +174,7 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
           </div>
 
           {task.event ? (
-            <p className="mt-1 truncate text-[11px] text-stone-400">{task.event.name}</p>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground/70">{task.event.name}</p>
           ) : null}
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -186,13 +188,13 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
               <StatusBadge label={PRIORITY_LABELS[task.priority] ?? task.priority} className={cn('text-[10px]', PRIORITY_CLASSES[task.priority])} />
             ) : null}
             {(task.commentCount ?? 0) > 0 ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-stone-400">
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
                 <MessageSquare className="h-3 w-3" aria-hidden="true" />
                 {task.commentCount}
               </span>
             ) : null}
             {(task.dependencies?.length ?? 0) > 0 ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-stone-400" title={`${task.dependencies?.length ?? 0} dependencies`}>
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70" title={`${task.dependencies?.length ?? 0} dependencies`}>
                 <Link2 className="h-3 w-3" aria-hidden="true" />
                 {task.dependencies?.length}
               </span>
@@ -201,11 +203,11 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
 
           <div className="mt-2 flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarFallback className={cn('text-[9px] font-semibold', assignee ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-500')}>
+              <AvatarFallback className={cn('text-[9px] font-semibold', assignee ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
                 {assignee ? initialsOf(assignee.fullName) : '—'}
               </AvatarFallback>
             </Avatar>
-            <span className="truncate text-[11px] text-stone-500">{assignee ? assignee.fullName : 'Unassigned'}</span>
+            <span className="truncate text-[11px] text-muted-foreground">{assignee ? assignee.fullName : 'Unassigned'}</span>
           </div>
 
           {mobileStatusSelect}
@@ -232,18 +234,18 @@ function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
       ref={setNodeRef}
       aria-label={`${TASK_STATUS_LABELS[status]} column`}
       className={cn(
-        'flex min-h-40 flex-col rounded-lg border border-t-4 border-stone-200 bg-stone-50/80 transition-colors',
+        'flex min-h-40 flex-col rounded-lg border border-t-4 border-border bg-muted/50/80 transition-colors',
         COLUMN_BORDER[status],
         highlight && 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200',
         status === 'COMPLETED' && 'border-t-emerald-500'
       )}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-stone-200/80 px-3 py-2.5">
+      <header className="flex items-center justify-between gap-2 border-b border-border/80 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', COLUMN_DOT[status])} aria-hidden="true" />
-          <h3 className="truncate text-sm font-semibold text-stone-700">{TASK_STATUS_LABELS[status]}</h3>
+          <h3 className="truncate text-sm font-semibold text-foreground">{TASK_STATUS_LABELS[status]}</h3>
         </div>
-        <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-stone-500 ring-1 ring-stone-200">{count}</span>
+        <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-muted-foreground ring-1 ring-stone-200">{count}</span>
       </header>
       <div className="scrollbar-thin flex max-h-[34rem] flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">{children}</div>
     </section>
@@ -608,17 +610,45 @@ export function TasksPage() {
         title="Tasks"
         subtitle="Drag cards between columns to update status — the board is your source of truth."
         actions={
-          <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            New Task
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const rows: (string | number | null)[][] = [
+                  ['Title', 'Status', 'Priority', 'Event', 'Assignee', 'Due date', 'Estimated hours', 'Actual hours', 'Comments'],
+                  ...tasks.map((task) => [
+                    task.title,
+                    TASK_STATUS_LABELS[task.status] ?? task.status,
+                    PRIORITY_LABELS[task.priority] ?? task.priority,
+                    task.event?.name ?? '',
+                    task.assignee?.fullName ?? 'Unassigned',
+                    task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
+                    task.estimatedHours ?? '',
+                    task.actualHours ?? '',
+                    task.commentCount ?? 0,
+                  ]),
+                ]
+                downloadCsv(`eventflow-tasks-${csvDateStamp()}`, rows)
+                toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
+              }}
+              disabled={tasks.length === 0}
+              className="min-h-11"
+            >
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              Export CSV
+            </Button>
+            <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              New Task
+            </Button>
+          </>
         }
       />
 
       {/* Filters */}
       <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Task filters">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
           <Input
             type="search"
             value={search}
@@ -715,7 +745,7 @@ export function TasksPage() {
                     />
                   ))}
                   {columnTasks.length === 0 ? (
-                    <p className="rounded-md border border-dashed border-stone-300 px-3 py-4 text-center text-xs text-stone-400">
+                    <p className="rounded-md border border-dashed border-stone-300 px-3 py-4 text-center text-xs text-muted-foreground/70">
                       {isDesktop ? 'Drop tasks here' : 'No tasks'}
                     </p>
                   ) : null}
@@ -726,9 +756,9 @@ export function TasksPage() {
 
           <DragOverlay>
             {activeTask ? (
-              <div className="w-64 rotate-2 rounded-xl border border-stone-200 bg-white p-3 opacity-90 shadow-xl">
-                <p className="line-clamp-2 text-sm font-semibold text-stone-800">{activeTask.title}</p>
-                <p className="mt-1 text-[11px] text-stone-400">{activeTask.event?.name ?? ''}</p>
+              <div className="w-64 rotate-2 rounded-xl border border-border bg-card p-3 opacity-90 shadow-xl">
+                <p className="line-clamp-2 text-sm font-semibold text-foreground">{activeTask.title}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground/70">{activeTask.event?.name ?? ''}</p>
               </div>
             ) : null}
           </DragOverlay>
@@ -972,17 +1002,17 @@ export function TasksPage() {
 
                 {/* Dependencies */}
                 <div>
-                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
                     Dependencies
                   </p>
                   {(detail.dependencies?.length ?? 0) === 0 ? (
-                    <p className="text-sm text-stone-400">No dependencies.</p>
+                    <p className="text-sm text-muted-foreground/70">No dependencies.</p>
                   ) : (
                     <ul className="flex flex-wrap gap-1.5">
                       {detail.dependencies?.map((dep) => (
                         <li key={dep.id}>
-                          <Badge variant="outline" className="max-w-56 border-stone-200 bg-stone-50 font-normal text-stone-600">
+                          <Badge variant="outline" className="max-w-56 border-border bg-muted/50 font-normal text-muted-foreground">
                             <Link2 className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />
                             <span className="truncate">{dep.dependsOnTaskTitle ?? `Task ${dep.dependsOnTaskId.slice(0, 8)}`}</span>
                           </Badge>
@@ -996,13 +1026,13 @@ export function TasksPage() {
 
                 {/* Comments */}
                 <section aria-label="Comments">
-                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
                     Comments ({detail.comments?.length ?? 0})
                   </p>
                   <div className="scrollbar-thin max-h-64 space-y-3 overflow-y-auto pr-1">
                     {(detail.comments?.length ?? 0) === 0 ? (
-                      <p className="text-sm text-stone-400">No comments yet — start the discussion.</p>
+                      <p className="text-sm text-muted-foreground/70">No comments yet — start the discussion.</p>
                     ) : (
                       detail.comments?.map((c) => (
                         <motion.div
@@ -1013,23 +1043,23 @@ export function TasksPage() {
                           className="flex items-start gap-2.5"
                         >
                           <Avatar className="h-7 w-7">
-                            <AvatarFallback className="bg-stone-200 text-[10px] font-semibold text-stone-600">
+                            <AvatarFallback className="bg-muted text-[10px] font-semibold text-muted-foreground">
                               {c.user ? initialsOf(c.user.fullName) : '?'}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="min-w-0 flex-1 rounded-lg bg-stone-50 px-3 py-2 ring-1 ring-stone-100">
+                          <div className="min-w-0 flex-1 rounded-lg bg-muted/50 px-3 py-2 ring-1 ring-stone-100">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-xs font-semibold text-stone-800">{c.user?.fullName ?? 'Unknown'}</span>
+                              <span className="text-xs font-semibold text-foreground">{c.user?.fullName ?? 'Unknown'}</span>
                               {c.user ? (
                                 <Badge variant="outline" className={cn('text-[9px]', ROLE_BADGE_CLASSES[c.user.role])}>
                                   {ROLE_LABELS[c.user.role] ?? c.user.role}
                                 </Badge>
                               ) : null}
-                              <span className="ml-auto text-[10px] text-stone-400">
+                              <span className="ml-auto text-[10px] text-muted-foreground/70">
                                 {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
                               </span>
                             </div>
-                            <p className="mt-1 text-sm leading-snug text-stone-700">{c.content}</p>
+                            <p className="mt-1 text-sm leading-snug text-foreground">{c.content}</p>
                           </div>
                         </motion.div>
                       ))
@@ -1057,10 +1087,10 @@ export function TasksPage() {
                 </section>
               </div>
 
-              <DialogFooter className="border-t border-stone-100 pt-3 sm:justify-between">
+              <DialogFooter className="border-t border-border/60 pt-3 sm:justify-between">
                 <Button
                   variant="outline"
-                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
                   onClick={() => setDeleteOpen(true)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />

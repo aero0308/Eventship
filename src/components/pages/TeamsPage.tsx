@@ -250,14 +250,14 @@ export function TeamsPage() {
       <div className="flex items-center">
         <div className="flex -space-x-2">
           {visible.map((member) => (
-            <Avatar key={member.id} className="h-7 w-7 ring-2 ring-white">
+            <Avatar key={member.id} className="h-7 w-7 ring-2 ring-card">
               <AvatarFallback className="bg-teal-600 text-[9px] font-semibold text-white">
                 {initialsOf(member.fullName)}
               </AvatarFallback>
             </Avatar>
           ))}
         </div>
-        {rest > 0 ? <span className="ml-2 text-[11px] font-medium text-stone-500">+{rest} more</span> : null}
+        {rest > 0 ? <span className="ml-2 text-[11px] font-medium text-muted-foreground">+{rest} more</span> : null}
       </div>
     )
   }
@@ -320,23 +320,23 @@ export function TeamsPage() {
                 >
                   <CardContent className="flex h-full flex-col px-4">
                     <div className="flex items-start gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                         <UsersRound className="h-5 w-5" aria-hidden="true" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-base font-semibold text-stone-900">{team.name}</h3>
-                        <p className="line-clamp-2 min-h-8 text-sm text-stone-500">
+                        <h3 className="truncate text-base font-semibold text-foreground">{team.name}</h3>
+                        <p className="line-clamp-2 min-h-8 text-sm text-muted-foreground">
                           {team.description ?? 'No description'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 text-xs text-stone-500">
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-stone-100 px-2 py-1 font-medium text-stone-700">
+                    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
                         <Users className="h-3.5 w-3.5" aria-hidden="true" />
                         {team.memberCount ?? 0} members
                       </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-stone-100 px-2 py-1 font-medium text-stone-700">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
                         <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
                         {team.eventCount ?? 0} events
                       </span>
@@ -351,15 +351,15 @@ export function TeamsPage() {
                             {initialsOf(manager.fullName)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="truncate text-xs text-stone-600">
-                          <span className="font-semibold text-stone-800">{manager.fullName}</span> · manager
+                        <span className="truncate text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">{manager.fullName}</span> · manager
                         </span>
                         <Badge variant="outline" className={cn('ml-auto shrink-0 text-[10px]', ROLE_BADGE_CLASSES.TEAM_LEADER)}>
                           Team Leader
                         </Badge>
                       </div>
                     ) : (
-                      <p className="text-xs italic text-stone-400">No manager assigned</p>
+                      <p className="text-xs italic text-muted-foreground/70">No manager assigned</p>
                     )}
 
                     <div className="mt-3">{memberStack(team)}</div>
@@ -368,8 +368,8 @@ export function TeamsPage() {
                       <ul className="mt-3 space-y-1.5">
                         {events.slice(0, 3).map((event: EventDTO) => (
                           <li key={event.id} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="inline-flex min-w-0 items-center gap-1.5 text-stone-600">
-                              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-stone-400" aria-hidden="true" />
+                            <span className="inline-flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
                               <span className="truncate">{event.name}</span>
                             </span>
                             <StatusBadge
@@ -379,7 +379,7 @@ export function TeamsPage() {
                           </li>
                         ))}
                         {events.length > 3 ? (
-                          <li className="text-[11px] text-stone-400">+{events.length - 3} more events</li>
+                          <li className="text-[11px] text-muted-foreground/70">+{events.length - 3} more events</li>
                         ) : null}
                       </ul>
                     ) : null}
@@ -447,21 +447,21 @@ export function TeamsPage() {
 
             <div className="space-y-2">
               <Label>Members</Label>
-              <div className="scrollbar-thin max-h-44 space-y-1 overflow-y-auto rounded-lg border border-stone-200 p-2">
+              <div className="scrollbar-thin max-h-44 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
                 {users.length === 0 ? (
-                  <p className="px-2 py-3 text-center text-sm text-stone-400">No users available yet.</p>
+                  <p className="px-2 py-3 text-center text-sm text-muted-foreground/70">No users available yet.</p>
                 ) : (
                   users.map((user) => (
                     <label
                       key={user.id}
-                      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-stone-50"
+                      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-accent/50"
                     >
                       <Checkbox
                         checked={form.memberIds.includes(user.id)}
                         onCheckedChange={() => toggleMember(user.id)}
                         aria-label={`Add ${user.fullName} as member`}
                       />
-                      <span className="min-w-0 flex-1 truncate text-sm text-stone-700">{user.fullName}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{user.fullName}</span>
                       <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[user.role])}>
                         {ROLE_LABELS[user.role] ?? user.role}
                       </Badge>
@@ -469,7 +469,7 @@ export function TeamsPage() {
                   ))
                 )}
               </div>
-              <p className="text-xs text-stone-400">{form.memberIds.length} member(s) selected</p>
+              <p className="text-xs text-muted-foreground/70">{form.memberIds.length} member(s) selected</p>
             </div>
 
             <DialogFooter className="gap-2 pt-2">
@@ -504,7 +504,7 @@ export function TeamsPage() {
             <>
               <DialogHeader>
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                     <UsersRound className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
@@ -519,15 +519,15 @@ export function TeamsPage() {
               {!editing ? (
                 <div className="space-y-4">
                   {detail.description ? (
-                    <p className="text-sm leading-relaxed text-stone-600">{detail.description}</p>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{detail.description}</p>
                   ) : null}
 
                   {/* Members */}
                   <section aria-label="Team members">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Members</p>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Members</p>
                     <ul className="scrollbar-thin max-h-52 space-y-2 overflow-y-auto pr-1">
                       {(detail.members ?? []).length === 0 ? (
-                        <li className="text-sm text-stone-400">No members yet.</li>
+                        <li className="text-sm text-muted-foreground/70">No members yet.</li>
                       ) : (
                         (detail.members ?? []).map((member) => (
                           <li key={member.id} className="flex items-center gap-2.5">
@@ -537,11 +537,11 @@ export function TeamsPage() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-stone-800">{member.fullName}</p>
-                              <p className="truncate text-xs text-stone-400">{member.email}</p>
+                              <p className="truncate text-sm font-medium text-foreground">{member.fullName}</p>
+                              <p className="truncate text-xs text-muted-foreground/70">{member.email}</p>
                             </div>
-                            <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[member.role])}>
-                              {ROLE_LABELS[member.role] ?? member.role}
+                            <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[member.role ?? ''])}>
+                              {ROLE_LABELS[member.role ?? ''] ?? member.role ?? 'Member'}
                             </Badge>
                             {detail.managerId === member.id ? (
                               <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
@@ -556,16 +556,16 @@ export function TeamsPage() {
 
                   {/* Events */}
                   <section aria-label="Team events">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Events</p>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
                     <ul className="space-y-1.5">
                       {(detail.events ?? []).length === 0 ? (
-                        <li className="text-sm text-stone-400">No events assigned to this team.</li>
+                        <li className="text-sm text-muted-foreground/70">No events assigned to this team.</li>
                       ) : (
                         (detail.events ?? []).map((event) => (
-                          <li key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
+                          <li key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
                             <span className="min-w-0">
-                              <span className="block truncate text-sm font-medium text-stone-800">{event.name}</span>
-                              <span className="text-xs text-stone-400">
+                              <span className="block truncate text-sm font-medium text-foreground">{event.name}</span>
+                              <span className="text-xs text-muted-foreground/70">
                                 {format(new Date(event.startDate), 'MMM d')} – {format(new Date(event.endDate), 'MMM d, yyyy')}
                               </span>
                             </span>
@@ -618,9 +618,9 @@ export function TeamsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Members</Label>
-                    <div className="scrollbar-thin max-h-40 space-y-1 overflow-y-auto rounded-lg border border-stone-200 p-2">
+                    <div className="scrollbar-thin max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
                       {users.map((user) => (
-                        <label key={user.id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-stone-50">
+                        <label key={user.id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-accent/50">
                           <Checkbox
                             checked={editForm.memberIds.includes(user.id)}
                             onCheckedChange={() =>
@@ -633,7 +633,7 @@ export function TeamsPage() {
                             }
                             aria-label={`Toggle ${user.fullName}`}
                           />
-                          <span className="min-w-0 flex-1 truncate text-sm text-stone-700">{user.fullName}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">{user.fullName}</span>
                           <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[user.role])}>
                             {ROLE_LABELS[user.role] ?? user.role}
                           </Badge>
@@ -644,10 +644,10 @@ export function TeamsPage() {
                 </div>
               )}
 
-              <DialogFooter className="gap-2 border-t border-stone-100 pt-3 sm:justify-between">
+              <DialogFooter className="gap-2 border-t border-border/60 pt-3 sm:justify-between">
                 <Button
                   variant="outline"
-                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
                   onClick={() => setDeleteOpen(true)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />

@@ -33,25 +33,25 @@ const FEATURES: FeatureItem[] = [
     icon: CalendarCheck,
     title: 'Event planning & status tracking',
     description: 'Draft, plan and run events through every stage — from first idea to completed debrief.',
-    tint: 'bg-emerald-100 text-emerald-700',
+    tint: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   },
   {
     icon: Users,
     title: 'Team coordination with roles',
     description: 'Event managers, team leaders and employees — everyone sees exactly what they own.',
-    tint: 'bg-teal-100 text-teal-700',
+    tint: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
   },
   {
     icon: ListChecks,
     title: 'Task boards with priorities & dependencies',
     description: 'A drag-and-drop kanban with priorities, due dates, blockers and task dependencies.',
-    tint: 'bg-amber-100 text-amber-700',
+    tint: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
   },
   {
     icon: Bell,
     title: 'Smart notifications & activity log',
     description: 'Assignments, status changes and deadline alerts keep the whole team in sync.',
-    tint: 'bg-stone-100 text-stone-600',
+    tint: 'bg-muted text-muted-foreground',
   },
 ]
 
@@ -86,18 +86,18 @@ const fadeUp = {
 
 export function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-background">
       {/* ============ Header ============ */}
-      <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-card/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
               <CalendarRange className="h-5 w-5" aria-hidden="true" />
             </span>
-            <span className="text-lg font-bold tracking-tight text-stone-900">{APP_NAME}</span>
+            <span className="text-lg font-bold tracking-tight text-foreground">{APP_NAME}</span>
           </div>
           <nav className="flex items-center gap-2" aria-label="Landing">
-            <Button variant="ghost" className="min-h-11 text-stone-600 hover:text-stone-900" onClick={() => navigate(ROUTES.LOGIN)}>
+            <Button variant="ghost" className="min-h-11 text-muted-foreground hover:text-foreground" onClick={() => navigate(ROUTES.LOGIN)}>
               Sign in
             </Button>
             <Button className="min-h-11 bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate(ROUTES.REGISTER)}>
@@ -128,11 +128,11 @@ export function HomePage() {
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 New · Phase 1 live
               </Badge>
-              <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-stone-900 sm:text-5xl">
+              <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
                 Run flawless events{' '}
                 <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">from one place.</span>
               </h1>
-              <p className="mt-5 max-w-lg text-base leading-relaxed text-stone-600 sm:text-lg">
+              <p className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
                 {APP_NAME} brings your event plans, teams, tasks and notifications together —
                 so every launch day goes exactly the way you rehearsed it.
               </p>
@@ -145,17 +145,17 @@ export function HomePage() {
                   Get Started
                   <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                 </Button>
-                <Button size="lg" variant="ghost" className="min-h-11 px-6 text-stone-600 hover:text-stone-900" onClick={() => navigate(ROUTES.LOGIN)}>
+                <Button size="lg" variant="ghost" className="min-h-11 px-6 text-muted-foreground hover:text-foreground" onClick={() => navigate(ROUTES.LOGIN)}>
                   Sign in
                 </Button>
               </div>
-              <div className="mt-8 inline-flex items-start gap-3 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm shadow-sm">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <div className="mt-8 inline-flex items-start gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm shadow-sm">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                   <Target className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
-                <p className="text-stone-600">
-                  Try the demo — <span className="font-semibold text-stone-800">admin@eventflow.io</span> /{' '}
-                  <span className="font-semibold text-stone-800">password123</span>
+                <p className="text-muted-foreground">
+                  Try the demo — <span className="font-semibold text-foreground">admin@eventflow.io</span> /{' '}
+                  <span className="font-semibold text-foreground">password123</span>
                 </p>
               </div>
             </motion.div>
@@ -174,23 +174,23 @@ export function HomePage() {
                 className="relative w-full max-w-md"
               >
                 {/* Back card */}
-                <div className="absolute -right-4 -top-6 h-full w-full rotate-3 rounded-xl border border-stone-200 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm" />
+                <div className="absolute -right-4 -top-6 h-full w-full rotate-3 rounded-xl border border-border bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm" />
                 {/* Front card */}
-                <div className="relative rounded-xl border border-stone-200 bg-white p-5 shadow-xl shadow-stone-900/10">
+                <div className="relative rounded-xl border border-border bg-card p-5 shadow-xl shadow-stone-900/10">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Launch Night Gala</p>
-                      <p className="mt-1 text-lg font-bold text-stone-900">Task progress</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">Launch Night Gala</p>
+                      <p className="mt-1 text-lg font-bold text-foreground">Task progress</p>
                     </div>
                     <Badge variant="outline" className="border-emerald-200 bg-emerald-100 text-emerald-800">In Progress</Badge>
                   </div>
 
                   <div className="mt-4">
-                    <div className="flex items-center justify-between text-xs text-stone-500">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Completion</span>
                       <span className="font-semibold text-emerald-700">72%</span>
                     </div>
-                    <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-stone-100">
+                    <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
                       <motion.div
                         className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
                         initial={{ width: 0 }}
@@ -202,9 +202,9 @@ export function HomePage() {
 
                   <div className="mt-4 grid grid-cols-3 gap-2">
                     {[
-                      { label: 'Done', value: 18, classes: 'bg-emerald-50 text-emerald-700' },
-                      { label: 'Active', value: 5, classes: 'bg-amber-50 text-amber-700' },
-                      { label: 'Blocked', value: 2, classes: 'bg-red-50 text-red-600' },
+                      { label: 'Done', value: 18, classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+                      { label: 'Active', value: 5, classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+                      { label: 'Blocked', value: 2, classes: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300' },
                     ].map((chip) => (
                       <div key={chip.label} className={cn('rounded-lg px-3 py-2 text-center', chip.classes)}>
                         <p className="text-lg font-bold leading-none">{chip.value}</p>
@@ -219,11 +219,11 @@ export function HomePage() {
                       { title: 'Confirm catering headcount', done: true },
                       { title: 'Print attendee badges', done: false },
                     ].map((task) => (
-                      <div key={task.title} className="flex items-center gap-2.5 rounded-lg border border-stone-100 bg-stone-50/70 px-3 py-2">
+                      <div key={task.title} className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/50/70 px-3 py-2">
                         <CheckCircle2
                           className={cn('h-4 w-4 shrink-0', task.done ? 'text-emerald-500' : 'text-stone-300')}
                         />
-                        <span className={cn('truncate text-sm', task.done ? 'text-stone-400 line-through' : 'font-medium text-stone-700')}>
+                        <span className={cn('truncate text-sm', task.done ? 'text-muted-foreground/70 line-through' : 'font-medium text-foreground')}>
                           {task.title}
                         </span>
                       </div>
@@ -236,7 +236,7 @@ export function HomePage() {
         </section>
 
         {/* ============ Stats strip ============ */}
-        <section className="border-y border-stone-200 bg-stone-50/70" aria-label="Key numbers">
+        <section className="border-y border-border bg-muted/50/70" aria-label="Key numbers">
           <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:grid-cols-4">
             {STATS.map((stat, index) => (
               <motion.div
@@ -247,11 +247,11 @@ export function HomePage() {
                 transition={{ duration: 0.4, delay: index * 0.08 }}
                 className="flex flex-col items-center gap-1.5 text-center"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm ring-1 ring-stone-200">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-card text-emerald-600 shadow-sm ring-1 ring-stone-200">
                   <stat.icon className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <p className="text-2xl font-bold tracking-tight text-stone-900">{stat.value}</p>
-                <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{stat.label}</p>
+                <p className="text-2xl font-bold tracking-tight text-foreground">{stat.value}</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{stat.label}</p>
               </motion.div>
             ))}
           </div>
@@ -260,8 +260,8 @@ export function HomePage() {
         {/* ============ Features ============ */}
         <section className="mx-auto max-w-6xl px-4 py-16" aria-label="Features">
           <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-stone-900">Everything an event needs</h2>
-            <p className="mt-3 text-stone-600">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Everything an event needs</h2>
+            <p className="mt-3 text-muted-foreground">
               One workspace for the whole lifecycle — plan the event, organize the team, track every task.
             </p>
           </motion.div>
@@ -275,24 +275,24 @@ export function HomePage() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: index * 0.08 }}
                 whileHover={{ y: -4 }}
-                className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
               >
                 <span className={cn('flex h-11 w-11 items-center justify-center rounded-lg', feature.tint)}>
                   <feature.icon className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <h3 className="mt-4 text-base font-semibold text-stone-900">{feature.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{feature.description}</p>
+                <h3 className="mt-4 text-base font-semibold text-foreground">{feature.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
               </motion.div>
             ))}
           </div>
         </section>
 
         {/* ============ Roles ============ */}
-        <section className="border-y border-stone-200 bg-stone-50/70 py-16" aria-label="Roles">
+        <section className="border-y border-border bg-muted/50/70 py-16" aria-label="Roles">
           <div className="mx-auto max-w-6xl px-4">
             <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-              <h2 className="text-3xl font-bold tracking-tight text-stone-900">Built for every role</h2>
-              <p className="mt-3 text-stone-600">Permissions and views adapt to how each person contributes.</p>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">Built for every role</h2>
+              <p className="mt-3 text-muted-foreground">Permissions and views adapt to how each person contributes.</p>
             </motion.div>
             <div className="mt-10 grid gap-4 md:grid-cols-3">
               {ROLE_CARDS.map((card, index) => (
@@ -302,12 +302,12 @@ export function HomePage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.4, delay: index * 0.08 }}
-                  className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm"
+                  className="rounded-xl border border-border bg-card p-6 shadow-sm"
                 >
                   <Badge variant="outline" className={cn('px-3 py-1', ROLE_BADGE_CLASSES[card.role])}>
                     {ROLE_LABELS[card.role]}
                   </Badge>
-                  <p className="mt-4 text-sm leading-relaxed text-stone-600">{card.description}</p>
+                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{card.description}</p>
                 </motion.div>
               ))}
             </div>
@@ -332,7 +332,7 @@ export function HomePage() {
               </p>
               <Button
                 size="lg"
-                className="mt-7 min-h-11 bg-white px-7 text-emerald-700 shadow-md hover:bg-emerald-50"
+                className="mt-7 min-h-11 bg-card px-7 text-emerald-700 shadow-md hover:bg-emerald-50"
                 onClick={() => navigate(ROUTES.REGISTER)}
               >
                 Get Started — it&apos;s free
@@ -343,9 +343,9 @@ export function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center text-xs text-stone-500 sm:flex-row sm:text-left">
-          <span className="font-medium text-stone-600">{APP_NAME} — Event Management System</span>
+      <footer className="border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
+          <span className="font-medium text-muted-foreground">{APP_NAME} — Event Management System</span>
           <span>© {new Date().getFullYear()} {APP_NAME}. Plan events. Coordinate teams. Ship on time.</span>
         </div>
       </footer>

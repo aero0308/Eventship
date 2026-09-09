@@ -8,6 +8,11 @@ import type { Prisma } from '@prisma/client'
 
 export const teamListInclude = {
   manager: { select: { id: true, fullName: true, email: true } },
+  members: {
+    select: { id: true, fullName: true },
+    orderBy: { fullName: 'asc' as const },
+    take: 5,
+  },
   _count: { select: { members: true, events: true } },
 } as const satisfies Prisma.TeamInclude
 
@@ -17,6 +22,7 @@ export interface TeamWithCounts {
   description: string | null
   managerId: string | null
   manager: { id: string; fullName: string; email: string } | null
+  members: { id: string; fullName: string }[]
   _count: { members: number; events: number }
   createdAt: Date
   updatedAt: Date
@@ -51,6 +57,8 @@ export function serializeTeamList(team: TeamWithCounts) {
     description: team.description,
     managerId: team.managerId,
     manager: team.manager ?? null,
+    // Avatar-stack preview (up to 5 members, alphabetical).
+    members: team.members,
     memberCount: team._count.members,
     eventCount: team._count.events,
     createdAt: team.createdAt.toISOString(),
