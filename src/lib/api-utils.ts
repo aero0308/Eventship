@@ -79,13 +79,36 @@ export async function logActivity(
   }
 }
 
-/** Fire-and-forget notification creator. Never throws. */
+/**
+ * Read a user's notification mute map. Missing key/field = enabled.
+ * Never throws — a malformed stored value simply means "default (on)".
+ */
+export async function getNotificationPrefs(userId: string): Promise<Record<string, boolean>> {
+  try {
+    const user = await (await import('@/lib/db')).db.user.findUnique({
+      where: { id: userId },
+      select: { notificationPrefs: true },
+    })
+    if (!user?.notificationPrefs) return {}
+    const parsed = JSON.parse(user.notificationPrefs)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, boolean>
+    }
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+/** Fire-and-forget notification creator. Respects the recipient's per-type mute map. Never throws. */
 export async function notifyUser(
   userId: string,
   type: string,
   message: string
 ): Promise<void> {
   try {
+    const prefs = await getNotificationPrefs(userId)
+    if (prefs[type] === false) return // muted by the recipient
     await (await import('@/lib/db')).db.notification.create({
       data: { userId, type, message },
     })

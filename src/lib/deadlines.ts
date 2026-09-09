@@ -1,5 +1,6 @@
 import 'server-only'
 import { db } from '@/lib/db'
+import { getNotificationPrefs } from '@/lib/api-utils'
 
 const WINDOW_MS = 48 * 60 * 60 * 1000 // tasks due within 48h
 const DEDUPE_MS = 24 * 60 * 60 * 1000 // at most one reminder per task per day
@@ -25,6 +26,10 @@ export async function scanDeadlineApproaching(userId: string): Promise<void> {
       select: { id: true, title: true, dueDate: true },
     })
     if (tasks.length === 0) return
+
+    // Respect the recipient's mute map — DEADLINE_APPROACHING can be turned off.
+    const prefs = await getNotificationPrefs(userId)
+    if (prefs.DEADLINE_APPROACHING === false) return
 
     const since = new Date(now.getTime() - DEDUPE_MS)
     const recent = await db.notification.findMany({

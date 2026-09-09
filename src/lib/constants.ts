@@ -99,6 +99,21 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   DEADLINE_APPROACHING: 'Deadline Soon',
 }
 
+/** Short copy shown under each switch in the notification preferences dialog. */
+export const NOTIFICATION_TYPE_DESCRIPTIONS: Record<string, string> = {
+  TASK_ASSIGNED: 'When someone assigns a task to you',
+  TASK_STATUS_CHANGED: 'When a task you created or own changes status',
+  TASK_COMPLETED: 'When a task you created or own is completed',
+  TASK_BLOCKED: 'When a task you created or own becomes blocked',
+  COMMENT_ADDED: 'When someone comments on your task',
+  DEADLINE_APPROACHING: 'Periodic reminders for tasks due within 48 hours',
+}
+
+/** The default preference map — everything on. */
+export const DEFAULT_NOTIFICATION_PREFS: Record<string, boolean> = Object.fromEntries(
+  NOTIFICATION_TYPES.map((type) => [type, true])
+)
+
 export const ACTIVITY_ACTIONS = {
   USER_REGISTERED: 'USER_REGISTERED',
   USER_LOGIN: 'USER_LOGIN',

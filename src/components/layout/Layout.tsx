@@ -19,6 +19,7 @@ import {
   MessageSquare,
   RefreshCw,
   Search,
+  Settings2,
   User,
   UserPlus,
   Users,
@@ -41,6 +42,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { CommandPalette } from '@/components/layout/CommandPalette'
+import { NotificationPrefsDialog } from '@/components/layout/NotificationPrefsDialog'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -116,6 +118,7 @@ export function Layout({ children }: LayoutProps) {
   const [notifLoading, setNotifLoading] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [prefsOpen, setPrefsOpen] = useState(false)
 
   const initials = useMemo(() => (user ? initialsOf(user.fullName) : ''), [user])
 
@@ -260,16 +263,27 @@ export function Layout({ children }: LayoutProps) {
               <PopoverContent align="end" className="w-[22rem] p-0">
                 <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
                   <p className="text-sm font-semibold text-foreground">Notifications</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs text-emerald-700 hover:text-emerald-800"
-                    onClick={() => void markAllRead()}
-                    disabled={unreadCount === 0}
-                  >
-                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                    Mark all read
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      aria-label="Notification preferences"
+                      onClick={() => setPrefsOpen(true)}
+                    >
+                      <Settings2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-emerald-700 hover:text-emerald-800"
+                      onClick={() => void markAllRead()}
+                      disabled={unreadCount === 0}
+                    >
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Mark all read
+                    </Button>
+                  </div>
                 </div>
                 <div className="scrollbar-thin max-h-96 overflow-y-auto">
                   {notifLoading && notifications.length === 0 ? (
@@ -436,6 +450,7 @@ export function Layout({ children }: LayoutProps) {
       </header>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
 
       <main className="flex-1">
         <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>

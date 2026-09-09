@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Clock,
   Download,
+  Layers,
   Link2,
   ListTodo,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Search,
   Send,
   Trash2,
+  X,
 } from 'lucide-react'
 import { differenceInCalendarDays, format, formatDistanceToNow } from 'date-fns'
 import { DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
@@ -49,6 +51,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -131,9 +134,11 @@ interface TaskCardProps {
   canDrag: boolean
   mobileStatusSelect: React.ReactNode
   onOpen: (task: TaskDTO) => void
+  selected: boolean
+  onToggleSelect: (taskId: string, checked: boolean | 'indeterminate') => void
 }
 
-function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCardProps) {
+function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen, selected, onToggleSelect }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled: !canDrag })
   const chip = dueChip(task)
   const assignee = task.assignee
@@ -142,12 +147,13 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
     <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform) }} className={cn(isDragging && 'z-20 opacity-60')}>
       <Card
         className={cn(
-          'cursor-pointer gap-2 border-l-4 py-3 shadow-sm transition-shadow hover:shadow-md',
+          'group cursor-pointer gap-2 border-l-4 py-3 shadow-sm transition-all hover:shadow-md',
           'border-l-red-500',
           task.priority === 'MEDIUM' && 'border-l-amber-500',
           task.priority === 'LOW' && 'border-l-stone-300',
           task.status === 'COMPLETED' && 'opacity-80',
           isDragging && 'ring-2 ring-emerald-500',
+          selected && 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500 dark:bg-emerald-500/10',
           canDrag && 'active:cursor-grabbing'
         )}
         onClick={() => onOpen(task)}
@@ -163,9 +169,23 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCa
       >
         <CardContent className="px-3" {...(canDrag ? listeners : {})} {...attributes}>
           <div className="flex items-start justify-between gap-2">
-            <p className={cn('line-clamp-2 text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'line-through decoration-stone-300')}>
-              {task.title}
-            </p>
+            <div className="flex min-w-0 items-start gap-2">
+              <span
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex shrink-0"
+              >
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => onToggleSelect(task.id, checked)}
+                  className="mt-0.5 opacity-40 transition-opacity group-hover:opacity-100 data-[state=checked]:opacity-100"
+                  aria-label={`Select task ${task.title}`}
+                />
+              </span>
+              <p className={cn('line-clamp-2 text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'line-through decoration-stone-300')}>
+                {task.title}
+              </p>
+            </div>
             <span
               className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', PRIORITY_DOT[task.priority] ?? 'bg-stone-300')}
               title={`${PRIORITY_LABELS[task.priority] ?? task.priority} priority`}
@@ -234,7 +254,7 @@ function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
       ref={setNodeRef}
       aria-label={`${TASK_STATUS_LABELS[status]} column`}
       className={cn(
-        'flex min-h-40 flex-col rounded-lg border border-t-4 border-border bg-muted/50/80 transition-colors',
+        'flex min-h-40 flex-col rounded-lg border border-t-4 border-border bg-muted/80 transition-colors',
         COLUMN_BORDER[status],
         highlight && 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200',
         status === 'COMPLETED' && 'border-t-emerald-500'
@@ -272,6 +292,11 @@ export function TasksPage() {
   const [events, setEvents] = useState<EventDTO[]>([])
   const [users, setUsers] = useState<UserDTO[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkApplying, setBulkApplying] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   const [search, setSearch] = useState('')
   const [eventFilter, setEventFilter] = useState<string>('all')
@@ -333,6 +358,35 @@ export function TasksPage() {
     const timer = setTimeout(() => void loadTasks(), 250)
     return () => clearTimeout(timer)
   }, [loadTasks])
+
+  // Prune selection when the visible task list changes (deletes, filter changes).
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev
+      const alive = new Set(tasks.map((t) => t.id))
+      const next = new Set([...prev].filter((id) => alive.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [tasks])
+
+  const toggleTaskSelection = useCallback((taskId: string, checked: boolean | 'indeterminate') => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked === true) next.add(taskId)
+      else next.delete(taskId)
+      return next
+    })
+  }, [])
+
+  // Escape clears the selection (unless the confirm dialog is open).
+  useEffect(() => {
+    if (selectedIds.size === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !bulkDeleteOpen) setSelectedIds(new Set())
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedIds.size, bulkDeleteOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -583,6 +637,61 @@ export function TasksPage() {
     }
   }
 
+  // ============ Bulk actions ============
+  const runBulkAction = useCallback(
+    async (
+      action: 'status' | 'priority' | 'assign' | 'unassign' | 'delete',
+      extra: { status?: TaskStatus; priority?: TaskPriority; assignedTo?: string } = {}
+    ) => {
+      if (selectedIds.size === 0) return
+      setBulkApplying(true)
+      try {
+        const result = await api.post<{
+          updated: number
+          deleted: number
+          failed: { id: string; title: string; reason: string }[]
+          total: number
+        }>('/tasks/bulk', { ids: [...selectedIds], action, ...extra })
+        const changed = result.updated + result.deleted
+        const verb = action === 'delete' ? 'deleted' : 'updated'
+        if (result.failed.length > 0) {
+          const firstReason = result.failed[0]?.reason ?? 'unknown error'
+          toast({
+            title: changed === 0 ? 'Nothing changed' : 'Completed with issues',
+            description:
+              `${changed} of ${result.total} task(s) ${verb}. ` +
+              `${result.failed.length} failed: ${firstReason}${result.failed.length > 1 ? ` (+${result.failed.length - 1} more)` : ''}`,
+            variant: changed === 0 ? 'destructive' : 'default',
+          })
+        } else {
+          const what =
+            action === 'status'
+              ? `moved to ${TASK_STATUS_LABELS[extra.status ?? ''] ?? extra.status}`
+              : action === 'priority'
+                ? `set to ${PRIORITY_LABELS[extra.priority ?? ''] ?? extra.priority} priority`
+                : action === 'assign'
+                  ? `assigned to ${users.find((u) => u.id === extra.assignedTo)?.fullName ?? 'member'}`
+                  : action === 'unassign'
+                    ? 'unassigned'
+                    : 'deleted'
+          toast({
+            title: action === 'delete' ? 'Tasks deleted' : 'Tasks updated',
+            description: `${changed} task(s) ${what}.`,
+          })
+        }
+        setSelectedIds(new Set())
+        setBulkDeleteOpen(false)
+        void loadTasks()
+      } catch (error) {
+        const message = error instanceof ApiClientError ? error.message : 'Bulk update failed.'
+        toast({ title: 'Bulk update failed', description: message, variant: 'destructive' })
+      } finally {
+        setBulkApplying(false)
+      }
+    },
+    [selectedIds, users, loadTasks, toast]
+  )
+
   // ============ Derived ============
   const byStatus = useMemo(() => {
     const map = new Map<TaskStatus, TaskDTO[]>()
@@ -622,6 +731,22 @@ export function TasksPage() {
         subtitle="Drag cards between columns to update status — the board is your source of truth."
         actions={
           <>
+            {tasks.length > 0 ? (
+              <Button
+                variant="outline"
+                className="min-h-11"
+                onClick={() =>
+                  setSelectedIds(selectedIds.size === tasks.length ? new Set() : new Set(tasks.map((t) => t.id)))
+                }
+                aria-label={selectedIds.size === tasks.length ? 'Deselect all tasks' : 'Select all tasks'}
+              >
+                <Layers className="mr-2 h-4 w-4" aria-hidden="true" />
+                {selectedIds.size === tasks.length ? 'Deselect all' : 'Select all'}
+                {selectedIds.size > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white">{selectedIds.size}</span>
+                ) : null}
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={() => {
@@ -754,6 +879,8 @@ export function TasksPage() {
                       canDrag={isDesktop}
                       mobileStatusSelect={mobileStatusSelectFor(task)}
                       onOpen={openTaskSafe}
+                      selected={selectedIds.has(task.id)}
+                      onToggleSelect={toggleTaskSelection}
                     />
                   ))}
                   {columnTasks.length === 0 ? (
@@ -1138,6 +1265,149 @@ export function TasksPage() {
             >
               {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
               {deleting ? 'Deleting…' : 'Delete task'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ============ Bulk action bar ============ */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        <AnimatePresence>
+          {selectedIds.size > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 32, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 32, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl border border-stone-700/60 bg-stone-900/95 px-3 py-2.5 text-stone-100 shadow-2xl ring-1 ring-black/10 backdrop-blur"
+              role="toolbar"
+              aria-label={`Bulk actions for ${selectedIds.size} selected task(s)`}
+            >
+              <span className="inline-flex items-center gap-2 pl-1 pr-1 text-sm font-semibold">
+                <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-xs font-bold text-white">
+                  {selectedIds.size}
+                </span>
+                selected
+              </span>
+
+              <span className="mx-1 hidden h-6 w-px bg-stone-700 sm:block" aria-hidden="true" />
+
+              <Select
+                value=""
+                onValueChange={(value) => void runBulkAction('status', { status: value as TaskStatus })}
+                disabled={bulkApplying}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="h-9 w-32 border-stone-700 bg-stone-800/80 text-stone-100 data-[size=sm]:h-9 [&>svg]:text-stone-400"
+                  aria-label="Set status for selected tasks"
+                >
+                  <SelectValue placeholder="Set status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TASK_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {TASK_STATUS_LABELS[status]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value=""
+                onValueChange={(value) => void runBulkAction('priority', { priority: value as TaskPriority })}
+                disabled={bulkApplying}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="h-9 w-36 border-stone-700 bg-stone-800/80 text-stone-100 data-[size=sm]:h-9 [&>svg]:text-stone-400"
+                  aria-label="Set priority for selected tasks"
+                >
+                  <SelectValue placeholder="Set priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TASK_PRIORITIES.map((priority) => (
+                    <SelectItem key={priority} value={priority}>
+                      {PRIORITY_LABELS[priority]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value=""
+                onValueChange={(value) => {
+                  if (value === UNASSIGNED) void runBulkAction('unassign')
+                  else void runBulkAction('assign', { assignedTo: value })
+                }}
+                disabled={bulkApplying}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="h-9 w-36 border-stone-700 bg-stone-800/80 text-stone-100 data-[size=sm]:h-9 [&>svg]:text-stone-400"
+                  aria-label="Assign selected tasks"
+                >
+                  <SelectValue placeholder="Assign to…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <span className="mx-1 hidden h-6 w-px bg-stone-700 sm:block" aria-hidden="true" />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 text-red-400 hover:bg-red-500/15 hover:text-red-300"
+                onClick={() => setBulkDeleteOpen(true)}
+                disabled={bulkApplying}
+                aria-label="Delete selected tasks"
+              >
+                {bulkApplying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+                <span className="ml-1.5 hidden md:inline">Delete</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-stone-400 hover:bg-stone-800 hover:text-stone-100"
+                onClick={() => setSelectedIds(new Set())}
+                aria-label="Clear selection"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
+      {/* ============ Bulk delete confirm ============ */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} task(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The selected tasks and all of their comments will be permanently removed. Tasks you do not have permission
+              to delete will be skipped. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                void runBulkAction('delete')
+              }}
+              className="min-h-11 bg-red-600 text-white hover:bg-red-700"
+              disabled={bulkApplying}
+            >
+              {bulkApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
+              {bulkApplying ? 'Deleting…' : `Delete ${selectedIds.size} task(s)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

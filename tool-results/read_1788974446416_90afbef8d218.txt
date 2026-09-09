@@ -1,0 +1,602 @@
+    50→    50→import { Button } from '@/components/ui/button'
+    51→    51→import { Card, CardContent } from '@/components/ui/card'
+    52→    52→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    53→    53→import { Input } from '@/components/ui/input'
+    54→    54→import { Label } from '@/components/ui/label'
+    55→    55→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    56→    56→import { Separator } from '@/components/ui/separator'
+    57→    57→import { Skeleton } from '@/components/ui/skeleton'
+    58→    58→import { Textarea } from '@/components/ui/textarea'
+    59→    59→import { EmptyState } from '@/components/shared/EmptyState'
+    60→    60→import { PageHeader } from '@/components/shared/PageHeader'
+    61→    61→import { StatusBadge } from '@/components/shared/StatusBadge'
+    62→    62→import { initialsOf } from '@/components/layout/Layout'
+    63→    63→
+    64→    64→/** Task with the comments array included (GET /api/tasks/[id]). */
+    65→    65→interface TaskDetail extends TaskDTO {
+    66→    66→  comments?: TaskCommentDTO[]
+    67→    67→}
+    68→    68→
+    69→    69→const COLUMN_DOT: Record<string, string> = {
+    70→    70→  NOT_STARTED: 'bg-stone-400',
+    71→    71→  IN_PROGRESS: 'bg-amber-500',
+    72→    72→  BLOCKED: 'bg-red-500',
+    73→    73→  COMPLETED: 'bg-emerald-500',
+    74→    74→}
+    75→    75→
+    76→    76→const COLUMN_BORDER: Record<string, string> = {
+    77→    77→  NOT_STARTED: 'border-t-stone-400',
+    78→    78→  IN_PROGRESS: 'border-t-amber-500',
+    79→    79→  BLOCKED: 'border-t-red-500',
+    80→    80→  COMPLETED: 'border-t-emerald-500',
+    81→    81→}
+    82→    82→
+    83→    83→const PRIORITY_DOT: Record<string, string> = {
+    84→    84→  HIGH: 'bg-red-500',
+    85→    85→  MEDIUM: 'bg-amber-500',
+    86→    86→  LOW: 'bg-stone-300',
+    87→    87→}
+    88→    88→
+    89→    89→const UNASSIGNED = '__unassigned__'
+    90→    90→const NO_EVENT = '__no_event__'
+    91→    91→
+    92→    92→interface TaskFormState {
+    93→    93→  title: string
+    94→    94→  description: string
+    95→    95→  eventId: string
+    96→    96→  priority: TaskPriority
+    97→    97→  assignedTo: string
+    98→    98→  dueDate: string
+    99→    99→  estimatedHours: string
+   100→   100→}
+   101→   101→
+   102→   102→interface EditFormState {
+   103→   103→  title: string
+   104→   104→  description: string
+   105→   105→  priority: TaskPriority
+   106→   106→  status: TaskStatus
+   107→   107→  assignedTo: string
+   108→   108→  dueDate: string
+   109→   109→  estimatedHours: string
+   110→   110→  actualHours: string
+   111→   111→}
+   112→   112→
+   113→   113→function dueChip(task: TaskDTO): { label: string; classes: string } | null {
+   114→   114→  if (!task.dueDate) return null
+   115→   115→  const due = new Date(task.dueDate)
+   116→   116→  const days = differenceInCalendarDays(due, new Date())
+   117→   117→  const done = task.status === 'COMPLETED'
+   118→   118→  if (done) {
+   119→   119→    return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-border bg-muted/50 text-muted-foreground/70' }
+   120→   120→  }
+   121→   121→  if (days < 0) return { label: `${Math.abs(days)}d overdue`, classes: 'border-red-200 bg-red-50 text-red-700' }
+   122→   122→  if (days === 0) return { label: 'Due today', classes: 'border-amber-200 bg-amber-50 text-amber-800' }
+   123→   123→  if (days < 3) return { label: `${days}d left`, classes: 'border-amber-200 bg-amber-50 text-amber-800' }
+   124→   124→  return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-border bg-muted/50 text-muted-foreground' }
+   125→   125→}
+   126→   126→
+   127→   127→// ============ Draggable task card ============
+   128→   128→
+   129→   129→interface TaskCardProps {
+   130→   130→  task: TaskDTO
+   131→   131→  canDrag: boolean
+   132→   132→  mobileStatusSelect: React.ReactNode
+   133→   133→  onOpen: (task: TaskDTO) => void
+   134→   134→}
+   135→   135→
+   136→   136→function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen }: TaskCardProps) {
+   137→   137→  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled: !canDrag })
+   138→   138→  const chip = dueChip(task)
+   139→   139→  const assignee = task.assignee
+   140→   140→
+   141→   141→  return (
+   142→   142→    <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform) }} className={cn(isDragging && 'z-20 opacity-60')}>
+   143→   143→      <Card
+   144→   144→        className={cn(
+   145→   145→          'cursor-pointer gap-2 border-l-4 py-3 shadow-sm transition-shadow hover:shadow-md',
+   146→   146→          'border-l-red-500',
+   147→   147→          task.priority === 'MEDIUM' && 'border-l-amber-500',
+   148→   148→          task.priority === 'LOW' && 'border-l-stone-300',
+   149→   149→          task.status === 'COMPLETED' && 'opacity-80',
+   150→   150→          isDragging && 'ring-2 ring-emerald-500',
+   151→   151→          canDrag && 'active:cursor-grabbing'
+   152→   152→        )}
+   153→   153→        onClick={() => onOpen(task)}
+   154→   154→        role="button"
+   155→   155→        tabIndex={0}
+   156→   156→        onKeyDown={(e) => {
+   157→   157→          if (e.key === 'Enter' || e.key === ' ') {
+   158→   158→            e.preventDefault()
+   159→   159→            onOpen(task)
+   160→   160→          }
+   161→   161→        }}
+   162→   162→        aria-label={`Open task ${task.title}`}
+   163→   163→      >
+   164→   164→        <CardContent className="px-3" {...(canDrag ? listeners : {})} {...attributes}>
+   165→   165→          <div className="flex items-start justify-between gap-2">
+   166→   166→            <p className={cn('line-clamp-2 text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'line-through decoration-stone-300')}>
+   167→   167→              {task.title}
+   168→   168→            </p>
+   169→   169→            <span
+   170→   170→              className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', PRIORITY_DOT[task.priority] ?? 'bg-stone-300')}
+   171→   171→              title={`${PRIORITY_LABELS[task.priority] ?? task.priority} priority`}
+   172→   172→              aria-label={`${PRIORITY_LABELS[task.priority] ?? task.priority} priority`}
+   173→   173→            />
+   174→   174→          </div>
+   175→   175→
+   176→   176→          {task.event ? (
+   177→   177→            <p className="mt-1 truncate text-[11px] text-muted-foreground/70">{task.event.name}</p>
+   178→   178→          ) : null}
+   179→   179→
+   180→   180→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   181→   181→            {chip ? (
+   182→   182→              <Badge variant="outline" className={cn('gap-1 text-[10px] font-normal', chip.classes)}>
+   183→   183→                <Clock className="h-3 w-3" aria-hidden="true" />
+   184→   184→                {chip.label}
+   185→   185→              </Badge>
+   186→   186→            ) : null}
+   187→   187→            {task.priority ? (
+   188→   188→              <StatusBadge label={PRIORITY_LABELS[task.priority] ?? task.priority} className={cn('text-[10px]', PRIORITY_CLASSES[task.priority])} />
+   189→   189→            ) : null}
+   190→   190→            {(task.commentCount ?? 0) > 0 ? (
+   191→   191→              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
+   192→   192→                <MessageSquare className="h-3 w-3" aria-hidden="true" />
+   193→   193→                {task.commentCount}
+   194→   194→              </span>
+   195→   195→            ) : null}
+   196→   196→            {(task.dependencies?.length ?? 0) > 0 ? (
+   197→   197→              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70" title={`${task.dependencies?.length ?? 0} dependencies`}>
+   198→   198→                <Link2 className="h-3 w-3" aria-hidden="true" />
+   199→   199→                {task.dependencies?.length}
+   200→   200→              </span>
+   201→   201→            ) : null}
+   202→   202→          </div>
+   203→   203→
+   204→   204→          <div className="mt-2 flex items-center gap-2">
+   205→   205→            <Avatar className="h-6 w-6">
+   206→   206→              <AvatarFallback className={cn('text-[9px] font-semibold', assignee ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
+   207→   207→                {assignee ? initialsOf(assignee.fullName) : '—'}
+   208→   208→              </AvatarFallback>
+   209→   209→            </Avatar>
+   210→   210→            <span className="truncate text-[11px] text-muted-foreground">{assignee ? assignee.fullName : 'Unassigned'}</span>
+   211→   211→          </div>
+   212→   212→
+   213→   213→          {mobileStatusSelect}
+   214→   214→        </CardContent>
+   215→   215→      </Card>
+   216→   216→    </div>
+   217→   217→  )
+   218→   218→}
+   219→   219→
+   220→   220→// ============ Droppable column ============
+   221→   221→
+   222→   222→interface ColumnProps {
+   223→   223→  status: TaskStatus
+   224→   224→  count: number
+   225→   225→  children: React.ReactNode
+   226→   226→  highlight: boolean
+   227→   227→}
+   228→   228→
+   229→   229→function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
+   230→   230→  const { setNodeRef } = useDroppable({ id: status })
+   231→   231→
+   232→   232→  return (
+   233→   233→    <section
+   234→   234→      ref={setNodeRef}
+   235→   235→      aria-label={`${TASK_STATUS_LABELS[status]} column`}
+   236→   236→      className={cn(
+   237→   237→        'flex min-h-40 flex-col rounded-lg border border-t-4 border-border bg-muted/50/80 transition-colors',
+   238→   238→        COLUMN_BORDER[status],
+   239→   239→        highlight && 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200',
+   240→   240→        status === 'COMPLETED' && 'border-t-emerald-500'
+   241→   241→      )}
+   242→   242→    >
+   243→   243→      <header className="flex items-center justify-between gap-2 border-b border-border/80 px-3 py-2.5">
+   244→   244→        <div className="flex min-w-0 items-center gap-2">
+   245→   245→          <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', COLUMN_DOT[status])} aria-hidden="true" />
+   246→   246→          <h3 className="truncate text-sm font-semibold text-foreground">{TASK_STATUS_LABELS[status]}</h3>
+   247→   247→        </div>
+   248→   248→        <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-muted-foreground ring-1 ring-stone-200">{count}</span>
+   249→   249→      </header>
+   250→   250→      <div className="scrollbar-thin flex max-h-[34rem] flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">{children}</div>
+   251→   251→    </section>
+   252→   252→  )
+   253→   253→}
+   254→   254→
+   255→   255→// ============ Main page ============
+   256→   256→
+   257→   257→export function TasksPage() {
+   258→   258→  const path = useHashRoute()
+   259→   259→  const { toast } = useToast()
+   260→   260→
+   261→   261→  const queryEvent = useMemo(() => {
+   262→   262→    const query = path.split('?')[1] ?? ''
+   263→   263→    return new URLSearchParams(query).get('event') ?? ''
+   264→   264→  }, [path])
+   265→   265→
+   266→   266→  const queryAssignee = useMemo(() => {
+   267→   267→    const query = path.split('?')[1] ?? ''
+   268→   268→    return new URLSearchParams(query).get('assignee') ?? ''
+   269→   269→  }, [path])
+   270→   270→
+   271→   271→  const [tasks, setTasks] = useState<TaskDTO[]>([])
+   272→   272→  const [events, setEvents] = useState<EventDTO[]>([])
+   273→   273→  const [users, setUsers] = useState<UserDTO[]>([])
+   274→   274→  const [loading, setLoading] = useState(true)
+   275→   275→
+   276→   276→  const [search, setSearch] = useState('')
+   277→   277→  const [eventFilter, setEventFilter] = useState<string>('all')
+   278→   278→  const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
+   279→   279→  const [priorityFilter, setPriorityFilter] = useState<string>('all')
+   280→   280→
+   281→   281→  // Mobile detection (dnd disabled below md).
+   282→   282→  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+   283→   283→    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : false
+   284→   284→  )
+   285→   285→  useEffect(() => {
+   286→   286→    const mq = window.matchMedia('(min-width: 768px)')
+   287→   287→    const update = () => setIsDesktop(mq.matches)
+   288→   288→    update()
+   289→   289→    mq.addEventListener('change', update)
+   290→   290→    return () => mq.removeEventListener('change', update)
+   291→   291→  }, [])
+   292→   292→
+   293→   293→  // Sync the ?event= / ?assignee= hash queries into their filters once they arrive.
+   294→   294→  useEffect(() => {
+   295→   295→    if (queryEvent) {
+   296→   296→      setEventFilter(queryEvent)
+   297→   297→    }
+   298→   298→  }, [queryEvent])
+   299→   299→
+   300→   300→  useEffect(() => {
+   301→   301→    if (queryAssignee) {
+   302→   302→      setAssigneeFilter(queryAssignee)
+   303→   303→    }
+   304→   304→  }, [queryAssignee])
+   305→   305→
+   306→   306→  const loadTasks = useCallback(async () => {
+   307→   307→    setLoading(true)
+   308→   308→    try {
+   309→   309→      const data = await api.get<{ tasks: TaskDTO[] }>(
+   310→   310→        `/tasks${qs({
+   311→   311→          eventId: eventFilter !== 'all' ? eventFilter : undefined,
+   312→   312→          status: undefined,
+   313→   313→          priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+   314→   314→          assignedTo:
+   315→   315→            assigneeFilter !== 'all'
+   316→   316→              ? assigneeFilter === UNASSIGNED
+   317→   317→                ? 'unassigned'
+   318→   318→                : assigneeFilter
+   319→   319→              : undefined,
+   320→   320→          search: search.trim() || undefined,
+   321→   321→        })}`
+   322→   322→      )
+   323→   323→      setTasks(data.tasks)
+   324→   324→    } catch (error) {
+   325→   325→      const message = error instanceof ApiClientError ? error.message : 'Failed to load tasks.'
+   326→   326→      toast({ title: 'Could not load tasks', description: message, variant: 'destructive' })
+   327→   327→    } finally {
+   328→   328→      setLoading(false)
+   329→   329→    }
+   330→   330→  }, [eventFilter, priorityFilter, assigneeFilter, search, toast])
+   331→   331→
+   332→   332→  useEffect(() => {
+   333→   333→    const timer = setTimeout(() => void loadTasks(), 250)
+   334→   334→    return () => clearTimeout(timer)
+   335→   335→  }, [loadTasks])
+   336→   336→
+   337→   337→  useEffect(() => {
+   338→   338→    let cancelled = false
+   339→   339→    void (async () => {
+   340→   340→      try {
+   341→   341→        const [eventsData, usersData] = await Promise.all([
+   342→   342→          api.get<{ events: EventDTO[] }>('/events'),
+   343→   343→          api.get<{ users: UserDTO[] }>('/users'),
+   344→   344→        ])
+   345→   345→        if (!cancelled) {
+   346→   346→          setEvents(eventsData.events)
+   347→   347→          setUsers(usersData.users)
+   348→   348→        }
+   349→   349→      } catch {
+   350→   350→        // Filter dropdowns stay empty; main list still works.
+   351→   351→      }
+   352→   352→    })()
+   353→   353→    return () => {
+   354→   354→      cancelled = true
+   355→   355→    }
+   356→   356→  }, [])
+   357→   357→
+   358→   358→  // ============ DnD ============
+   359→   359→  const sensors = useSensors(
+   360→   360→    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+   361→   361→    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } })
+   362→   362→  )
+   363→   363→  const [activeTask, setActiveTask] = useState<TaskDTO | null>(null)
+   364→   364→  const [overColumn, setOverColumn] = useState<string | null>(null)
+   365→   365→  const lastDragEndAt = useRef(0)
+   366→   366→
+   367→   367→  const moveTask = useCallback(
+   368→   368→    async (task: TaskDTO, nextStatus: TaskStatus) => {
+   369→   369→      if (task.status === nextStatus) return
+   370→   370→      const previous = tasks
+   371→   371→      setTasks((list) => list.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)))
+   372→   372→      try {
+   373→   373→        await api.patch(`/tasks/${task.id}`, { status: nextStatus })
+   374→   374→        toast({ title: 'Task moved', description: `“${task.title}” is now ${TASK_STATUS_LABELS[nextStatus]}.` })
+   375→   375→      } catch (error) {
+   376→   376→        setTasks(previous)
+   377→   377→        const message = error instanceof ApiClientError ? error.message : 'Failed to update the task status.'
+   378→   378→        toast({ title: 'Could not move task', description: message, variant: 'destructive' })
+   379→   379→      }
+   380→   380→    },
+   381→   381→    [tasks, toast]
+   382→   382→  )
+   383→   383→
+   384→   384→  const handleDragStart = (event: DragStartEvent) => {
+   385→   385→    setActiveTask(tasks.find((t) => t.id === String(event.active.id)) ?? null)
+   386→   386→  }
+   387→   387→
+   388→   388→  const handleDragEnd = (event: DragEndEvent) => {
+   389→   389→    lastDragEndAt.current = Date.now()
+   390→   390→    const overId = event.over ? String(event.over.id) : null
+   391→   391→    const task = tasks.find((t) => t.id === String(event.active.id))
+   392→   392→    setActiveTask(null)
+   393→   393→    setOverColumn(null)
+   394→   394→    if (!task || !overId) return
+   395→   395→    if ((TASK_STATUSES as readonly string[]).includes(overId)) {
+   396→   396→      void moveTask(task, overId as TaskStatus)
+   397→   397→    }
+   398→   398→  }
+   399→   399→
+   400→   400→  const openTaskSafe = useCallback((task: TaskDTO) => {
+   401→   401→    if (Date.now() - lastDragEndAt.current < 250) return
+   402→   402→    setDetailId(task.id)
+   403→   403→  }, [])
+   404→   404→
+   405→   405→  // ============ New task dialog ============
+   406→   406→  const [createOpen, setCreateOpen] = useState(false)
+   407→   407→  const [form, setForm] = useState<TaskFormState>({
+   408→   408→    title: '',
+   409→   409→    description: '',
+   410→   410→    eventId: '',
+   411→   411→    priority: 'MEDIUM',
+   412→   412→    assignedTo: UNASSIGNED,
+   413→   413→    dueDate: '',
+   414→   414→    estimatedHours: '',
+   415→   415→  })
+   416→   416→  const [formError, setFormError] = useState<string | null>(null)
+   417→   417→  const [saving, setSaving] = useState(false)
+   418→   418→
+   419→   419→  const openCreate = () => {
+   420→   420→    setForm({
+   421→   421→      title: '',
+   422→   422→      description: '',
+   423→   423→      eventId: eventFilter !== 'all' ? eventFilter : '',
+   424→   424→      priority: 'MEDIUM',
+   425→   425→      assignedTo: UNASSIGNED,
+   426→   426→      dueDate: '',
+   427→   427→      estimatedHours: '',
+   428→   428→    })
+   429→   429→    setFormError(null)
+   430→   430→    setCreateOpen(true)
+   431→   431→  }
+   432→   432→
+   433→   433→  const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
+   434→   434→    e.preventDefault()
+   435→   435→    setFormError(null)
+   436→   436→    if (!form.title.trim()) {
+   437→   437→      setFormError('Please give the task a title.')
+   438→   438→      return
+   439→   439→    }
+   440→   440→    if (!form.eventId) {
+   441→   441→      setFormError('Please choose the event this task belongs to.')
+   442→   442→      return
+   443→   443→    }
+   444→   444→
+   445→   445→    setSaving(true)
+   446→   446→    try {
+   447→   447→      const data = await api.post<{ task: TaskDTO }>('/tasks', {
+   448→   448→        title: form.title.trim(),
+   449→   449→        description: form.description.trim() || undefined,
+   450→   450→        eventId: form.eventId,
+   451→   451→        priority: form.priority,
+   452→   452→        assignedTo: form.assignedTo === UNASSIGNED ? null : form.assignedTo,
+   453→   453→        dueDate: form.dueDate ? new Date(`${form.dueDate}T23:59:59`).toISOString() : null,
+   454→   454→        estimatedHours: form.estimatedHours ? Number(form.estimatedHours) : null,
+   455→   455→      })
+   456→   456→      setCreateOpen(false)
+   457→   457→      toast({ title: 'Task created', description: `“${data.task.title}” was added to the board.` })
+   458→   458→      void loadTasks()
+   459→   459→    } catch (error) {
+   460→   460→      const message = error instanceof ApiClientError ? error.message : 'Failed to create the task.'
+   461→   461→      setFormError(message)
+   462→   462→    } finally {
+   463→   463→      setSaving(false)
+   464→   464→    }
+   465→   465→  }
+   466→   466→
+   467→   467→  // ============ Detail dialog ============
+   468→   468→  const [detailId, setDetailId] = useState<string | null>(null)
+   469→   469→  const [detail, setDetail] = useState<TaskDetail | null>(null)
+   470→   470→  const [detailLoading, setDetailLoading] = useState(false)
+   471→   471→  const [edit, setEdit] = useState<EditFormState | null>(null)
+   472→   472→  const [editSaving, setEditSaving] = useState(false)
+   473→   473→  const [comment, setComment] = useState('')
+   474→   474→  const [commentSending, setCommentSending] = useState(false)
+   475→   475→  const [deleteOpen, setDeleteOpen] = useState(false)
+   476→   476→  const [deleting, setDeleting] = useState(false)
+   477→   477→
+   478→   478→  useEffect(() => {
+   479→   479→    if (!detailId) {
+   480→   480→      setDetail(null)
+   481→   481→      setEdit(null)
+   482→   482→      return
+   483→   483→    }
+   484→   484→    let cancelled = false
+   485→   485→    setDetailLoading(true)
+   486→   486→    api
+   487→   487→      .get<{ task: TaskDetail }>(`/tasks/${detailId}`)
+   488→   488→      .then((data) => {
+   489→   489→        if (cancelled) return
+   490→   490→        setDetail(data.task)
+   491→   491→        setEdit({
+   492→   492→          title: data.task.title,
+   493→   493→          description: data.task.description ?? '',
+   494→   494→          priority: data.task.priority,
+   495→   495→          status: data.task.status,
+   496→   496→          assignedTo: data.task.assignedTo ?? UNASSIGNED,
+   497→   497→          dueDate: data.task.dueDate ? format(new Date(data.task.dueDate), 'yyyy-MM-dd') : '',
+   498→   498→          estimatedHours: data.task.estimatedHours !== null ? String(data.task.estimatedHours) : '',
+   499→   499→          actualHours: data.task.actualHours !== null ? String(data.task.actualHours) : '',
+   500→   500→        })
+   501→   501→      })
+   502→   502→      .catch((error) => {
+   503→   503→        if (!cancelled) {
+   504→   504→          const message = error instanceof ApiClientError ? error.message : 'Failed to load the task.'
+   505→   505→          toast({ title: 'Could not open task', description: message, variant: 'destructive' })
+   506→   506→          setDetailId(null)
+   507→   507→        }
+   508→   508→      })
+   509→   509→      .finally(() => {
+   510→   510→        if (!cancelled) setDetailLoading(false)
+   511→   511→      })
+   512→   512→    return () => {
+   513→   513→      cancelled = true
+   514→   514→    }
+   515→   515→  }, [detailId, toast])
+   516→   516→
+   517→   517→  const applyTaskUpdate = (updated: TaskDTO) => {
+   518→   518→    setTasks((list) => list.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
+   519→   519→  }
+   520→   520→
+   521→   521→  const handleEditSave = async () => {
+   522→   522→    if (!detail || !edit) return
+   523→   523→    if (!edit.title.trim()) {
+   524→   524→      toast({ title: 'Title required', description: 'The task title cannot be empty.', variant: 'destructive' })
+   525→   525→      return
+   526→   526→    }
+   527→   527→    setEditSaving(true)
+   528→   528→    try {
+   529→   529→      const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+   530→   530→        title: edit.title.trim(),
+   531→   531→        description: edit.description.trim() || null,
+   532→   532→        priority: edit.priority,
+   533→   533→        status: edit.status,
+   534→   534→        assignedTo: edit.assignedTo === UNASSIGNED ? null : edit.assignedTo,
+   535→   535→        dueDate: edit.dueDate ? new Date(`${edit.dueDate}T23:59:59`).toISOString() : null,
+   536→   536→        estimatedHours: edit.estimatedHours ? Number(edit.estimatedHours) : null,
+   537→   537→        actualHours: edit.actualHours ? Number(edit.actualHours) : null,
+   538→   538→      })
+   539→   539→      applyTaskUpdate(data.task)
+   540→   540→      setDetail((prev) => (prev ? { ...prev, ...data.task } : prev))
+   541→   541→      toast({ title: 'Task updated', description: `“${data.task.title}” was saved.` })
+   542→   542→    } catch (error) {
+   543→   543→      const message = error instanceof ApiClientError ? error.message : 'Failed to save the task.'
+   544→   544→      toast({ title: 'Save failed', description: message, variant: 'destructive' })
+   545→   545→    } finally {
+   546→   546→      setEditSaving(false)
+   547→   547→    }
+   548→   548→  }
+   549→   549→
+   550→   550→  const handleAddComment = async () => {
+   551→   551→    if (!detail || !comment.trim()) return
+   552→   552→    setCommentSending(true)
+   553→   553→    try {
+   554→   554→      const data = await api.post<{ comment: TaskCommentDTO }>(`/tasks/${detail.id}/comments`, {
+   555→   555→        content: comment.trim(),
+   556→   556→      })
+   557→   557→      setDetail((prev) => (prev ? { ...prev, comments: [...(prev.comments ?? []), data.comment] } : prev))
+   558→   558→      setTasks((list) => list.map((t) => (t.id === detail.id ? { ...t, commentCount: (t.commentCount ?? 0) + 1 } : t)))
+   559→   559→      setComment('')
+   560→   560→      toast({ title: 'Comment added' })
+   561→   561→    } catch (error) {
+   562→   562→      const message = error instanceof ApiClientError ? error.message : 'Failed to add the comment.'
+   563→   563→      toast({ title: 'Could not comment', description: message, variant: 'destructive' })
+   564→   564→    } finally {
+   565→   565→      setCommentSending(false)
+   566→   566→    }
+   567→   567→  }
+   568→   568→
+   569→   569→  const handleDelete = async () => {
+   570→   570→    if (!detail) return
+   571→   571→    setDeleting(true)
+   572→   572→    try {
+   573→   573→      await api.del(`/tasks/${detail.id}`)
+   574→   574→      setTasks((list) => list.filter((t) => t.id !== detail.id))
+   575→   575→      setDetailId(null)
+   576→   576→      setDeleteOpen(false)
+   577→   577→      toast({ title: 'Task deleted', description: `“${detail.title}” has been removed.` })
+   578→   578→    } catch (error) {
+   579→   579→      const message = error instanceof ApiClientError ? error.message : 'Failed to delete the task.'
+   580→   580→      toast({ title: 'Delete failed', description: message, variant: 'destructive' })
+   581→   581→    } finally {
+   582→   582→      setDeleting(false)
+   583→   583→    }
+   584→   584→  }
+   585→   585→
+   586→   586→  // ============ Derived ============
+   587→   587→  const byStatus = useMemo(() => {
+   588→   588→    const map = new Map<TaskStatus, TaskDTO[]>()
+   589→   589→    TASK_STATUSES.forEach((status) => map.set(status, []))
+   590→   590→    tasks.forEach((task) => map.get(task.status)?.push(task))
+   591→   591→    return map
+   592→   592→  }, [tasks])
+   593→   593→
+   594→   594→  const eventNameById = useMemo(() => {
+   595→   595→    const map = new Map<string, string>()
+   596→   596→    events.forEach((event) => map.set(event.id, event.name))
+   597→   597→    return map
+   598→   598→  }, [events])
+   599→   599→
+   600→   600→  const mobileStatusSelectFor = (task: TaskDTO) =>
+   601→   601→    isDesktop ? null : (
+   602→   602→      <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
+   603→   603→        <Select value={task.status} onValueChange={(value) => void moveTask(task, value as TaskStatus)}>
+   604→   604→          <SelectTrigger size="sm" className="h-9 w-full" aria-label={`Change status of ${task.title}`}>
+   605→   605→            <SelectValue />
+   606→   606→          </SelectTrigger>
+   607→   607→          <SelectContent>
+   608→   608→            {TASK_STATUSES.map((status) => (
+   609→   609→              <SelectItem key={status} value={status}>
+   610→   610→                {TASK_STATUS_LABELS[status]}
+   611→   611→              </SelectItem>
+   612→   612→            ))}
+   613→   613→          </SelectContent>
+   614→   614→        </Select>
+   615→   615→      </div>
+   616→   616→    )
+   617→   617→
+   618→   618→  return (
+   619→   619→    <div>
+   620→   620→      <PageHeader
+   621→   621→        title="Tasks"
+   622→   622→        subtitle="Drag cards between columns to update status — the board is your source of truth."
+   623→   623→        actions={
+   624→   624→          <>
+   625→   625→            <Button
+   626→   626→              variant="outline"
+   627→   627→              onClick={() => {
+   628→   628→                const rows: (string | number | null)[][] = [
+   629→   629→                  ['Title', 'Status', 'Priority', 'Event', 'Assignee', 'Due date', 'Estimated hours', 'Actual hours', 'Comments'],
+   630→   630→                  ...tasks.map((task) => [
+   631→   631→                    task.title,
+   632→   632→                    TASK_STATUS_LABELS[task.status] ?? task.status,
+   633→   633→                    PRIORITY_LABELS[task.priority] ?? task.priority,
+   634→   634→                    task.event?.name ?? '',
+   635→   635→                    task.assignee?.fullName ?? 'Unassigned',
+   636→   636→                    task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
+   637→   637→                    task.estimatedHours ?? '',
+   638→   638→                    task.actualHours ?? '',
+   639→   639→                    task.commentCount ?? 0,
+   640→   640→                  ]),
+   641→   641→                ]
+   642→   642→                downloadCsv(`eventflow-tasks-${csvDateStamp()}`, rows)
+   643→   643→                toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
+   644→   644→              }}
+   645→   645→              disabled={tasks.length === 0}
+   646→   646→              className="min-h-11"
+   647→   647→            >
+   648→   648→              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+   649→   649→              Export CSV
+
+[showing lines 50-649 of 1148; use offset=650 with limit to continue reading]

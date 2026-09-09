@@ -3,7 +3,7 @@
  * Enum unions are imported from constants so backend and frontend stay in sync.
  */
 import { z } from 'zod'
-import { EVENT_STATUSES, ROLES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/constants'
+import { EVENT_STATUSES, NOTIFICATION_TYPES, ROLES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/constants'
 
 // ============ field helpers ============
 
@@ -173,4 +173,21 @@ export const createCommentSchema = z.object({
 export const notificationPatchSchema = z.object({
   id: z.uuid().optional(),
   markAll: z.boolean().optional(),
+})
+
+// ============ bulk tasks ============
+
+export const bulkTaskActionSchema = z.object({
+  ids: z.array(z.uuid()).min(1, 'Select at least one task').max(100, 'You can update up to 100 tasks at once'),
+  action: z.enum(['status', 'priority', 'assign', 'unassign', 'delete']),
+  status: z.enum(TASK_STATUSES).optional(),
+  priority: z.enum(TASK_PRIORITIES).optional(),
+  assignedTo: z.uuid().optional(),
+})
+
+// ============ notification preferences ============
+
+/** Full or partial mute map; unknown keys rejected, values must be booleans. */
+export const notificationPrefsSchema = z.object({
+  prefs: z.record(z.enum(NOTIFICATION_TYPES), z.boolean()),
 })

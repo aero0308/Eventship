@@ -23,6 +23,8 @@ model User {
   isActive       Boolean  @default(true)
   teamId         String?
   team           Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  // JSON-serialized map of NotificationType -> boolean (enabled). Missing key = enabled.
+  notificationPrefs String?
 
   sessions       Session[]
   managedTeams   Team[]         @relation("ManagedTeams")

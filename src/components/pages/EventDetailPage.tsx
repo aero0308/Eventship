@@ -10,7 +10,10 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
+  GanttChart,
+  List,
   Loader2,
+  MessageSquare,
   Pencil,
   Search,
   Trash2,
@@ -112,6 +115,16 @@ type TaskSort = (typeof TASK_SORTS)[number]['value']
 const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
 const STATUS_ORDER: Record<string, number> = { NOT_STARTED: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3 }
 
+/** Timeline bar fill per task status (gradient from → to). */
+const TIMELINE_BAR: Record<string, string> = {
+  NOT_STARTED: 'from-stone-300 to-stone-400 dark:from-stone-500 dark:to-stone-400',
+  IN_PROGRESS: 'from-amber-300 to-amber-500 dark:from-amber-400 dark:to-amber-500',
+  BLOCKED: 'from-red-400 to-red-500 dark:from-red-400 dark:to-red-500',
+  COMPLETED: 'from-emerald-300 to-emerald-500 dark:from-emerald-400 dark:to-emerald-500',
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
 function byDue(a: string | null, b: string | null): number {
   if (!a && !b) return 0
   if (!a) return 1 // no due date sinks to the bottom
@@ -130,6 +143,219 @@ function initialsOf(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('')
+}
+
+// ============ Timeline (Gantt-lite) view ============
+
+interface TimelineViewProps {
+  event: EventDTO
+  tasks: TaskDTO[]
+  expandedTaskId: string | null
+  onToggleExpand: (taskId: string) => void
+  onStatusChange: (task: TaskDTO, next: TaskStatus) => void
+  rowUpdatingId: string | null
+}
+
+/**
+ * Gantt-lite: one row per task; the bar runs from the event start to the task's
+ * due date (tasks without a due date get a dashed full-width "unslotted" bar).
+ * Shares the status filter/search results with the list view (passed via tasks).
+ */
+function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusChange, rowUpdatingId }: TimelineViewProps) {
+  const start = new Date(event.startDate).getTime()
+  const end = Math.max(new Date(event.endDate).getTime(), start + DAY_MS)
+  const span = end - start
+  const pct = (t: number) => Math.min(100, Math.max(0, ((t - start) / span) * 100))
+
+  const now = Date.now()
+  const todayPct = now >= start && now <= end ? pct(now) : null
+
+  const ordered = useMemo(
+    () => [...tasks].sort((a, b) => byDue(a.dueDate, b.dueDate)),
+    [tasks]
+  )
+
+  const ticks = useMemo(() => {
+    // Adaptive tick count: fewer for short spans, more for long ones.
+    const dayCount = span / DAY_MS
+    const fractions =
+      dayCount <= 2 ? [0, 1] : dayCount <= 7 ? [0, 0.5, 1] : dayCount <= 45 ? [0, 0.25, 0.5, 0.75, 1] : [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1]
+    const out: { pct: number; label: string }[] = []
+    for (const f of fractions) {
+      const date = new Date(start + f * span)
+      const label = format(date, 'MMM d')
+      // Skip a tick whose label collides with the previous one (short spans).
+      if (out.length > 0 && out[out.length - 1].label === label) continue
+      out.push({ pct: f * 100, label })
+    }
+    // Last tick colliding with the previous label → drop the earlier one.
+    if (out.length >= 2 && out[out.length - 1].label === out[out.length - 2].label) {
+      out.splice(out.length - 2, 1)
+    }
+    return out
+  }, [start, span])
+
+  return (
+    <div>
+      {/* Date axis */}
+      <div className="grid grid-cols-[8.5rem_1fr] gap-x-3 border-b border-border/60 px-4 pb-2 sm:grid-cols-[13rem_1fr]">
+        <div />
+        <div className="relative h-5" aria-hidden="true">
+          {ticks.map((tick) => (
+            <span
+              key={tick.pct}
+              className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground/70"
+              style={{ left: `${tick.pct}%` }}
+            >
+              {tick.label}
+            </span>
+          ))}
+          {todayPct !== null ? (
+            <span
+              className="absolute -bottom-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
+              style={{ left: `${todayPct}%` }}
+            >
+              Today
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Rows */}
+      <ul className="divide-y divide-border/40">
+        {ordered.map((task) => {
+          const due = task.dueDate ? new Date(task.dueDate) : null
+          const duePct = due ? pct(due.getTime()) : null
+          const overdue = due !== null && due.getTime() < Date.now() && task.status !== 'COMPLETED'
+          const expanded = expandedTaskId === task.id
+          return (
+            <li key={task.id}>
+              <button
+                type="button"
+                onClick={() => onToggleExpand(task.id)}
+                aria-expanded={expanded}
+                className={cn(
+                  'grid w-full grid-cols-[8.5rem_1fr] items-center gap-x-3 px-4 py-2.5 text-left transition-colors hover:bg-accent/40 sm:grid-cols-[13rem_1fr]',
+                  expanded && 'bg-accent/50'
+                )}
+              >
+                {/* Label */}
+                <span className="flex min-w-0 items-center gap-2">
+                  <Avatar className="h-5 w-5 shrink-0">
+                    <AvatarFallback className={cn('text-[8px] font-semibold', task.assignee ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
+                      {task.assignee ? initialsOf(task.assignee.fullName) : '—'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0">
+                    <span className={cn('block truncate text-xs font-semibold text-foreground', task.status === 'COMPLETED' && 'text-muted-foreground line-through')}>
+                      {task.title}
+                    </span>
+                    <span className={cn('block truncate text-[10px]', overdue ? 'font-semibold text-red-600 dark:text-red-400' : 'text-muted-foreground/70')}>
+                      {due ? (overdue ? `Overdue · ${format(due, 'MMM d')}` : `Due ${format(due, 'MMM d')}`) : 'No due date'}
+                    </span>
+                  </span>
+                </span>
+
+                {/* Track */}
+                <span className="relative block h-6 rounded-md bg-muted/40 ring-1 ring-inset ring-border/50">
+                  {todayPct !== null ? (
+                    <span
+                      className="absolute inset-y-0 z-10 w-px border-l border-dashed border-amber-500/80"
+                      style={{ left: `${todayPct}%` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {duePct !== null ? (
+                    <motion.span
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.max(duePct, 2)}%` }}
+                      transition={{ duration: 0.45, ease: 'easeOut' }}
+                      className={cn(
+                        'absolute inset-y-[5px] left-0 rounded-r-full rounded-l-sm bg-gradient-to-r shadow-sm transition-[filter] hover:brightness-105',
+                        TIMELINE_BAR[task.status] ?? TIMELINE_BAR.NOT_STARTED
+                      )}
+                      title={`${task.title} — due ${due ? format(due, 'MMM d, yyyy') : '—'} (${TASK_STATUS_LABELS[task.status] ?? task.status})`}
+                    />
+                  ) : (
+                    <span
+                      className="absolute inset-y-[6px] left-1 right-1 rounded-full border border-dashed border-stone-300 bg-transparent dark:border-stone-600"
+                      title={`${task.title} — no due date`}
+                    />
+                  )}
+                  {task.status === 'COMPLETED' && duePct !== null ? (
+                    <CheckCircle2
+                      className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 text-white drop-shadow"
+                      style={{ left: `${Math.max(duePct, 2)}%` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
+              </button>
+
+              {/* Expanded quick actions */}
+              {expanded ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden bg-accent/30"
+                >
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:pl-[calc(8.5rem+1.75rem)] md:pl-[calc(13rem+1.75rem)]">
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold', PRIORITY_CLASSES[task.priority])}>
+                        {PRIORITY_LABELS[task.priority] ?? task.priority}
+                      </span>
+                      {task.assignee ? <span>· {task.assignee.fullName}</span> : <span>· Unassigned</span>}
+                      {(task.commentCount ?? 0) > 0 ? <span>· {task.commentCount} 💬</span> : null}
+                      {rowUpdatingId === task.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+                    </span>
+                    <Select value={task.status} onValueChange={(value) => onStatusChange(task, value as TaskStatus)}>
+                      <SelectTrigger className="h-8 w-36 text-xs" aria-label={`Change status for ${task.title}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TASK_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {TASK_STATUS_LABELS[status]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`${ROUTES.TASKS}?event=${event.id}`)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-emerald-700 hover:bg-accent hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                      Open on board
+                    </button>
+                  </div>
+                </motion.div>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/60 px-4 py-2.5" aria-label="Timeline legend">
+        {(['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'] as TaskStatus[]).map((status) => (
+          <span key={status} className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+            <span className={cn('h-2.5 w-6 rounded-full bg-gradient-to-r', TIMELINE_BAR[status])} aria-hidden="true" />
+            {TASK_STATUS_LABELS[status]}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+          <span className="h-3 w-0 border-l border-dashed border-amber-500" aria-hidden="true" />
+          Today
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+          <span className="h-2.5 w-6 rounded-full border border-dashed border-stone-300 dark:border-stone-600" aria-hidden="true" />
+          No due date
+        </span>
+      </div>
+    </div>
+  )
 }
 
 export function EventDetailPage({ eventId }: EventDetailPageProps) {
@@ -156,10 +382,12 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
   const [taskError, setTaskError] = useState<string | null>(null)
   const [taskSaving, setTaskSaving] = useState(false)
 
-  // Task list toolbar: search / status filter / sorting
+  // Task list toolbar: search / status filter / sorting + view mode
   const [taskQuery, setTaskQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sortBy, setSortBy] = useState<TaskSort>('due-asc')
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list')
+  const [expandedTimelineTaskId, setExpandedTimelineTaskId] = useState<string | null>(null)
 
   // Delete confirm
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -611,6 +839,35 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                 Tasks <span className="ml-1 text-muted-foreground">({statusCounts.all})</span>
               </h2>
               <div className="flex flex-wrap items-center gap-2">
+                {/* View mode segmented control */}
+                <div className="inline-flex h-9 items-center rounded-lg border border-border bg-muted/60 p-0.5" role="tablist" aria-label="Task view mode">
+                  {(
+                    [
+                      { value: 'list', icon: List, label: 'List' },
+                      { value: 'timeline', icon: GanttChart, label: 'Timeline' },
+                    ] as const
+                  ).map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={viewMode === mode.value}
+                      onClick={() => {
+                        setViewMode(mode.value)
+                        setExpandedTimelineTaskId(null)
+                      }}
+                      className={cn(
+                        'inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-all',
+                        viewMode === mode.value
+                          ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <mode.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
                   <Input
@@ -621,19 +878,21 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     aria-label="Filter tasks by title"
                   />
                 </div>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as TaskSort)}>
-                  <SelectTrigger className="h-9 w-44 text-xs" aria-label="Sort tasks">
-                    <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TASK_SORTS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {viewMode === 'list' ? (
+                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as TaskSort)}>
+                    <SelectTrigger className="h-9 w-44 text-xs" aria-label="Sort tasks">
+                      <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TASK_SORTS.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
               </div>
             </div>
             {/* Status filter chips */}
@@ -697,6 +956,15 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                 }
               />
             </div>
+          ) : viewMode === 'timeline' ? (
+            <TimelineView
+              event={event}
+              tasks={visibleTasks}
+              expandedTaskId={expandedTimelineTaskId}
+              onToggleExpand={(taskId) => setExpandedTimelineTaskId((prev) => (prev === taskId ? null : taskId))}
+              onStatusChange={handleTaskStatusChange}
+              rowUpdatingId={rowUpdatingId}
+            />
           ) : (
             <ul className="divide-y divide-border/60">
               {visibleTasks.map((task, index) => {

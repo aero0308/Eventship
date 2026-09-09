@@ -219,7 +219,7 @@ export function HomePage() {
                       { title: 'Confirm catering headcount', done: true },
                       { title: 'Print attendee badges', done: false },
                     ].map((task) => (
-                      <div key={task.title} className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/50/70 px-3 py-2">
+                      <div key={task.title} className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/70 px-3 py-2">
                         <CheckCircle2
                           className={cn('h-4 w-4 shrink-0', task.done ? 'text-emerald-500' : 'text-stone-300')}
                         />
@@ -236,7 +236,7 @@ export function HomePage() {
         </section>
 
         {/* ============ Stats strip ============ */}
-        <section className="border-y border-border bg-muted/50/70" aria-label="Key numbers">
+        <section className="border-y border-border bg-muted/70" aria-label="Key numbers">
           <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:grid-cols-4">
             {STATS.map((stat, index) => (
               <motion.div
@@ -288,7 +288,7 @@ export function HomePage() {
         </section>
 
         {/* ============ Roles ============ */}
-        <section className="border-y border-border bg-muted/50/70 py-16" aria-label="Roles">
+        <section className="border-y border-border bg-muted/70 py-16" aria-label="Roles">
           <div className="mx-auto max-w-6xl px-4">
             <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold tracking-tight text-foreground">Built for every role</h2>

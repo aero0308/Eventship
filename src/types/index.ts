@@ -97,6 +97,9 @@ export interface NotificationDTO {
   createdAt: string
 }
 
+/** Per-type mute map — every NotificationType key present, true = enabled. */
+export type NotificationPrefsMap = Record<NotificationType, boolean>
+
 export interface ActivityLogDTO {
   id: string
   userId: string
