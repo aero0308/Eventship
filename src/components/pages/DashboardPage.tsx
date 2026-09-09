@@ -14,6 +14,7 @@ import {
   ListPlus,
   ListTodo,
   LogIn,
+  MapPin,
   MessageSquare,
   RefreshCw,
   Sparkles,
@@ -543,6 +544,12 @@ export function DashboardPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{event.name}</p>
+                        {event.location ? (
+                          <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground" title={event.location}>
+                            <MapPin className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                            <span className="truncate">{event.location}</span>
+                          </p>
+                        ) : null}
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <Badge variant="outline" className={cn('text-[10px]', EVENT_STATUS_CLASSES[event.status])}>
                             {EVENT_STATUS_LABELS[event.status] ?? event.status}

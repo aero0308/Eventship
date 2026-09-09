@@ -10,6 +10,7 @@ import {
   serializeEvent,
   type EventWithRelations,
 } from '../../_lib/events'
+import { emitBoardChange } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
 async function fetchEventWithStats(id: string) {
@@ -79,6 +80,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (Object.keys(data).length > 0) {
       await db.event.update({ where: { id }, data })
+      emitBoardChange(id, 'event:updated', user.id, { eventId: id })
     }
 
     if (statusChanged) {

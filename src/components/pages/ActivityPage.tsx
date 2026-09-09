@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileDown, History, RefreshCw, RotateCcw, SearchX } from 'lucide-react'
+import { CalendarRange, FileDown, History, Loader2, RefreshCw, RotateCcw, SearchX } from 'lucide-react'
 import type { ActivityFeedDTO, UserDTO } from '@/types'
 import { ACTIVITY_FILTER_GROUPS, ACTIVITY_GROUP_ACTIONS, API_BASE, ROUTES } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
@@ -10,6 +10,9 @@ import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -107,14 +110,19 @@ export function ActivityPage() {
 
   const isFiltered = group !== 'ALL' || userFilter !== 'everyone'
 
-  // Audit CSV export — EVENT_MANAGER only; honors the current filters.
+  // Audit CSV export — EVENT_MANAGER only; honors the current filters + optional date range.
   const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFrom, setExportFrom] = useState('')
+  const [exportTo, setExportTo] = useState('')
   const exportCsv = async () => {
     setExporting(true)
     try {
       const query = qs({
         action: actionsParam?.join(','),
         userId: userFilter !== 'everyone' ? userFilter : undefined,
+        from: exportFrom ? new Date(`${exportFrom}T00:00:00`).toISOString() : undefined,
+        to: exportTo ? new Date(`${exportTo}T23:59:59`).toISOString() : undefined,
       })
       const response = await fetch(`${API_BASE}/activity/export${query}`, { credentials: 'include' })
       if (!response.ok) {
@@ -130,7 +138,9 @@ export function ActivityPage() {
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
-      toast({ title: 'Audit log exported', description: 'CSV downloaded with your current filters applied.' })
+      const rangeLabel = exportFrom || exportTo ? ` (${exportFrom || 'start'} → ${exportTo || 'now'})` : ''
+      toast({ title: 'Audit log exported', description: `CSV downloaded with your filters${rangeLabel}.` })
+      setExportOpen(false)
     } catch (err) {
       toast({
         title: 'Export failed',
@@ -151,16 +161,60 @@ export function ActivityPage() {
         actions={
           <>
             {canExport ? (
-              <Button
-                variant="outline"
-                onClick={() => void exportCsv()}
-                disabled={exporting}
-                className="min-h-11"
-                title="Download the audit trail as CSV (manager only)"
-              >
-                <FileDown className={cn('mr-2 h-4 w-4', exporting && 'animate-pulse')} aria-hidden="true" />
-                {exporting ? 'Exporting…' : 'Export CSV'}
-              </Button>
+              <Popover open={exportOpen} onOpenChange={setExportOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={exporting}
+                    className="min-h-11"
+                    title="Download the audit trail as CSV (manager only)"
+                  >
+                    <FileDown className={cn('mr-2 h-4 w-4', exporting && 'animate-pulse')} aria-hidden="true" />
+                    {exporting ? 'Exporting…' : 'Export CSV'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72">
+                  <div className="space-y-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <CalendarRange className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                      Export audit trail
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="export-from" className="text-[11px] text-muted-foreground">From</Label>
+                        <Input
+                          id="export-from"
+                          type="date"
+                          value={exportFrom}
+                          onChange={(e) => setExportFrom(e.target.value)}
+                          className="h-9 text-xs dark:[color-scheme:dark]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="export-to" className="text-[11px] text-muted-foreground">To</Label>
+                        <Input
+                          id="export-to"
+                          type="date"
+                          value={exportTo}
+                          onChange={(e) => setExportTo(e.target.value)}
+                          className="h-9 text-xs dark:[color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Applies the current type/person filters. Up to 5,000 entries, newest first.
+                    </p>
+                    <Button
+                      onClick={() => void exportCsv()}
+                      disabled={exporting}
+                      className="min-h-10 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <FileDown className="mr-2 h-4 w-4" aria-hidden="true" />}
+                      {exporting ? 'Preparing…' : 'Download CSV'}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             ) : null}
             <Button variant="outline" onClick={() => void load()} className="min-h-11" disabled={loading}>
               <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />

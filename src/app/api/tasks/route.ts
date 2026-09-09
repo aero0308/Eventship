@@ -16,6 +16,7 @@ import {
 } from '@/lib/api-utils'
 import { createTaskSchema } from '@/lib/schemas'
 import { serializeTask, taskInclude } from '../_lib/tasks'
+import { emitBoardChange } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
 export async function GET(request: Request) {
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
       taskId: created.id,
       title: body.title,
     })
+    emitBoardChange(body.eventId, 'task:created', user.id, { taskId: created.id })
 
     const task = await db.task.findUniqueOrThrow({
       where: { id: created.id },

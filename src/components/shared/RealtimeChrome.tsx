@@ -1,0 +1,100 @@
+'use client'
+
+/**
+ * Small realtime UI chrome shared by the board and event workspace:
+ * - LiveBadge: pulsing emerald "Live" pill while the socket is connected.
+ * - PresenceStack: avatars of other users currently viewing the same event.
+ */
+
+import { useEffect, useState } from 'react'
+import { Radio, WifiOff } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  onRealtimeStateChange,
+  type PresenceUser,
+} from '@/lib/realtime-client'
+import { cn } from '@/lib/utils'
+
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+}
+
+export function LiveBadge({ className, subtle }: { className?: string; subtle?: boolean }) {
+  const [connected, setConnected] = useState(false)
+  const [everConnected, setEverConnected] = useState(false)
+
+  useEffect(() => onRealtimeStateChange((state) => {
+    setConnected(state)
+    if (state) setEverConnected(true)
+  }), [])
+
+  // Stay quiet until the first successful connect so offline deployments
+  // don't show a permanent "reconnecting" chip.
+  if (!everConnected && !connected) return null
+
+  return (
+    <span
+      role="status"
+      aria-label={connected ? 'Realtime connected' : 'Realtime reconnecting'}
+      className={cn(
+        'inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+        connected
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+          : 'border-border bg-muted text-muted-foreground',
+        className
+      )}
+    >
+      {connected ? (
+        <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" />
+      ) : (
+        <WifiOff className="h-3 w-3" aria-hidden="true" />
+      )}
+      {connected ? 'Live' : 'Reconnecting'}
+    </span>
+  )
+}
+
+export function PresenceStack({ viewers, max = 4 }: { viewers: PresenceUser[]; max?: number }) {
+  if (viewers.length === 0) return null
+  const shown = viewers.slice(0, max)
+  const overflow = viewers.length - shown.length
+
+  return (
+    <span
+      className="inline-flex items-center gap-2"
+      aria-label={`${viewers.length} other ${viewers.length === 1 ? 'person' : 'people'} viewing this event`}
+    >
+      <span className="hidden text-[11px] font-medium text-muted-foreground sm:inline">
+        {viewers.length === 1 ? 'viewing now' : `${viewers.length} viewing now`}
+      </span>
+      <span className="flex -space-x-1.5">
+        {shown.map((viewer, index) => (
+          <span key={viewer.id} className="relative" style={{ zIndex: max - index }}>
+            <Avatar className="h-6 w-6 ring-2 ring-background">
+              <AvatarFallback
+                className="bg-teal-600 text-[8px] font-semibold text-white"
+                title={`${viewer.fullName} is viewing`}
+              >
+                {initialsOf(viewer.fullName)}
+              </AvatarFallback>
+            </Avatar>
+            <span
+              className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background bg-emerald-500"
+              aria-hidden="true"
+            />
+          </span>
+        ))}
+        {overflow > 0 ? (
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground ring-2 ring-background">
+            +{overflow}
+          </span>
+        ) : null}
+      </span>
+    </span>
+  )
+}

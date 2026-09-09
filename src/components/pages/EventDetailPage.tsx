@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -36,6 +36,16 @@ import {
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import {
+  clearRealtimeRooms,
+  getRealtimeSocket,
+  setRealtimeRooms,
+  setRealtimeUser,
+  type BoardChangePayload,
+  type PresencePayload,
+  type PresenceUser,
+} from '@/lib/realtime-client'
+import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { buildIcs, downloadIcs, googleCalendarUrl, slugifyFilename } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
@@ -445,6 +455,48 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     return user.role === 'TEAM_LEADER' && user.teamId === event.teamId
   }, [user, event])
 
+  // ---- Realtime: live workspace + presence --------------------------------
+  const [viewers, setViewers] = useState<PresenceUser[]>([])
+  const reloadRef = useRef<{ tasks: typeof loadTasks; event: typeof loadEvent } | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    const room = `event:${eventId}`
+    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+    setRealtimeRooms('event-detail', [room])
+    setViewers([])
+    return () => {
+      clearRealtimeRooms('event-detail')
+      setViewers([])
+    }
+  }, [eventId, user])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onBoardChange = (payload: BoardChangePayload) => {
+      if (payload.actorId === user.id) return // own change — optimistic UI already applied
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        void reloadRef.current?.tasks({ silent: true })
+        void reloadRef.current?.event()
+      }, 400)
+    }
+    const onPresence = (payload: PresencePayload) => {
+      if (payload.room !== `event:${eventId}`) return
+      setViewers(payload.viewers.filter((viewer) => viewer.id !== user.id))
+    }
+    socket.on('board:changed', onBoardChange)
+    socket.on('presence:updated', onPresence)
+    return () => {
+      socket.off('board:changed', onBoardChange)
+      socket.off('presence:updated', onPresence)
+      if (timer) clearTimeout(timer)
+    }
+  }, [eventId, user])
+
   const loadEvent = useCallback(async () => {
     try {
       const data = await api.get<{ event: EventDTO }>(`/events/${eventId}`)
@@ -456,15 +508,22 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     }
   }, [eventId])
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
     try {
       const data = await api.get<{ tasks: TaskDTO[] }>(`/tasks${qs({ eventId })}`)
       setTasks(data.tasks)
     } catch (error) {
+      if (options?.silent) return
       const message = error instanceof ApiClientError ? error.message : 'Failed to load tasks.'
       toast({ title: 'Could not load tasks', description: message, variant: 'destructive' })
+    } finally {
+      if (!options?.silent) setLoading(false)
     }
   }, [eventId, toast])
+
+  // Latest loaders for the realtime handlers (assigned after both exist).
+  reloadRef.current = { tasks: loadTasks, event: loadEvent }
 
   useEffect(() => {
     let cancelled = false
@@ -960,8 +1019,12 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
         <CardContent className="px-0 pb-2">
           <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-foreground">
+              <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
                 Tasks <span className="ml-1 text-muted-foreground">({statusCounts.all})</span>
+                <span className="flex items-center gap-2.5">
+                  <LiveBadge />
+                  <PresenceStack viewers={viewers} />
+                </span>
               </h2>
               <div className="flex flex-wrap items-center gap-2">
                 {/* View mode segmented control */}

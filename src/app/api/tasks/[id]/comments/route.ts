@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody, requireUser } from '@/lib/api-utils'
 import { createCommentSchema } from '@/lib/schemas'
+import { emitBoardChange } from '@/lib/realtime'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,6 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       taskId,
       taskTitle: task.title,
     })
+    emitBoardChange(task.eventId, 'comment:added', user.id, { taskId })
 
     return ok(
       {

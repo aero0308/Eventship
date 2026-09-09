@@ -18,7 +18,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { differenceInCalendarDays, format, formatDistanceToNow } from 'date-fns'
+import { differenceInCalendarDays, format, formatDistanceToNow, isSameDay } from 'date-fns'
 import { DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { TaskCommentDTO, TaskDTO, TaskPriority, TaskStatus, UserDTO } from '@/types'
@@ -33,8 +33,17 @@ import {
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import {
+  clearRealtimeRooms,
+  getRealtimeSocket,
+  setRealtimeRooms,
+  setRealtimeUser,
+  type BoardChangePayload,
+} from '@/lib/realtime-client'
+import { LiveBadge } from '@/components/shared/RealtimeChrome'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { useHashRoute } from '@/hooks/use-hash-route'
+import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -144,6 +153,10 @@ interface TaskCardProps {
 function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen, selected, onToggleSelect }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled: !canDrag })
   const chip = dueChip(task)
+  const startChip =
+    task.startDate && (!task.dueDate || !isSameDay(new Date(task.startDate), new Date(task.dueDate)))
+      ? format(new Date(task.startDate), 'MMM d')
+      : null
   const assignee = task.assignee
 
   return (
@@ -205,6 +218,16 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen, selected
               <Badge variant="outline" className={cn('gap-1 text-[10px] font-normal', chip.classes)}>
                 <Clock className="h-3 w-3" aria-hidden="true" />
                 {chip.label}
+              </Badge>
+            ) : null}
+            {startChip ? (
+              <Badge
+                variant="outline"
+                className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"
+                title={`Scheduled start: ${startChip}`}
+              >
+                <Play className="h-3 w-3" aria-hidden="true" />
+                Starts {startChip}
               </Badge>
             ) : null}
             {task.priority ? (
@@ -331,8 +354,8 @@ export function TasksPage() {
     }
   }, [queryAssignee])
 
-  const loadTasks = useCallback(async () => {
-    setLoading(true)
+  const loadTasks = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
     try {
       const data = await api.get<{ tasks: TaskDTO[] }>(
         `/tasks${qs({
@@ -356,6 +379,45 @@ export function TasksPage() {
       setLoading(false)
     }
   }, [eventFilter, priorityFilter, assigneeFilter, search, toast])
+
+  // ---- Realtime: live board updates --------------------------------------
+  // Subscribe to every event room (or just the filtered one); when someone
+  // else changes a task/comment, refetch the board (debounced).
+  const user = useAuthStore((s) => s.user)
+  const boardRooms = useMemo(() => {
+    if (eventFilter !== 'all') return [`event:${eventFilter}`]
+    return events.map((event) => `event:${event.id}`)
+  }, [eventFilter, events])
+  const roomsKey = boardRooms.join(',')
+
+  const loadTasksRef = useRef(loadTasks)
+  loadTasksRef.current = loadTasks
+
+  useEffect(() => {
+    if (!user) return
+    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+    setRealtimeRooms('board', roomsKey ? roomsKey.split(',') : [])
+    return () => clearRealtimeRooms('board')
+  }, [roomsKey, user])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const handler = (payload: BoardChangePayload) => {
+      if (payload.actorId === user.id) return // own change — optimistic UI already applied
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        void loadTasksRef.current({ silent: true })
+      }, 400)
+    }
+    socket.on('board:changed', handler)
+    return () => {
+      socket.off('board:changed', handler)
+      if (timer) clearTimeout(timer)
+    }
+  }, [user])
 
   useEffect(() => {
     const timer = setTimeout(() => void loadTasks(), 250)
@@ -747,6 +809,7 @@ export function TasksPage() {
         subtitle="Drag cards between columns to update status — the board is your source of truth."
         actions={
           <>
+            <LiveBadge className="mr-1 hidden sm:inline-flex" />
             {tasks.length > 0 ? (
               <Button
                 variant="outline"

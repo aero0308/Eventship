@@ -235,6 +235,26 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               ))}
             </CommandGroup>
           </CommandList>
+
+          {/* Keyboard hints footer */}
+          <div
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground"
+            aria-hidden="true"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">↑↓</kbd>
+              navigate
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">↵</kbd>
+              open
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">esc</kbd>
+              close
+            </span>
+            <span className="ml-auto hidden sm:inline">Search is live — results stream in as you type</span>
+          </div>
         </Command>
       </DialogContent>
     </Dialog>

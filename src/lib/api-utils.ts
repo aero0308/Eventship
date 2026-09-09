@@ -109,9 +109,14 @@ export async function notifyUser(
   try {
     const prefs = await getNotificationPrefs(userId)
     if (prefs[type] === false) return // muted by the recipient
-    await (await import('@/lib/db')).db.notification.create({
+    const { db } = await import('@/lib/db')
+    await db.notification.create({
       data: { userId, type, message },
     })
+    // Live-push to the recipient's personal room (best-effort; realtime
+    // service may be offline — polling remains the fallback).
+    const { emitRealtime } = await import('@/lib/realtime')
+    await emitRealtime({ room: `user:${userId}`, event: 'notification:new', data: { userId, type } })
   } catch (e) {
     console.error('[notify]', e)
   }

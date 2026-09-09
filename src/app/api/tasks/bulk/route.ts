@@ -11,6 +11,7 @@ import {
 } from '@/lib/api-utils'
 import { bulkTaskActionSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
+import { emitBoardChange } from '@/lib/realtime'
 
 /**
  * POST /api/tasks/bulk — apply one action to many tasks.
@@ -44,10 +45,12 @@ export async function POST(request: Request) {
         priority: true,
         assignedTo: true,
         createdBy: true,
+        eventId: true,
         event: { select: { teamId: true } },
       },
     })
     const taskById = new Map(tasks.map((t) => [t.id, t]))
+    const touchedEvents = new Set<string>()
 
     let updated = 0
     let deleted = 0
@@ -66,6 +69,7 @@ export async function POST(request: Request) {
         if (body.action === 'delete') {
           assertAccess(fullManager, 'Only managers, the owning team leader, or the creator can delete a task')
           await db.task.delete({ where: { id } })
+          touchedEvents.add(task.eventId)
           deleted += 1
           continue
         }
@@ -86,6 +90,7 @@ export async function POST(request: Request) {
             recipients.delete(user.id)
             await Promise.all([...recipients].map((recipientId) => notifyUser(recipientId, notifyType, message)))
             await logActivity(user.id, notifyType, { taskId: id, title: task.title, from: task.status, to: body.status })
+            touchedEvents.add(task.eventId)
             updated += 1
           }
           continue
@@ -96,6 +101,7 @@ export async function POST(request: Request) {
 
         if (body.action === 'priority' && task.priority !== body.priority) {
           await db.task.update({ where: { id }, data: { priority: body.priority! } })
+          touchedEvents.add(task.eventId)
           updated += 1
         } else if (body.action === 'assign' && task.assignedTo !== body.assignedTo) {
           await db.task.update({ where: { id }, data: { assignedTo: body.assignedTo! } })
@@ -107,9 +113,11 @@ export async function POST(request: Request) {
             title: task.title,
             assignedTo: body.assignedTo,
           })
+          touchedEvents.add(task.eventId)
           updated += 1
         } else if (body.action === 'unassign' && task.assignedTo !== null) {
           await db.task.update({ where: { id }, data: { assignedTo: null } })
+          touchedEvents.add(task.eventId)
           updated += 1
         }
       } catch (error) {
@@ -117,6 +125,11 @@ export async function POST(request: Request) {
           error instanceof ApiError ? error.message : 'Update failed for this task'
         failed.push({ id, title: task.title, reason })
       }
+    }
+
+    // One board-change ping per touched event (clients refetch on receipt).
+    for (const eventId of touchedEvents) {
+      emitBoardChange(eventId, `task:${body.action}`, user.id, { bulk: true, updated, deleted })
     }
 
     return ok({ updated, deleted, failed, total: ids.length })

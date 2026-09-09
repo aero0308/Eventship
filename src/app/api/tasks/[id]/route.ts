@@ -11,6 +11,7 @@ import {
 } from '@/lib/api-utils'
 import { updateTaskSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
+import { emitBoardChange } from '@/lib/realtime'
 import {
   serializeTaskDetail,
   taskDetailInclude,
@@ -120,6 +121,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     await db.task.update({ where: { id }, data })
+    emitBoardChange(existing.eventId, 'task:updated', user.id, { taskId: id })
 
     if (assignedToChanged && body.assignedTo) {
       // Contract message: no priority suffix on reassignment.
@@ -167,7 +169,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const { id } = await params
     const existing = await db.task.findUnique({
       where: { id },
-      select: { id: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
+      select: { id: true, eventId: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
     })
     if (!existing) throw new ApiError(404, 'Task not found')
     assertAccess(
@@ -177,6 +179,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     // Comments and dependencies cascade-delete via schema relations.
     await db.task.delete({ where: { id } })
+    emitBoardChange(existing.eventId, 'task:deleted', user.id, { taskId: id })
     return ok({ success: true })
   } catch (error) {
     return handleApiError(error)

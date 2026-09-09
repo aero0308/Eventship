@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
@@ -31,6 +31,12 @@ import { Moon, Sun } from 'lucide-react'
 import type { NotificationDTO, NotificationType } from '@/types'
 import { ROUTES, ROLE_BADGE_CLASSES, ROLE_LABELS } from '@/lib/constants'
 import { api } from '@/lib/api-client'
+import {
+  clearRealtimeRooms,
+  getRealtimeSocket,
+  setRealtimeRooms,
+  setRealtimeUser,
+} from '@/lib/realtime-client'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
@@ -150,6 +156,24 @@ export function Layout({ children }: LayoutProps) {
     const interval = setInterval(() => void loadNotifications(), 30_000)
     return () => clearInterval(interval)
   }, [user, loadNotifications])
+
+  // Realtime bell: join the user's personal room and refresh instantly when a
+  // notification is pushed (the 30s poll above stays as a fallback).
+  const loadNotificationsRef = useRef(loadNotifications)
+  loadNotificationsRef.current = loadNotifications
+  useEffect(() => {
+    if (!user) return
+    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+    setRealtimeRooms('notifications', [`user:${user.id}`])
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    const handler = () => void loadNotificationsRef.current()
+    socket.on('notification:new', handler)
+    return () => {
+      socket.off('notification:new', handler)
+      clearRealtimeRooms('notifications')
+    }
+  }, [user])
 
   const markRead = async (id: string) => {
     const previous = notifications
