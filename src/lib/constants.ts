@@ -16,6 +16,8 @@ export const ROUTES = {
   EVENTS: '/events',
   TASKS: '/tasks',
   TEAMS: '/teams',
+  ACTIVITY: '/activity',
+  PROFILE: '/profile',
 } as const
 
 export const SESSION_COOKIE = 'ems_session'
@@ -100,6 +102,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 export const ACTIVITY_ACTIONS = {
   USER_REGISTERED: 'USER_REGISTERED',
   USER_LOGIN: 'USER_LOGIN',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
   TEAM_CREATED: 'TEAM_CREATED',
   TEAM_UPDATED: 'TEAM_UPDATED',
   EVENT_CREATED: 'EVENT_CREATED',
@@ -111,3 +114,38 @@ export const ACTIVITY_ACTIONS = {
   TASK_COMPLETED: 'TASK_COMPLETED',
   COMMENT_ADDED: 'COMMENT_ADDED',
 } as const
+
+/** Human labels for activity actions shown in the activity feed. */
+export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  USER_REGISTERED: 'Joined the workspace',
+  USER_LOGIN: 'Signed in',
+  PASSWORD_CHANGED: 'Changed their password',
+  TEAM_CREATED: 'Created a team',
+  TEAM_UPDATED: 'Updated a team',
+  EVENT_CREATED: 'Created an event',
+  EVENT_UPDATED: 'Updated an event',
+  EVENT_STATUS_CHANGED: 'Changed event status',
+  TASK_CREATED: 'Created a task',
+  TASK_ASSIGNED: 'Assigned a task',
+  TASK_STATUS_CHANGED: 'Updated task status',
+  TASK_COMPLETED: 'Completed a task',
+  COMMENT_ADDED: 'Commented on a task',
+}
+
+/** Coarse groups used by the activity page filter (keeps the dropdown short). */
+export const ACTIVITY_FILTER_GROUPS = [
+  { value: 'ALL', label: 'All activity' },
+  { value: 'EVENTS', label: 'Events' },
+  { value: 'TASKS', label: 'Tasks' },
+  { value: 'TEAMS', label: 'Teams' },
+  { value: 'USERS', label: 'Users' },
+] as const
+
+/** Maps a filter group to the concrete activity actions it includes. */
+export const ACTIVITY_GROUP_ACTIONS: Record<string, string[] | null> = {
+  ALL: null,
+  EVENTS: ['EVENT_CREATED', 'EVENT_UPDATED', 'EVENT_STATUS_CHANGED'],
+  TASKS: ['TASK_CREATED', 'TASK_ASSIGNED', 'TASK_STATUS_CHANGED', 'TASK_COMPLETED', 'COMMENT_ADDED'],
+  TEAMS: ['TEAM_CREATED', 'TEAM_UPDATED'],
+  USERS: ['USER_REGISTERED', 'USER_LOGIN', 'PASSWORD_CHANGED'],
+}

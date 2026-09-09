@@ -17,9 +17,18 @@ import { EventsPage } from '@/components/pages/EventsPage'
 import { EventDetailPage } from '@/components/pages/EventDetailPage'
 import { TasksPage } from '@/components/pages/TasksPage'
 import { TeamsPage } from '@/components/pages/TeamsPage'
+import { ActivityPage } from '@/components/pages/ActivityPage'
+import { ProfilePage } from '@/components/pages/ProfilePage'
 import { Button } from '@/components/ui/button'
 
-const PROTECTED_PATHS: readonly string[] = [ROUTES.DASHBOARD, ROUTES.EVENTS, ROUTES.TASKS, ROUTES.TEAMS]
+const PROTECTED_PATHS: readonly string[] = [
+  ROUTES.DASHBOARD,
+  ROUTES.EVENTS,
+  ROUTES.TASKS,
+  ROUTES.TEAMS,
+  ROUTES.ACTIVITY,
+  ROUTES.PROFILE,
+]
 
 const PAGE_TRANSITION = { duration: 0.25, ease: 'easeOut' as const }
 
@@ -147,6 +156,8 @@ export default function Page() {
             {eventDetailId === null && pathname === ROUTES.EVENTS && <EventsPage />}
             {eventDetailId === null && pathname === ROUTES.TASKS && <TasksPage />}
             {eventDetailId === null && pathname === ROUTES.TEAMS && <TeamsPage />}
+            {eventDetailId === null && pathname === ROUTES.ACTIVITY && <ActivityPage />}
+            {eventDetailId === null && pathname === ROUTES.PROFILE && <ProfilePage />}
           </MotionPage>
         </Layout>
       )

@@ -195,10 +195,22 @@ export function DashboardPage() {
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={statusData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#78716c' }} tickLine={false} axisLine={{ stroke: '#e7e5e4' }} interval={0} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#78716c' }} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'rgba(16,185,129,0.06)' }} contentStyle={{ borderRadius: 8, border: '1px solid #e7e5e4', fontSize: 13 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={0} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(16,185,129,0.08)' }}
+                      contentStyle={{
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        backgroundColor: 'var(--card)',
+                        color: 'var(--foreground)',
+                        fontSize: 13,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                      }}
+                      labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }}
+                      itemStyle={{ color: 'var(--muted-foreground)' }}
+                    />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={48}>
                       {statusData.map((entry) => (
                         <Cell key={entry.key} fill={STATUS_CHART_COLORS[entry.key] ?? '#78716c'} />
@@ -230,7 +242,18 @@ export function DashboardPage() {
                           <Cell key={entry.key} fill={PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e'} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e7e5e4', fontSize: 13 }} />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: 10,
+                          border: '1px solid var(--border)',
+                          backgroundColor: 'var(--card)',
+                          color: 'var(--foreground)',
+                          fontSize: 13,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                        }}
+                        labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }}
+                        itemStyle={{ color: 'var(--muted-foreground)' }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>

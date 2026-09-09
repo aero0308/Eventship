@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
+  ArrowDownUp,
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   ExternalLink,
   Loader2,
   Pencil,
+  Search,
   Trash2,
   Users,
 } from 'lucide-react'
@@ -94,6 +96,29 @@ const EMPTY_TASK: TaskFormState = {
   estimatedHours: '',
 }
 
+const UNASSIGNED = '__unassigned__'
+
+const TASK_SORTS = [
+  { value: 'due-asc', label: 'Due soonest' },
+  { value: 'due-desc', label: 'Due latest' },
+  { value: 'priority', label: 'Priority (high → low)' },
+  { value: 'status', label: 'Status' },
+  { value: 'title', label: 'Title A–Z' },
+  { value: 'newest', label: 'Newest first' },
+] as const
+
+type TaskSort = (typeof TASK_SORTS)[number]['value']
+
+const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
+const STATUS_ORDER: Record<string, number> = { NOT_STARTED: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3 }
+
+function byDue(a: string | null, b: string | null): number {
+  if (!a && !b) return 0
+  if (!a) return 1 // no due date sinks to the bottom
+  if (!b) return -1
+  return new Date(a).getTime() - new Date(b).getTime()
+}
+
 function toDateInput(iso: string | null | undefined): string {
   return iso ? format(new Date(iso), 'yyyy-MM-dd') : ''
 }
@@ -130,6 +155,11 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
   const [taskForm, setTaskForm] = useState<TaskFormState>(EMPTY_TASK)
   const [taskError, setTaskError] = useState<string | null>(null)
   const [taskSaving, setTaskSaving] = useState(false)
+
+  // Task list toolbar: search / status filter / sorting
+  const [taskQuery, setTaskQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<TaskSort>('due-asc')
 
   // Delete confirm
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -187,6 +217,45 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     const percent = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0
     return { ...s, percent }
   }, [event])
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: tasks.length, NOT_STARTED: 0, IN_PROGRESS: 0, BLOCKED: 0, COMPLETED: 0 }
+    for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1
+    return counts
+  }, [tasks])
+
+  const visibleTasks = useMemo(() => {
+    const q = taskQuery.trim().toLowerCase()
+    const filtered = tasks.filter((t) => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false
+      if (q && !t.title.toLowerCase().includes(q)) return false
+      return true
+    })
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case 'due-asc':
+          return byDue(a.dueDate, b.dueDate)
+        case 'due-desc':
+          return byDue(b.dueDate, a.dueDate)
+        case 'priority': {
+          const p = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3)
+          return p !== 0 ? p : byDue(a.dueDate, b.dueDate)
+        }
+        case 'status': {
+          const s = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+          return s !== 0 ? s : byDue(a.dueDate, b.dueDate)
+        }
+        case 'title':
+          return a.title.localeCompare(b.title)
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        default:
+          return 0
+      }
+    })
+    return sorted
+  }, [tasks, taskQuery, statusFilter, sortBy])
 
   const openEdit = () => {
     if (!event) return
@@ -301,6 +370,37 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     } catch (error) {
       setTasks(previous)
       const message = error instanceof ApiClientError ? error.message : 'Failed to update the task.'
+      toast({ title: 'Update failed', description: message, variant: 'destructive' })
+    } finally {
+      setRowUpdatingId(null)
+    }
+  }
+
+  const handleTaskAssigneeChange = async (task: TaskDTO, assigneeId: string) => {
+    const nextUserId = assigneeId === UNASSIGNED ? null : assigneeId
+    if ((task.assignedTo ?? null) === nextUserId) return
+    const previous = tasks
+    setRowUpdatingId(task.id)
+    setTasks((list) =>
+      list.map((t) =>
+        t.id === task.id
+          ? {
+              ...t,
+              assignedTo: nextUserId,
+              assignee: nextUserId ? (users.find((u) => u.id === nextUserId) ?? null) : null,
+            }
+          : t
+      )
+    )
+    try {
+      await api.patch(`/tasks/${task.id}`, { assignedTo: nextUserId })
+      toast({
+        title: 'Assignee updated',
+        description: `“${task.title}” → ${nextUserId ? (users.find((u) => u.id === nextUserId)?.fullName ?? 'member') : 'Unassigned'}`,
+      })
+    } catch (error) {
+      setTasks(previous)
+      const message = error instanceof ApiClientError ? error.message : 'Failed to update the assignee.'
       toast({ title: 'Update failed', description: message, variant: 'destructive' })
     } finally {
       setRowUpdatingId(null)
@@ -457,9 +557,9 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Event task statistics">
         {[
           { label: 'Total tasks', value: stats.total, classes: 'bg-muted/50 text-foreground' },
-          { label: 'Completed', value: stats.completed, classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300' },
-          { label: 'In progress', value: stats.inProgress, classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 dark:bg-amber-500/15 dark:text-amber-300' },
-          { label: 'Blocked', value: stats.blocked, classes: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300 dark:bg-red-500/15 dark:text-red-300' },
+          { label: 'Completed', value: stats.completed, classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+          { label: 'In progress', value: stats.inProgress, classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+          { label: 'Blocked', value: stats.blocked, classes: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300' },
         ].map((chip) => (
           <Card key={chip.label} className="py-0">
             <CardContent className={cn('rounded-xl px-4 py-4', chip.classes)}>
@@ -505,10 +605,63 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
       {/* Task list */}
       <Card className="py-0">
         <CardContent className="px-0 pb-2">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold text-foreground">
-              Tasks <span className="ml-1 text-muted-foreground">({tasks.length})</span>
-            </h2>
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-foreground">
+                Tasks <span className="ml-1 text-muted-foreground">({statusCounts.all})</span>
+              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
+                  <Input
+                    value={taskQuery}
+                    onChange={(e) => setTaskQuery(e.target.value)}
+                    placeholder="Filter by title…"
+                    className="h-9 w-40 pl-8 text-xs sm:w-48"
+                    aria-label="Filter tasks by title"
+                  />
+                </div>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as TaskSort)}>
+                  <SelectTrigger className="h-9 w-44 text-xs" aria-label="Sort tasks">
+                    <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TASK_SORTS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {/* Status filter chips */}
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter tasks by status">
+              {(['all', ...TASK_STATUSES] as const).map((status) => {
+                const active = statusFilter === status
+                const label = status === 'all' ? 'All' : (TASK_STATUS_LABELS[status] ?? status)
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    aria-pressed={active}
+                    className={cn(
+                      'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                        : 'border-border bg-background text-muted-foreground hover:border-emerald-300 hover:text-foreground dark:hover:border-emerald-500/40'
+                    )}
+                  >
+                    {label}
+                    <span className={cn('rounded-full px-1.5 text-[10px] font-semibold', active ? 'bg-white/20' : 'bg-muted text-muted-foreground')}>
+                      {statusCounts[status] ?? 0}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {tasks.length === 0 ? (
@@ -525,9 +678,28 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                 }
               />
             </div>
+          ) : visibleTasks.length === 0 ? (
+            <div className="px-4 py-8">
+              <EmptyState
+                icon={Search}
+                title="No matching tasks"
+                hint="No tasks match the current search and status filter."
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setTaskQuery('')
+                      setStatusFilter('all')
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            </div>
           ) : (
             <ul className="divide-y divide-border/60">
-              {tasks.map((task, index) => {
+              {visibleTasks.map((task, index) => {
                 const due = task.dueDate ? new Date(task.dueDate) : null
                 const overdue = due !== null && due.getTime() < Date.now() && task.status !== 'COMPLETED'
                 return (
@@ -577,6 +749,33 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
                       {rowUpdatingId === task.id ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/70" aria-hidden="true" />
+                      ) : null}
+                      {canManage ? (
+                        <Select
+                          value={task.assignedTo ?? UNASSIGNED}
+                          onValueChange={(value) => void handleTaskAssigneeChange(task, value)}
+                        >
+                          <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Change assignee for ${task.title}`}>
+                            {task.assignee ? (
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <Avatar className="h-4 w-4">
+                                  <AvatarFallback className="text-[7px]">{initialsOf(task.assignee.fullName)}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{task.assignee.fullName}</span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Unassigned</span>
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                            {users.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.fullName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       ) : null}
                       <Select value={task.status} onValueChange={(value) => void handleTaskStatusChange(task, value as TaskStatus)}>
                         <SelectTrigger

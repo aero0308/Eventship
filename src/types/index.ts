@@ -106,6 +106,46 @@ export interface ActivityLogDTO {
   timestamp: string
 }
 
+export interface ActivityFeedDTO {
+  activities: ActivityLogDTO[]
+  total: number
+  hasMore: boolean
+}
+
+export interface SearchResultEventDTO {
+  id: string
+  name: string
+  status: EventStatus
+  startDate: string
+}
+
+export interface SearchResultTaskDTO {
+  id: string
+  title: string
+  status: TaskStatus
+  priority: TaskPriority
+  eventId: string
+  eventName: string | null
+}
+
+export interface SearchResultTeamDTO {
+  id: string
+  name: string
+}
+
+export interface SearchResultUserDTO {
+  id: string
+  fullName: string
+  role: Role
+}
+
+export interface SearchResultDTO {
+  events: SearchResultEventDTO[]
+  tasks: SearchResultTaskDTO[]
+  teams: SearchResultTeamDTO[]
+  users: SearchResultUserDTO[]
+}
+
 export interface DashboardStatsDTO {
   totals: {
     events: number
@@ -148,6 +188,11 @@ export interface RegisterPayload {
 export interface LoginPayload {
   email: string
   password: string
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
 }
 
 export interface CreateEventPayload {

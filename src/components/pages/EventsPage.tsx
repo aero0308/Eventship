@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { motion } from 'framer-motion'
 import {
   CalendarDays,
@@ -21,7 +22,6 @@ import {
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
-import { navigate } from '@/hooks/use-hash-route'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -82,6 +82,7 @@ function formatRange(startISO: string, endISO: string): string {
 
 export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const { toast } = useToast()
+  const path = useHashRoute()
 
   const [events, setEvents] = useState<EventDTO[]>([])
   const [teams, setTeams] = useState<TeamDTO[]>([])
@@ -95,6 +96,17 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const [form, setForm] = useState<EventFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // ?new=1 hash query (e.g. from the command palette) auto-opens the create dialog.
+  useEffect(() => {
+    const query = path.split('?')[1] ?? ''
+    if (new URLSearchParams(query).get('new') === '1') {
+      setForm({ ...EMPTY_FORM })
+      setFormError(null)
+      setCreateOpen(true)
+      navigate(ROUTES.EVENTS, true)
+    }
+  }, [path])
 
   const loadTeams = useCallback(async () => {
     try {

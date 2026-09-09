@@ -181,3 +181,37 @@ Stage Summary:
 - EventFlow EMS — Phase 1 + Round-1 features complete: role-based API permissions, dedicated event workspace page (#/events/:id), full dark mode, CSV export (events/tasks), session-expiry auto-recovery, team avatar stacks, deadline-approaching reminder scanner.
 - Demo login: admin@eventflow.io / password123 (all seeded users share password123).
 - Suggested next-phase work: event detail pagination/sorting for tasks; assign/unassign + priority editing from event detail rows; dark-mode chart tooltip styling polish; activity log page (#/activity) with filters; email-style notification preferences; event timeline/Gantt view; bulk task actions; drag-and-drop file attachments.
+
+---
+Task ID: 6 (webDevReview round 2)
+Agent: Z.ai Code (orchestrator)
+Task: QA sweep + Round-2 features (activity page, command palette, profile page, event detail workspace upgrade, chart theming)
+
+Work Log:
+- QA baseline: dev.log healthy, tsc clean (only pre-existing examples/skills errors), agent-browser sweep of all routes in dark mode — zero runtime errors, no regressions. Phase 1 + Round-1 confirmed stable.
+- ACTIVITY PAGE (#/activity): new ActivityPage with timeline UI (icon chip per action type + connector line, actor avatar, action label, detail chips). Filters: group Select (All/Events/Tasks/Teams/Users → mapped action lists), person Select (Everyone/users), Reset, entry count. Load-more pagination (25/page) using new hasMore/total. Empty + error + skeleton states.
+- /api/activity EXTENDED: `action` (comma list), `userId` ('me' supported), `offset` params; returns {activities, total, hasMore}.
+- Shared ActivityFeed module (src/components/shared/ActivityFeed.tsx): ACTIVITY_META icon/color map (13 actions incl. new PASSWORD_CHANGED), ActivityItem, ActivityDetails (parses details JSON; renders from→to status chips for EVENT_STATUS_CHANGED/TASK_STATUS_CHANGED/TASK_COMPLETED, entity names, emails, assignee name resolution via assigneeNames map).
+- Backend log enrichment: TASK_ASSIGNED + status-change logs now include task `title` (tasks route + tasks/[id] route) so the feed shows entity names for new entries.
+- COMMAND PALETTE (⌘K / Ctrl+K): new CommandPalette (src/components/layout/CommandPalette.tsx) mounted in Layout. Global keyboard shortcut + header search pill (⌘K kbd hint, ≥lg) + icon button (<lg). Sections: Jump to/Actions (Dashboard, Events, Tasks board, Teams, Activity, Profile, My open tasks → #/tasks?assignee=me, New event → #/events?new=1, theme toggle, sign out) + server-side results (Events w/ status dot, Tasks w/ event+priority, Teams, People w/ role) via debounced /api/search. KEY FIX: shadcn CommandDialog doesn't forward props → composed Dialog+Command directly with shouldFilter={false} (cmdk's client filter was hiding all server results since item values are UUIDs).
+- /api/search NEW (GET ?q=): parallel prisma queries, 5 events (name/description), 6 tasks (title, +eventName), 4 teams, 4 active users; min 2 chars; auth required.
+- PROFILE PAGE (#/profile): gradient hero card (avatar, name, email, role+team+joined badges), 3 work stat tiles (open/overdue/completed from /tasks?assignedTo=me), Change password card (current/new/confirm, client validation, PATCH /api/auth/password), My teams (manager/member filter), Recent sign-ins (from /activity?userId=me), My recent activity timeline (reuses ActivityItem). Router + guards updated; user dropdown "Profile" item now enabled (also added Activity item).
+- /api/auth/password NEW (PATCH): changePasswordSchema (zod), verify current (scrypt, timing-safe), reject same-as-current, rehash, revoke all OTHER sessions (current kept), PASSWORD_CHANGED activity log. Error paths verified via curl: wrong current / weak new / same new.
+- EVENT DETAIL WORKSPACE UPGRADE: task toolbar (title search input, sort Select: due±/priority/status/title/newest with no-due-sinks-to-bottom + due tiebreak), status filter chip row with live counts (aria-pressed, emerald active), per-row quick assignee Select (canManage only; optimistic PATCH + revert + toast), "No matching tasks" empty state distinct from "No tasks yet". Cleaned duplicated dark: classes in stat chips.
+- TASKS PAGE: "Assigned to me" option + ?assignee= hash query sync (deep-link target). EVENTS PAGE: ?new=1 auto-opens create dialog then cleans URL (palette target).
+- CHART THEMING: recharts grid/axis/tick/tooltip now use CSS tokens (var(--border)/var(--muted-foreground)/var(--card)...) — light+dark both verified; tooltip got radius 10, shadow, labelStyle/itemStyle.
+- NAV: Activity added to desktop nav, mobile sheet, and user dropdown; search pill in header.
+- Fixed during round: Turbopack duplicate-import error in EventsPage (merged use-hash-route imports), SESSION_COOKIE import (constants, not auth), CommandItem keywords must be string[], stale eslint-disable.
+- Incidents: dev server process died mid-round (restarted with `bun run dev` in background — note: it had been the system-managed one; watch for recurrence). Browser password-change flow verified end-to-end (change → logout → login with new → revert via API to password123).
+
+Verification (agent-browser + curl):
+- Activity page: renders 36→45 entries, Events filter → 5, dark + mobile OK, PASSWORD_CHANGED entries visible with key icon.
+- Palette: ⌘K opens; "hack" → Internal Hackathon (Draft) + 2 tasks + actions; click-through navigated to event detail; New event action opened create dialog via ?new=1; Esc/close OK.
+- Profile: all sections render; password change success toast; new password login OK; wrong-current/weak/same rejected (curl); reverted to password123.
+- Event detail: chip filter (Not Started active → 2 rows), sort select present, assignee change David→Lena→David persisted + toast, dark + mobile (390px) OK.
+- Dashboard light + dark with themed chart tokens; console clean; lint 0/0; tsc clean (app files).
+
+Stage Summary:
+- New: /activity, /profile routes; /api/search, /api/auth/password endpoints; /api/activity filters+pagination; CommandPalette; ActivityFeed shared module; event detail toolbar (search/sort/chips/quick-assign); ?assignee= and ?new=1 deep links; themed charts.
+- Demo credentials unchanged: admin@eventflow.io / password123 (verify after any password test!).
+- Risks/next: palette "New event" auto-open relies on ?new=1 effect (works); cmdk a11y tree shows empty listbox in snapshots (items render — cmdk renders via cmdk-item attrs; cosmetic in tooling only); activity seed rows lack titles for old TASK_ASSIGNED entries (fallback text shown); next-phase candidates: bulk task actions, notification preferences, event timeline/Gantt, CSV export with descriptions, pagination for long task lists.

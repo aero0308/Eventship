@@ -1,0 +1,818 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  ArrowLeft,
+     7→  CalendarDays,
+     8→  CalendarPlus,
+     9→  CheckCircle2,
+    10→  Download,
+    11→  ExternalLink,
+    12→  Loader2,
+    13→  Pencil,
+    14→  Trash2,
+    15→  Users,
+    16→} from 'lucide-react'
+    17→import { format } from 'date-fns'
+    18→import type { EventDTO, EventStatus, TaskDTO, TaskStatus, UserDTO } from '@/types'
+    19→import {
+    20→  EVENT_STATUSES,
+    21→  EVENT_STATUS_CLASSES,
+    22→  EVENT_STATUS_LABELS,
+    23→  TASK_PRIORITIES,
+    24→  PRIORITY_CLASSES,
+    25→  PRIORITY_LABELS,
+    26→  ROUTES,
+    27→  TASK_STATUSES,
+    28→  TASK_STATUS_LABELS,
+    29→} from '@/lib/constants'
+    30→import { api, ApiClientError, qs } from '@/lib/api-client'
+    31→import { downloadCsv, csvDateStamp } from '@/lib/csv'
+    32→import { navigate } from '@/hooks/use-hash-route'
+    33→import { useAuthStore } from '@/stores/auth-store'
+    34→import { useToast } from '@/hooks/use-toast'
+    35→import { cn } from '@/lib/utils'
+    36→import { Alert, AlertDescription } from '@/components/ui/alert'
+    37→import {
+    38→  AlertDialog,
+    39→  AlertDialogAction,
+    40→  AlertDialogCancel,
+    41→  AlertDialogContent,
+    42→  AlertDialogDescription,
+    43→  AlertDialogFooter,
+    44→  AlertDialogHeader,
+    45→  AlertDialogTitle,
+    46→} from '@/components/ui/alert-dialog'
+    47→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    48→import { Button } from '@/components/ui/button'
+    49→import { Card, CardContent } from '@/components/ui/card'
+    50→import {
+    51→  Dialog,
+    52→  DialogContent,
+    53→  DialogDescription,
+    54→  DialogFooter,
+    55→  DialogHeader,
+    56→  DialogTitle,
+    57→} from '@/components/ui/dialog'
+    58→import { Input } from '@/components/ui/input'
+    59→import { Label } from '@/components/ui/label'
+    60→import { Progress } from '@/components/ui/progress'
+    61→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    62→import { Skeleton } from '@/components/ui/skeleton'
+    63→import { Textarea } from '@/components/ui/textarea'
+    64→import { EmptyState } from '@/components/shared/EmptyState'
+    65→import { StatusBadge } from '@/components/shared/StatusBadge'
+    66→
+    67→export interface EventDetailPageProps {
+    68→  eventId: string
+    69→}
+    70→
+    71→interface EditFormState {
+    72→  name: string
+    73→  description: string
+    74→  startDate: string
+    75→  endDate: string
+    76→}
+    77→
+    78→interface TaskFormState {
+    79→  title: string
+    80→  description: string
+    81→  priority: string
+    82→  assignedTo: string
+    83→  dueDate: string
+    84→  estimatedHours: string
+    85→}
+    86→
+    87→const EMPTY_EDIT: EditFormState = { name: '', description: '', startDate: '', endDate: '' }
+    88→const EMPTY_TASK: TaskFormState = {
+    89→  title: '',
+    90→  description: '',
+    91→  priority: 'MEDIUM',
+    92→  assignedTo: '__unassigned__',
+    93→  dueDate: '',
+    94→  estimatedHours: '',
+    95→}
+    96→
+    97→function toDateInput(iso: string | null | undefined): string {
+    98→  return iso ? format(new Date(iso), 'yyyy-MM-dd') : ''
+    99→}
+   100→
+   101→function initialsOf(name: string): string {
+   102→  return name
+   103→    .split(/\s+/)
+   104→    .filter(Boolean)
+   105→    .slice(0, 2)
+   106→    .map((part) => part[0]?.toUpperCase() ?? '')
+   107→    .join('')
+   108→}
+   109→
+   110→export function EventDetailPage({ eventId }: EventDetailPageProps) {
+   111→  const { toast } = useToast()
+   112→  const user = useAuthStore((s) => s.user)
+   113→
+   114→  const [event, setEvent] = useState<EventDTO | null>(null)
+   115→  const [tasks, setTasks] = useState<TaskDTO[]>([])
+   116→  const [users, setUsers] = useState<UserDTO[]>([])
+   117→  const [loading, setLoading] = useState(true)
+   118→  const [loadError, setLoadError] = useState<string | null>(null)
+   119→  const [statusUpdating, setStatusUpdating] = useState(false)
+   120→  const [rowUpdatingId, setRowUpdatingId] = useState<string | null>(null)
+   121→
+   122→  // Edit dialog
+   123→  const [editOpen, setEditOpen] = useState(false)
+   124→  const [edit, setEdit] = useState<EditFormState>(EMPTY_EDIT)
+   125→  const [editError, setEditError] = useState<string | null>(null)
+   126→  const [editSaving, setEditSaving] = useState(false)
+   127→
+   128→  // Add-task dialog
+   129→  const [taskOpen, setTaskOpen] = useState(false)
+   130→  const [taskForm, setTaskForm] = useState<TaskFormState>(EMPTY_TASK)
+   131→  const [taskError, setTaskError] = useState<string | null>(null)
+   132→  const [taskSaving, setTaskSaving] = useState(false)
+   133→
+   134→  // Delete confirm
+   135→  const [deleteOpen, setDeleteOpen] = useState(false)
+   136→  const [deleting, setDeleting] = useState(false)
+   137→
+   138→  const canManage = useMemo(() => {
+   139→    if (!user || !event) return false
+   140→    if (user.role === 'EVENT_MANAGER') return true
+   141→    return user.role === 'TEAM_LEADER' && user.teamId === event.teamId
+   142→  }, [user, event])
+   143→
+   144→  const loadEvent = useCallback(async () => {
+   145→    try {
+   146→      const data = await api.get<{ event: EventDTO }>(`/events/${eventId}`)
+   147→      setEvent(data.event)
+   148→      setLoadError(null)
+   149→    } catch (error) {
+   150→      const message = error instanceof ApiClientError ? error.message : 'Failed to load the event.'
+   151→      setLoadError(message)
+   152→    }
+   153→  }, [eventId])
+   154→
+   155→  const loadTasks = useCallback(async () => {
+   156→    try {
+   157→      const data = await api.get<{ tasks: TaskDTO[] }>(`/tasks${qs({ eventId })}`)
+   158→      setTasks(data.tasks)
+   159→    } catch (error) {
+   160→      const message = error instanceof ApiClientError ? error.message : 'Failed to load tasks.'
+   161→      toast({ title: 'Could not load tasks', description: message, variant: 'destructive' })
+   162→    }
+   163→  }, [eventId, toast])
+   164→
+   165→  useEffect(() => {
+   166→    let cancelled = false
+   167→    void (async () => {
+   168→      setLoading(true)
+   169→      try {
+   170→        const [usersData] = await Promise.all([
+   171→          api.get<{ users: UserDTO[] }>('/users'),
+   172→          loadEvent(),
+   173→          loadTasks(),
+   174→        ])
+   175→        if (!cancelled) setUsers(usersData.users.filter((u) => u.isActive))
+   176→      } finally {
+   177→        if (!cancelled) setLoading(false)
+   178→      }
+   179→    })()
+   180→    return () => {
+   181→      cancelled = true
+   182→    }
+   183→  }, [loadEvent, loadTasks])
+   184→
+   185→  const stats = useMemo(() => {
+   186→    const s = event?.taskStats ?? { total: 0, completed: 0, inProgress: 0, blocked: 0, notStarted: 0 }
+   187→    const percent = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0
+   188→    return { ...s, percent }
+   189→  }, [event])
+   190→
+   191→  const openEdit = () => {
+   192→    if (!event) return
+   193→    setEdit({
+   194→      name: event.name,
+   195→      description: event.description ?? '',
+   196→      startDate: toDateInput(event.startDate),
+   197→      endDate: toDateInput(event.endDate),
+   198→    })
+   199→    setEditError(null)
+   200→    setEditOpen(true)
+   201→  }
+   202→
+   203→  const handleEditSave = async (submitEvent: FormEvent<HTMLFormElement>) => {
+   204→    submitEvent.preventDefault()
+   205→    if (!event) return
+   206→    setEditError(null)
+   207→
+   208→    if (!edit.name.trim()) {
+   209→      setEditError('Please give the event a name.')
+   210→      return
+   211→    }
+   212→    if (!edit.startDate || !edit.endDate) {
+   213→      setEditError('Please pick both a start and end date.')
+   214→      return
+   215→    }
+   216→    if (new Date(edit.endDate) < new Date(edit.startDate)) {
+   217→      setEditError('The end date cannot be before the start date.')
+   218→      return
+   219→    }
+   220→
+   221→    setEditSaving(true)
+   222→    try {
+   223→      const data = await api.patch<{ event: EventDTO }>(`/events/${event.id}`, {
+   224→        name: edit.name.trim(),
+   225→        description: edit.description.trim() || undefined,
+   226→        startDate: new Date(`${edit.startDate}T00:00:00`).toISOString(),
+   227→        endDate: new Date(`${edit.endDate}T23:59:59`).toISOString(),
+   228→      })
+   229→      setEvent(data.event)
+   230→      setEditOpen(false)
+   231→      toast({ title: 'Event updated', description: `“${data.event.name}” was saved.` })
+   232→    } catch (error) {
+   233→      const message = error instanceof ApiClientError ? error.message : 'Failed to update the event.'
+   234→      setEditError(message)
+   235→    } finally {
+   236→      setEditSaving(false)
+   237→    }
+   238→  }
+   239→
+   240→  const handleStatusChange = async (next: EventStatus) => {
+   241→    if (!event || event.status === next) return
+   242→    const previous = event
+   243→    setStatusUpdating(true)
+   244→    setEvent({ ...event, status: next })
+   245→    try {
+   246→      const data = await api.patch<{ event: EventDTO }>(`/events/${event.id}`, { status: next })
+   247→      setEvent(data.event)
+   248→      toast({ title: 'Status updated', description: `“${data.event.name}” is now ${EVENT_STATUS_LABELS[next] ?? next}.` })
+   249→    } catch (error) {
+   250→      setEvent(previous)
+   251→      const message = error instanceof ApiClientError ? error.message : 'Failed to update the status.'
+   252→      toast({ title: 'Update failed', description: message, variant: 'destructive' })
+   253→    } finally {
+   254→      setStatusUpdating(false)
+   255→    }
+   256→  }
+   257→
+   258→  const handleAddTask = async (submitEvent: FormEvent<HTMLFormElement>) => {
+   259→    submitEvent.preventDefault()
+   260→    if (!event) return
+   261→    setTaskError(null)
+   262→
+   263→    if (!taskForm.title.trim()) {
+   264→      setTaskError('Please give the task a title.')
+   265→      return
+   266→    }
+   267→
+   268→    setTaskSaving(true)
+   269→    try {
+   270→      const data = await api.post<{ task: TaskDTO }>('/tasks', {
+   271→        title: taskForm.title.trim(),
+   272→        description: taskForm.description.trim() || undefined,
+   273→        priority: taskForm.priority as TaskDTO['priority'],
+   274→        eventId: event.id,
+   275→        assignedTo: taskForm.assignedTo === '__unassigned__' ? undefined : taskForm.assignedTo,
+   276→        dueDate: taskForm.dueDate ? new Date(`${taskForm.dueDate}T17:00:00`).toISOString() : undefined,
+   277→        estimatedHours: taskForm.estimatedHours ? Number(taskForm.estimatedHours) : undefined,
+   278→      })
+   279→      setTaskOpen(false)
+   280→      setTaskForm(EMPTY_TASK)
+   281→      toast({ title: 'Task created', description: `“${data.task.title}” was added to the event.` })
+   282→      void loadTasks()
+   283→      void loadEvent()
+   284→    } catch (error) {
+   285→      const message = error instanceof ApiClientError ? error.message : 'Failed to create the task.'
+   286→      setTaskError(message)
+   287→    } finally {
+   288→      setTaskSaving(false)
+   289→    }
+   290→  }
+   291→
+   292→  const handleTaskStatusChange = async (task: TaskDTO, next: TaskStatus) => {
+   293→    if (task.status === next) return
+   294→    const previous = tasks
+   295→    setRowUpdatingId(task.id)
+   296→    setTasks((list) => list.map((t) => (t.id === task.id ? { ...t, status: next } : t)))
+   297→    try {
+   298→      await api.patch(`/tasks/${task.id}`, { status: next })
+   299→      toast({ title: 'Task updated', description: `“${task.title}” moved to ${TASK_STATUS_LABELS[next] ?? next}.` })
+   300→      void loadEvent()
+   301→    } catch (error) {
+   302→      setTasks(previous)
+   303→      const message = error instanceof ApiClientError ? error.message : 'Failed to update the task.'
+   304→      toast({ title: 'Update failed', description: message, variant: 'destructive' })
+   305→    } finally {
+   306→      setRowUpdatingId(null)
+   307→    }
+   308→  }
+   309→
+   310→  const handleDelete = async () => {
+   311→    if (!event) return
+   312→    setDeleting(true)
+   313→    try {
+   314→      await api.del(`/events/${event.id}`)
+   315→      toast({ title: 'Event deleted', description: `“${event.name}” has been removed.` })
+   316→      navigate(ROUTES.EVENTS)
+   317→    } catch (error) {
+   318→      const message = error instanceof ApiClientError ? error.message : 'Failed to delete the event.'
+   319→      toast({ title: 'Delete failed', description: message, variant: 'destructive' })
+   320→      setDeleting(false)
+   321→    }
+   322→  }
+   323→
+   324→  const handleExportTasks = () => {
+   325→    const rows: (string | number | null)[][] = [
+   326→      ['Title', 'Status', 'Priority', 'Assignee', 'Due date', 'Estimated hours', 'Actual hours', 'Comments'],
+   327→      ...tasks.map((task) => [
+   328→        task.title,
+   329→        TASK_STATUS_LABELS[task.status] ?? task.status,
+   330→        PRIORITY_LABELS[task.priority] ?? task.priority,
+   331→        task.assignee?.fullName ?? 'Unassigned',
+   332→        task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
+   333→        task.estimatedHours ?? '',
+   334→        task.actualHours ?? '',
+   335→        task.commentCount ?? 0,
+   336→      ]),
+   337→    ]
+   338→    downloadCsv(`eventflow-tasks-${event?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? 'event'}-${csvDateStamp()}`, rows)
+   339→    toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
+   340→  }
+   341→
+   342→  // ============ Loading / error states ============
+   343→  if (loading) {
+   344→    return (
+   345→      <div className="space-y-5">
+   346→        <Skeleton className="h-9 w-40 rounded-lg" />
+   347→        <Skeleton className="h-32 rounded-xl" />
+   348→        <Skeleton className="h-64 rounded-xl" />
+   349→      </div>
+   350→    )
+   351→  }
+   352→
+   353→  if (loadError || !event) {
+   354→    return (
+   355→      <div className="space-y-4">
+   356→        <Button variant="ghost" onClick={() => navigate(ROUTES.EVENTS)} className="min-h-11 text-muted-foreground">
+   357→          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+   358→          Back to events
+   359→        </Button>
+   360→        <EmptyState
+   361→          icon={CalendarDays}
+   362→          title="Event not found"
+   363→          hint={loadError ?? 'This event may have been deleted.'}
+   364→          action={
+   365→            <Button onClick={() => navigate(ROUTES.EVENTS)} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   366→              All events
+   367→            </Button>
+   368→          }
+   369→        />
+   370→      </div>
+   371→    )
+   372→  }
+   373→
+   374→  const dateLabel = format(new Date(event.startDate), 'MMM d, yyyy')
+   375→  const endDateLabel = format(new Date(event.endDate), 'MMM d, yyyy')
+   376→  const rangeLabel =
+   377→    dateLabel === endDateLabel ? dateLabel : `${format(new Date(event.startDate), 'MMM d')} – ${endDateLabel}`
+   378→
+   379→  return (
+   380→    <div className="space-y-6">
+   381→      {/* Header */}
+   382→      <div>
+   383→        <Button variant="ghost" onClick={() => navigate(ROUTES.EVENTS)} className="mb-3 min-h-11 px-2 text-muted-foreground hover:text-foreground">
+   384→          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+   385→          All events
+   386→        </Button>
+   387→        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+   388→          <motion.div
+   389→            initial={{ opacity: 0, y: 10 }}
+   390→            animate={{ opacity: 1, y: 0 }}
+   391→            transition={{ duration: 0.3, ease: 'easeOut' }}
+   392→            className="min-w-0"
+   393→          >
+   394→            <div className="flex flex-wrap items-center gap-3">
+   395→              <h1 className="text-2xl font-bold tracking-tight text-foreground">{event.name}</h1>
+   396→              <StatusBadge
+   397→                label={EVENT_STATUS_LABELS[event.status] ?? event.status}
+   398→                className={EVENT_STATUS_CLASSES[event.status]}
+   399→              />
+   400→            </div>
+   401→            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+   402→              <span className="inline-flex items-center gap-1.5">
+   403→                <CalendarDays className="h-4 w-4" aria-hidden="true" />
+   404→                {rangeLabel}
+   405→              </span>
+   406→              {event.team ? (
+   407→                <span className="inline-flex items-center gap-1.5">
+   408→                  <Users className="h-4 w-4" aria-hidden="true" />
+   409→                  {event.team.name}
+   410→                </span>
+   411→              ) : null}
+   412→              {event.creator ? <span>Created by {event.creator.fullName}</span> : null}
+   413→            </div>
+   414→            {event.description ? (
+   415→              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">{event.description}</p>
+   416→            ) : null}
+   417→          </motion.div>
+   418→
+   419→          <div className="flex flex-wrap items-center gap-2">
+   420→            {canManage ? (
+   421→              <>
+   422→                <Select value={event.status} onValueChange={(value) => void handleStatusChange(value as EventStatus)} disabled={statusUpdating}>
+   423→                  <SelectTrigger className="h-11 w-40" aria-label="Change event status">
+   424→                    <SelectValue />
+   425→                  </SelectTrigger>
+   426→                  <SelectContent>
+   427→                    {EVENT_STATUSES.map((status) => (
+   428→                      <SelectItem key={status} value={status}>
+   429→                        {EVENT_STATUS_LABELS[status]}
+   430→                      </SelectItem>
+   431→                    ))}
+   432→                  </SelectContent>
+   433→                </Select>
+   434→                <Button variant="outline" onClick={openEdit} className="min-h-11">
+   435→                  <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+   436→                  Edit
+   437→                </Button>
+   438→                <Button
+   439→                  variant="outline"
+   440→                  className="min-h-11 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+   441→                  onClick={() => setDeleteOpen(true)}
+   442→                >
+   443→                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+   444→                  Delete
+   445→                </Button>
+   446→              </>
+   447→            ) : null}
+   448→            <Button onClick={() => setTaskOpen(true)} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   449→              <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+   450→              Add task
+   451→            </Button>
+   452→          </div>
+   453→        </div>
+   454→      </div>
+   455→
+   456→      {/* Stats */}
+   457→      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Event task statistics">
+   458→        {[
+   459→          { label: 'Total tasks', value: stats.total, classes: 'bg-muted/50 text-foreground' },
+   460→          { label: 'Completed', value: stats.completed, classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300' },
+   461→          { label: 'In progress', value: stats.inProgress, classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 dark:bg-amber-500/15 dark:text-amber-300' },
+   462→          { label: 'Blocked', value: stats.blocked, classes: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300 dark:bg-red-500/15 dark:text-red-300' },
+   463→        ].map((chip) => (
+   464→          <Card key={chip.label} className="py-0">
+   465→            <CardContent className={cn('rounded-xl px-4 py-4', chip.classes)}>
+   466→              <p className="text-2xl font-bold leading-none">{chip.value}</p>
+   467→              <p className="mt-1.5 text-xs font-medium opacity-80">{chip.label}</p>
+   468→            </CardContent>
+   469→          </Card>
+   470→        ))}
+   471→      </section>
+   472→
+   473→      {/* Progress */}
+   474→      <Card className="py-4">
+   475→        <CardContent className="px-4">
+   476→          <div className="flex items-center justify-between gap-3">
+   477→            <p className="text-sm font-medium text-foreground">Completion</p>
+   478→            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{stats.percent}%</p>
+   479→          </div>
+   480→          <Progress value={stats.percent} className="mt-2 h-2" aria-label={`${stats.percent}% of tasks completed`} />
+   481→          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+   482→            <p className="text-xs text-muted-foreground">
+   483→              {stats.completed} of {stats.total} tasks done
+   484→              {stats.notStarted > 0 ? ` · ${stats.notStarted} not started` : ''}
+   485→            </p>
+   486→            <div className="flex items-center gap-2">
+   487→              <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground" onClick={handleExportTasks} disabled={tasks.length === 0}>
+   488→                <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   489→                Export tasks CSV
+   490→              </Button>
+   491→              <Button
+   492→                variant="ghost"
+   493→                size="sm"
+   494→                className="h-9 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+   495→                onClick={() => navigate(`${ROUTES.TASKS}?event=${event.id}`)}
+   496→              >
+   497→                <ExternalLink className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   498→                Open board
+   499→              </Button>
+   500→            </div>
+   501→          </div>
+   502→        </CardContent>
+   503→      </Card>
+   504→
+   505→      {/* Task list */}
+   506→      <Card className="py-0">
+   507→        <CardContent className="px-0 pb-2">
+   508→          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+   509→            <h2 className="text-sm font-semibold text-foreground">
+   510→              Tasks <span className="ml-1 text-muted-foreground">({tasks.length})</span>
+   511→            </h2>
+   512→          </div>
+   513→
+   514→          {tasks.length === 0 ? (
+   515→            <div className="px-4 py-8">
+   516→              <EmptyState
+   517→                icon={CalendarPlus}
+   518→                title="No tasks yet"
+   519→                hint="Break this event down into tasks so the team can start executing."
+   520→                action={
+   521→                  <Button onClick={() => setTaskOpen(true)} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   522→                    <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+   523→                    Add the first task
+   524→                  </Button>
+   525→                }
+   526→              />
+   527→            </div>
+   528→          ) : (
+   529→            <ul className="divide-y divide-border/60">
+   530→              {tasks.map((task, index) => {
+   531→                const due = task.dueDate ? new Date(task.dueDate) : null
+   532→                const overdue = due !== null && due.getTime() < Date.now() && task.status !== 'COMPLETED'
+   533→                return (
+   534→                  <motion.li
+   535→                    key={task.id}
+   536→                    initial={{ opacity: 0, y: 8 }}
+   537→                    animate={{ opacity: 1, y: 0 }}
+   538→                    transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.25), ease: 'easeOut' }}
+   539→                    className="flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-accent/40 sm:flex-row sm:items-center sm:justify-between"
+   540→                  >
+   541→                    <div className="flex min-w-0 items-start gap-3">
+   542→                      <span
+   543→                        className={cn('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full border', PRIORITY_CLASSES[task.priority])}
+   544→                        aria-hidden="true"
+   545→                        title={`${PRIORITY_LABELS[task.priority] ?? task.priority} priority`}
+   546→                      />
+   547→                      <div className="min-w-0">
+   548→                        <p className={cn('truncate text-sm font-medium text-foreground', task.status === 'COMPLETED' && 'text-muted-foreground line-through')}>
+   549→                          {task.title}
+   550→                        </p>
+   551→                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+   552→                          <span className={cn('font-medium', PRIORITY_CLASSES[task.priority])}>
+   553→                            {PRIORITY_LABELS[task.priority] ?? task.priority}
+   554→                          </span>
+   555→                          {due ? (
+   556→                            <span className={cn('inline-flex items-center gap-1', overdue && 'font-semibold text-red-600 dark:text-red-400')}>
+   557→                              <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+   558→                              {overdue ? 'Overdue ' : 'Due '}
+   559→                              {format(due, 'MMM d')}
+   560→                            </span>
+   561→                          ) : null}
+   562→                          {task.assignee ? (
+   563→                            <span className="inline-flex items-center gap-1.5">
+   564→                              <Avatar className="h-4.5 w-4.5">
+   565→                                <AvatarFallback className="text-[8px]">{initialsOf(task.assignee.fullName)}</AvatarFallback>
+   566→                              </Avatar>
+   567→                              {task.assignee.fullName}
+   568→                            </span>
+   569→                          ) : (
+   570→                            <span>Unassigned</span>
+   571→                          )}
+   572→                          {(task.commentCount ?? 0) > 0 ? <span>{task.commentCount} 💬</span> : null}
+   573→                        </div>
+   574→                      </div>
+   575→                    </div>
+   576→
+   577→                    <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+   578→                      {rowUpdatingId === task.id ? (
+   579→                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/70" aria-hidden="true" />
+   580→                      ) : null}
+   581→                      <Select value={task.status} onValueChange={(value) => void handleTaskStatusChange(task, value as TaskStatus)}>
+   582→                        <SelectTrigger
+   583→                          className="h-9 w-36 text-xs"
+   584→                          aria-label={`Change status for ${task.title}`}
+   585→                        >
+   586→                          <SelectValue />
+   587→                        </SelectTrigger>
+   588→                        <SelectContent>
+   589→                          {TASK_STATUSES.map((status) => (
+   590→                            <SelectItem key={status} value={status}>
+   591→                              {TASK_STATUS_LABELS[status]}
+   592→                            </SelectItem>
+   593→                          ))}
+   594→                        </SelectContent>
+   595→                      </Select>
+   596→                    </div>
+   597→                  </motion.li>
+   598→                )
+   599→              })}
+   600→            </ul>
+   601→          )}
+   602→        </CardContent>
+   603→      </Card>
+   604→
+   605→      {/* Edit dialog */}
+   606→      <Dialog open={editOpen} onOpenChange={(open) => !open && setEditOpen(false)}>
+   607→        <DialogContent className="sm:max-w-lg">
+   608→          <form onSubmit={handleEditSave} className="space-y-4">
+   609→            <DialogHeader>
+   610→              <DialogTitle>Edit event</DialogTitle>
+   611→              <DialogDescription>Update the event details, dates or description.</DialogDescription>
+   612→            </DialogHeader>
+   613→
+   614→            {editError ? (
+   615→              <Alert variant="destructive">
+   616→                <AlertDescription>{editError}</AlertDescription>
+   617→              </Alert>
+   618→            ) : null}
+   619→
+   620→            <div className="space-y-2">
+   621→              <Label htmlFor="edit-name">Name</Label>
+   622→              <Input
+   623→                id="edit-name"
+   624→                value={edit.name}
+   625→                onChange={(e) => setEdit((f) => ({ ...f, name: e.target.value }))}
+   626→                className="h-11"
+   627→                required
+   628→              />
+   629→            </div>
+   630→
+   631→            <div className="grid gap-4 sm:grid-cols-2">
+   632→              <div className="space-y-2">
+   633→                <Label htmlFor="edit-start">Start date</Label>
+   634→                <Input
+   635→                  id="edit-start"
+   636→                  type="date"
+   637→                  value={edit.startDate}
+   638→                  onChange={(e) => setEdit((f) => ({ ...f, startDate: e.target.value }))}
+   639→                  className="h-11"
+   640→                />
+   641→              </div>
+   642→              <div className="space-y-2">
+   643→                <Label htmlFor="edit-end">End date</Label>
+   644→                <Input
+   645→                  id="edit-end"
+   646→                  type="date"
+   647→                  value={edit.endDate}
+   648→                  onChange={(e) => setEdit((f) => ({ ...f, endDate: e.target.value }))}
+   649→                  className="h-11"
+   650→                />
+   651→              </div>
+   652→            </div>
+   653→
+   654→            <div className="space-y-2">
+   655→              <Label htmlFor="edit-description">Description</Label>
+   656→              <Textarea
+   657→                id="edit-description"
+   658→                value={edit.description}
+   659→                onChange={(e) => setEdit((f) => ({ ...f, description: e.target.value }))}
+   660→                rows={3}
+   661→                placeholder="What is this event about?"
+   662→              />
+   663→            </div>
+   664→
+   665→            <DialogFooter className="gap-2 pt-2">
+   666→              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="min-h-11">
+   667→                Cancel
+   668→              </Button>
+   669→              <Button type="submit" disabled={editSaving} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   670→                {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+   671→                Save changes
+   672→              </Button>
+   673→            </DialogFooter>
+   674→          </form>
+   675→        </DialogContent>
+   676→      </Dialog>
+   677→
+   678→      {/* Add task dialog */}
+   679→      <Dialog open={taskOpen} onOpenChange={(open) => !open && setTaskOpen(false)}>
+   680→        <DialogContent className="sm:max-w-lg">
+   681→          <form onSubmit={handleAddTask} className="space-y-4">
+   682→            <DialogHeader>
+   683→              <DialogTitle>Add a task</DialogTitle>
+   684→              <DialogDescription>It will be attached to “{event.name}”.</DialogDescription>
+   685→            </DialogHeader>
+   686→
+   687→            {taskError ? (
+   688→              <Alert variant="destructive">
+   689→                <AlertDescription>{taskError}</AlertDescription>
+   690→              </Alert>
+   691→            ) : null}
+   692→
+   693→            <div className="space-y-2">
+   694→              <Label htmlFor="task-title">Title</Label>
+   695→              <Input
+   696→                id="task-title"
+   697→                value={taskForm.title}
+   698→                onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+   699→                className="h-11"
+   700→                placeholder="e.g. Confirm catering headcount"
+   701→                required
+   702→              />
+   703→            </div>
+   704→
+   705→            <div className="grid gap-4 sm:grid-cols-2">
+   706→              <div className="space-y-2">
+   707→                <Label htmlFor="task-priority">Priority</Label>
+   708→                <Select value={taskForm.priority} onValueChange={(value) => setTaskForm((f) => ({ ...f, priority: value }))}>
+   709→                  <SelectTrigger id="task-priority" className="h-11">
+   710→                    <SelectValue />
+   711→                  </SelectTrigger>
+   712→                  <SelectContent>
+   713→                    {TASK_PRIORITIES.map((priority) => (
+   714→                      <SelectItem key={priority} value={priority}>
+   715→                        {PRIORITY_LABELS[priority]}
+   716→                      </SelectItem>
+   717→                    ))}
+   718→                  </SelectContent>
+   719→                </Select>
+   720→              </div>
+   721→              <div className="space-y-2">
+   722→                <Label htmlFor="task-assignee">Assignee</Label>
+   723→                <Select value={taskForm.assignedTo} onValueChange={(value) => setTaskForm((f) => ({ ...f, assignedTo: value }))}>
+   724→                  <SelectTrigger id="task-assignee" className="h-11">
+   725→                    <SelectValue />
+   726→                  </SelectTrigger>
+   727→                  <SelectContent>
+   728→                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
+   729→                    {users.map((u) => (
+   730→                      <SelectItem key={u.id} value={u.id}>
+   731→                        {u.fullName}
+   732→                      </SelectItem>
+   733→                    ))}
+   734→                  </SelectContent>
+   735→                </Select>
+   736→              </div>
+   737→            </div>
+   738→
+   739→            <div className="grid gap-4 sm:grid-cols-2">
+   740→              <div className="space-y-2">
+   741→                <Label htmlFor="task-due">Due date</Label>
+   742→                <Input
+   743→                  id="task-due"
+   744→                  type="date"
+   745→                  value={taskForm.dueDate}
+   746→                  onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+   747→                  className="h-11"
+   748→                />
+   749→              </div>
+   750→              <div className="space-y-2">
+   751→                <Label htmlFor="task-hours">Estimated hours</Label>
+   752→                <Input
+   753→                  id="task-hours"
+   754→                  type="number"
+   755→                  min="0"
+   756→                  step="0.5"
+   757→                  value={taskForm.estimatedHours}
+   758→                  onChange={(e) => setTaskForm((f) => ({ ...f, estimatedHours: e.target.value }))}
+   759→                  className="h-11"
+   760→                  placeholder="e.g. 8"
+   761→                />
+   762→              </div>
+   763→            </div>
+   764→
+   765→            <div className="space-y-2">
+   766→              <Label htmlFor="task-description">Description</Label>
+   767→              <Textarea
+   768→                id="task-description"
+   769→                value={taskForm.description}
+   770→                onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+   771→                rows={3}
+   772→                placeholder="Details, links, acceptance criteria…"
+   773→              />
+   774→            </div>
+   775→
+   776→            <DialogFooter className="gap-2 pt-2">
+   777→              <Button type="button" variant="outline" onClick={() => setTaskOpen(false)} className="min-h-11">
+   778→                Cancel
+   779→              </Button>
+   780→              <Button type="submit" disabled={taskSaving} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   781→                {taskSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+   782→                Create task
+   783→              </Button>
+   784→            </DialogFooter>
+   785→          </form>
+   786→        </DialogContent>
+   787→      </Dialog>
+   788→
+   789→      {/* Delete confirm */}
+   790→      <AlertDialog open={deleteOpen} onOpenChange={(open) => !open && setDeleteOpen(false)}>
+   791→        <AlertDialogContent>
+   792→          <AlertDialogHeader>
+   793→            <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+   794→            <AlertDialogDescription>
+   795→              “{event.name}” and its {stats.total} task(s) with all comments will be permanently removed. This action cannot be
+   796→              undone.
+   797→            </AlertDialogDescription>
+   798→          </AlertDialogHeader>
+   799→          <AlertDialogFooter>
+   800→            <AlertDialogCancel className="min-h-11">Cancel</AlertDialogCancel>
+   801→            <AlertDialogAction
+   802→              onClick={(e) => {
+   803→                e.preventDefault()
+   804→                void handleDelete()
+   805→              }}
+   806→              className="min-h-11 bg-red-600 text-white hover:bg-red-700"
+   807→              disabled={deleting}
+   808→            >
+   809→              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
+   810→              {deleting ? 'Deleting…' : 'Delete event'}
+   811→            </AlertDialogAction>
+   812→          </AlertDialogFooter>
+   813→        </AlertDialogContent>
+   814→      </AlertDialog>
+   815→    </div>
+   816→  )
+   817→}
+   818→

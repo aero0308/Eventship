@@ -114,6 +114,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await notifyUser(body.assignedTo, 'TASK_ASSIGNED', `You were assigned "${title}"`)
       await logActivity(user.id, ACTIVITY_ACTIONS.TASK_ASSIGNED, {
         taskId: id,
+        title,
         assignedTo: body.assignedTo,
       })
     }
@@ -137,7 +138,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         await notifyUser(recipientId, notifyType, message)
       }
 
-      await logActivity(user.id, notifyType, { taskId: id, from: existing.status, to: body.status })
+      await logActivity(user.id, notifyType, { taskId: id, title, from: existing.status, to: body.status })
     }
 
     const task = await fetchTaskDetail(id)

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CheckSquare,
   Clock,
+  History,
   Inbox,
   LayoutDashboard,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Menu,
   MessageSquare,
   RefreshCw,
+  Search,
   User,
   UserPlus,
   Users,
@@ -38,6 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { CommandPalette } from '@/components/layout/CommandPalette'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -80,6 +83,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.EVENTS, label: 'Events', icon: CalendarDays },
   { path: ROUTES.TASKS, label: 'Tasks', icon: CheckSquare },
   { path: ROUTES.TEAMS, label: 'Teams', icon: Users },
+  { path: ROUTES.ACTIVITY, label: 'Activity', icon: History },
 ]
 
 const NOTIFICATION_STYLE: Record<NotificationType, { icon: LucideIcon; classes: string }> = {
@@ -111,6 +115,7 @@ export function Layout({ children }: LayoutProps) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifLoading, setNotifLoading] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   const initials = useMemo(() => (user ? initialsOf(user.fullName) : ''), [user])
 
@@ -211,6 +216,28 @@ export function Layout({ children }: LayoutProps) {
 
           {/* Right cluster */}
           <div className="flex items-center gap-1.5">
+            {/* Command palette trigger */}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden h-10 items-center gap-2 rounded-full border border-border bg-muted/50 pl-3 pr-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
+              aria-label="Open search (Command K)"
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+              <span>Search…</span>
+              <kbd className="pointer-events-none ml-4 inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                ⌘K
+              </kbd>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 text-muted-foreground hover:text-foreground lg:hidden"
+              aria-label="Open search"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <Search className="h-5 w-5" aria-hidden="true" />
+            </Button>
             {/* Theme toggle */}
             <ThemeToggle />
             {/* Notifications */}
@@ -332,9 +359,13 @@ export function Layout({ children }: LayoutProps) {
                   <LayoutDashboard className="mr-2 h-4 w-4" aria-hidden="true" />
                   Dashboard
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
+                <DropdownMenuItem onClick={() => handleNavigate(ROUTES.ACTIVITY)}>
+                  <History className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Activity
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleNavigate(ROUTES.PROFILE)}>
                   <User className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Profile
+                  Profile &amp; settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => void handleLogout()} className="text-red-600 focus:bg-red-50 focus:text-red-700">
@@ -403,6 +434,8 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </header>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
       <main className="flex-1">
         <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>

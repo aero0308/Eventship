@@ -100,6 +100,7 @@ export async function POST(request: Request) {
       )
       await logActivity(user.id, ACTIVITY_ACTIONS.TASK_ASSIGNED, {
         taskId: created.id,
+        title: body.title,
         assignedTo: body.assignedTo,
       })
     }

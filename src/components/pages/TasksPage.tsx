@@ -263,6 +263,11 @@ export function TasksPage() {
     return new URLSearchParams(query).get('event') ?? ''
   }, [path])
 
+  const queryAssignee = useMemo(() => {
+    const query = path.split('?')[1] ?? ''
+    return new URLSearchParams(query).get('assignee') ?? ''
+  }, [path])
+
   const [tasks, setTasks] = useState<TaskDTO[]>([])
   const [events, setEvents] = useState<EventDTO[]>([])
   const [users, setUsers] = useState<UserDTO[]>([])
@@ -285,12 +290,18 @@ export function TasksPage() {
     return () => mq.removeEventListener('change', update)
   }, [])
 
-  // Sync the ?event= hash query into the event filter once it arrives.
+  // Sync the ?event= / ?assignee= hash queries into their filters once they arrive.
   useEffect(() => {
     if (queryEvent) {
       setEventFilter(queryEvent)
     }
   }, [queryEvent])
+
+  useEffect(() => {
+    if (queryAssignee) {
+      setAssigneeFilter(queryAssignee)
+    }
+  }, [queryAssignee])
 
   const loadTasks = useCallback(async () => {
     setLoading(true)
@@ -677,6 +688,7 @@ export function TasksPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Anyone</SelectItem>
+            <SelectItem value="me">Assigned to me</SelectItem>
             <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
