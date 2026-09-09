@@ -10,6 +10,7 @@ import {
   ListTodo,
   Loader2,
   MessageSquare,
+  Play,
   Plus,
   Save,
   Search,
@@ -98,6 +99,7 @@ interface TaskFormState {
   eventId: string
   priority: TaskPriority
   assignedTo: string
+  startDate: string
   dueDate: string
   estimatedHours: string
 }
@@ -108,6 +110,7 @@ interface EditFormState {
   priority: TaskPriority
   status: TaskStatus
   assignedTo: string
+  startDate: string
   dueDate: string
   estimatedHours: string
   actualHours: string
@@ -464,6 +467,7 @@ export function TasksPage() {
     eventId: '',
     priority: 'MEDIUM',
     assignedTo: UNASSIGNED,
+    startDate: '',
     dueDate: '',
     estimatedHours: '',
   })
@@ -477,6 +481,7 @@ export function TasksPage() {
       eventId: eventFilter !== 'all' ? eventFilter : '',
       priority: 'MEDIUM',
       assignedTo: UNASSIGNED,
+      startDate: '',
       dueDate: '',
       estimatedHours: '',
     })
@@ -495,6 +500,10 @@ export function TasksPage() {
       setFormError('Please choose the event this task belongs to.')
       return
     }
+    if (form.startDate && form.dueDate && new Date(form.startDate) > new Date(form.dueDate)) {
+      setFormError('The start date cannot be after the due date.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -504,6 +513,7 @@ export function TasksPage() {
         eventId: form.eventId,
         priority: form.priority,
         assignedTo: form.assignedTo === UNASSIGNED ? null : form.assignedTo,
+        startDate: form.startDate ? new Date(`${form.startDate}T09:00:00`).toISOString() : null,
         dueDate: form.dueDate ? new Date(`${form.dueDate}T23:59:59`).toISOString() : null,
         estimatedHours: form.estimatedHours ? Number(form.estimatedHours) : null,
       })
@@ -548,6 +558,7 @@ export function TasksPage() {
           priority: data.task.priority,
           status: data.task.status,
           assignedTo: data.task.assignedTo ?? UNASSIGNED,
+          startDate: data.task.startDate ? format(new Date(data.task.startDate), 'yyyy-MM-dd') : '',
           dueDate: data.task.dueDate ? format(new Date(data.task.dueDate), 'yyyy-MM-dd') : '',
           estimatedHours: data.task.estimatedHours !== null ? String(data.task.estimatedHours) : '',
           actualHours: data.task.actualHours !== null ? String(data.task.actualHours) : '',
@@ -578,6 +589,10 @@ export function TasksPage() {
       toast({ title: 'Title required', description: 'The task title cannot be empty.', variant: 'destructive' })
       return
     }
+    if (edit.startDate && edit.dueDate && new Date(edit.startDate) > new Date(edit.dueDate)) {
+      toast({ title: 'Invalid dates', description: 'The start date cannot be after the due date.', variant: 'destructive' })
+      return
+    }
     setEditSaving(true)
     try {
       const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
@@ -586,6 +601,7 @@ export function TasksPage() {
         priority: edit.priority,
         status: edit.status,
         assignedTo: edit.assignedTo === UNASSIGNED ? null : edit.assignedTo,
+        startDate: edit.startDate ? new Date(`${edit.startDate}T09:00:00`).toISOString() : null,
         dueDate: edit.dueDate ? new Date(`${edit.dueDate}T23:59:59`).toISOString() : null,
         estimatedHours: edit.estimatedHours ? Number(edit.estimatedHours) : null,
         actualHours: edit.actualHours ? Number(edit.actualHours) : null,
@@ -992,6 +1008,35 @@ export function TasksPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label htmlFor="task-estimate">Estimated hours</Label>
+                <Input
+                  id="task-estimate"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={form.estimatedHours}
+                  onChange={(e) => setForm((f) => ({ ...f, estimatedHours: e.target.value }))}
+                  placeholder="e.g. 4"
+                  className="h-11"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="task-start" className="flex items-center gap-1.5">
+                  <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                  Start date
+                </Label>
+                <Input
+                  id="task-start"
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="task-due">Due date</Label>
                 <Input
                   id="task-due"
@@ -1001,20 +1046,6 @@ export function TasksPage() {
                   className="h-11"
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="task-estimate">Estimated hours</Label>
-              <Input
-                id="task-estimate"
-                type="number"
-                min="0"
-                step="0.5"
-                value={form.estimatedHours}
-                onChange={(e) => setForm((f) => ({ ...f, estimatedHours: e.target.value }))}
-                placeholder="e.g. 4"
-                className="h-11"
-              />
             </div>
 
             <DialogFooter className="gap-2 pt-2">
@@ -1117,7 +1148,14 @@ export function TasksPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-start" className="flex items-center gap-1">
+                      <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                      Start
+                    </Label>
+                    <Input id="edit-start" type="date" value={edit.startDate} onChange={(e) => setEdit((f) => (f ? { ...f, startDate: e.target.value } : f))} className="h-10" />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-due">Due date</Label>
                     <Input id="edit-due" type="date" value={edit.dueDate} onChange={(e) => setEdit((f) => (f ? { ...f, dueDate: e.target.value } : f))} className="h-10" />

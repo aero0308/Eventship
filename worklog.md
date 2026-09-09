@@ -293,3 +293,40 @@ Verification (agent-browser + curl):
 Stage Summary:
 - New: dashboard My Focus strip (+ myFocus in /api/dashboard), src/lib/ics.ts + Add-to-calendar menu (event detail) + Export .ics (calendar), event-detail list pagination, StatCard hover polish.
 - Risks/next: myFocus day-bounds are server-local (container UTC) — same ±5:30 IST edge as calendar month bounds; FocusStrip shows workspace-wide counts (not per-user) by design; ICS events are all-day (events have no meaningful time component in schema). Next-phase candidates: task start/end dates for true Gantt + ICS with times, WebSocket realtime board updates, per-user filter on focus strip ("only my tasks" toggle), admin audit CSV export, drag tasks between calendar days to reschedule, event location field for ICS LOCATION.
+
+---
+Task ID: 10 (webDevReview round 6)
+Agent: Z.ai Code (orchestrator)
+Task: QA sweep + Round-6 features (calendar drag-reschedule, true Gantt start dates, event location, focus scope toggle, audit CSV export)
+
+Work Log (implementation done, browser verification pending):
+- QA baseline: dev server healthy, lint clean, tsc clean (app files), fresh-session agent-browser sweep of all 8 routes light mode — zero errors. Stale "Module not found CalendarPage" entries in dev.log confirmed non-current (previous session). Dark + mobile spot checks clean. → proceeded to features.
+- SCHEMA: Task.startDate (DateTime?), Event.location (String?) — db push + prisma client regen + dev server restart (setsid).
+- CONTRACT: TaskDTO.startDate, EventDTO.location; task event pick now includes teamId (needed for client-side edit permission checks); Create/Update payloads extended; zod create/updateTaskSchema gained startDate with dateRange refine (start<=due); updateEventSchema/createEventSchema gained location: nullableText(200).
+- API: serializers (_lib/tasks, _lib/events, dashboard focus + upcomingDeadlines) emit new fields; tasks POST/PATCH persist startDate (PATCH validates merged start/due → 400 "Start date must be on or before the due date"); events POST/PATCH persist location (location change logs EVENT_UPDATED).
+- NEW ENDPOINT /api/activity/export (GET): EVENT_MANAGER-only (403 otherwise), same action/userId filters + from/to, ≤5000 rows, text/csv + BOM + Content-Disposition eventflow-audit-YYYY-MM-DD.csv. Verified via curl: 200 as admin, 403 as david.
+- /api/dashboard?focus=mine: focus buckets (dueToday/dueThisWeek/overdue counts + preview tasks) scoped to assignedTo=caller. Verified: david all=4 vs mine=1 dueThisWeek.
+- CALENDAR DnD: task chips draggable (permission-gated client-side via canEditTask: manager | assignee | creator | owning team leader; server still enforces), native HTML5 DnD; drop on a day cell → optimistic dueDate move keeping original time-of-day, PATCH, toast; drag-over cell gets emerald ring+scale highlight; dragging chip dims; legend gained "Drag a chip to another day to reschedule" hint. Adjacent-month drops persist (chip stays in the 42-day grid). Same-day drop = no-op. AgendaDialog rows: editable tasks get an inline date input (CalendarArrowDown icon) to reschedule keyboard/mobile-friendly.
+- TIMELINE (true Gantt): bars now run task.startDate→dueDate (fallback event start→due); start-dot marker (emerald ring dot) when task has own startDate and it's >1% into the track; range in hover title ("Sep 1 → Sep 8"); label shows "· Starts MMM d"; conditional "Task start" legend item.
+- TASK FORMS: start date input in TasksPage create dialog (Play icon label; grid Assignee+Hours / Start+Due), event-detail add-task dialog (3-col Start|Due|Est hours), TasksPage edit dialog (4-col Start|Due|Est|Actual); client validation start<=due everywhere; CSV export from event detail gained Start date column.
+- EVENT LOCATION: create + edit dialogs (MapPin label, 200 max, hint "included in calendar exports"); detail header MapPin chip; ICS + Google Calendar URL carry location; events CSV export gained Location column; events cards show location line.
+- DASHBOARD: focus strip gained All tasks/Mine only segmented toggle (Users/UserCheck icons, emerald active), persisted in localStorage (ems-focus-scope), refetches /api/dashboard?focus=mine with strip opacity pending state.
+- ACTIVITY PAGE: "Export CSV" button (manager-only, FileDown icon) honors current filters, fetches blob and downloads eventflow-audit-<date>.csv.
+- Verified via curl so far: startDate PATCH + start>due rejection, location PATCH, focus=mine scoping, export 200/403.
+
+Verification (agent-browser + curl):
+- CALENDAR DnD: dragged "Order hackathon swag bags" Sep 8 → Sep 10 via native drag — chip moved in UI, toast "Task rescheduled … now due Sep 10", server dueDate 2026-09-10T17:00Z (original time-of-day preserved). Reverted after test. Legend drag hint renders. 12 chips draggable for manager.
+- DnD PERMISSIONS (as david/EMPLOYEE): only his own tasks ("Sponsor booth layout plan", "Catering tasting & menu select") draggable=true; all 10 others draggable=false. Server 403 remains the backstop.
+- AGENDA DATE EDITOR: Sep 11 agenda shows date input (value 2026-09-11); changed to Sep 12 → toast + server due 2026-09-12T16:25 (time-of-day kept). Reverted after test. Mobile agenda dialog renders "Clear day" state correctly.
+- FOCUS TOGGLE: "Mine only" click → aria-pressed flips, buckets 0/0/0 for admin (no assigned tasks — correct), localStorage ems-focus-scope=mine persisted; "All tasks" restores 0/4/1. Strip dims (opacity) while refetching. Verified in dark mode too.
+- TRUE GANTT: swag task start Nov 24 09:00 → due Nov 25 12:00 inside Hackathon (Nov 23 16:25 → Nov 25 16:25): bar left 34.54%, width 56.25% (DOM-measured), emerald start-dot at bar origin, label "Due Nov 25 · Starts Nov 24", conditional "Task start" legend item. Out-of-range dates clamp gracefully to event bounds (left 0 / full width) — verified with 2025 dates first.
+- TASK FORMS: add-task dialog has #task-start (type=date) alongside due + hours; edit dialog has Start/Due/Est/Actual 4-col grid; edit-event dialog has #edit-location pre-filled "Innovation Hall, 2nd Floor".
+- EVENT LOCATION: detail header shows MapPin chip (light + dark + 390px mobile), events cards would show location line, ICS unit-verified: LOCATION:Innovation Hall\, 2nd Floor (comma escaped), Google Calendar URL carries location param. Calendar month export omits LOCATION for events without one (correct).
+- AUDIT EXPORT: admin sees "Export CSV" button on #/activity; david does not (role-gated UI); server 200 admin / 403 david (curl).
+- REGRESSION: fresh-session sweep of all 8 routes (desktop, light) zero page errors, zero console errors, zero api-error/⨯ in dev.log; lint 0/0; tsc clean (app files; only pre-existing skills/+examples/ errors remain).
+- Demo data state: swag task now start 2026-11-24T09:00Z / due 2026-11-25T12:00Z (coherent with its event — kept intentionally); Workshop email task due back on 2026-09-11; Internal Hackathon location "Innovation Hall, 2nd Floor" kept. Demo login unchanged: admin@eventflow.io / password123.
+
+Stage Summary:
+- New: Task.startDate + Event.location (schema/API/forms/timeline/ICS/CSV), calendar drag-to-reschedule (desktop DnD + agenda date editor, permission-gated), dashboard focus scope toggle (persisted), /api/activity/export manager-only audit CSV + Activity page button.
+- Ops notes: prisma client regen required the usual dev-server restart (done); no other infra changes.
+- Risks/next: calendar month summary counts a task dropped on an adjacent-month day until reload (cosmetic); timeline clamps out-of-event task dates to event bounds (documented behavior); native HTML5 DnD is desktop-only by design (mobile uses the agenda date editor); next-phase candidates: drag tasks between calendar days on touch (long-press sheet), task start dates on kanban cards, WebSocket realtime board, per-event digest emails, admin audit export date-range pickers.

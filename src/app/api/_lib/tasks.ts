@@ -7,7 +7,7 @@ import type { Prisma } from '@prisma/client'
 // ============ list shape ============
 
 export const taskInclude = {
-  event: { select: { id: true, name: true, status: true } },
+  event: { select: { id: true, name: true, status: true, teamId: true } },
   assignee: { select: { id: true, fullName: true, email: true } },
   creator: { select: { id: true, fullName: true } },
   _count: { select: { comments: true } },
@@ -21,11 +21,12 @@ export interface TaskWithRelations {
   priority: string
   status: string
   eventId: string
-  event: { id: string; name: string; status: string } | null
+  event: { id: string; name: string; status: string; teamId: string } | null
   assignedTo: string | null
   assignee: { id: string; fullName: string; email: string } | null
   createdBy: string
   creator: { id: string; fullName: string } | null
+  startDate: Date | null
   dueDate: Date | null
   estimatedHours: number | null
   actualHours: number | null
@@ -71,6 +72,7 @@ export function serializeTask(task: TaskWithRelations) {
     assignee: task.assignee ?? null,
     createdBy: task.createdBy,
     creator: task.creator ?? null,
+    startDate: task.startDate ? task.startDate.toISOString() : null,
     dueDate: task.dueDate ? task.dueDate.toISOString() : null,
     estimatedHours: task.estimatedHours ?? null,
     actualHours: task.actualHours ?? null,

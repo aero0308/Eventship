@@ -55,6 +55,7 @@ export interface EventDTO {
   id: string
   name: string
   description: string | null
+  location: string | null
   startDate: string
   endDate: string
   status: EventStatus
@@ -75,11 +76,12 @@ export interface TaskDTO {
   priority: TaskPriority
   status: TaskStatus
   eventId: string
-  event?: Pick<EventDTO, 'id' | 'name' | 'status'> | null
+  event?: Pick<EventDTO, 'id' | 'name' | 'status' | 'teamId'> | null
   assignedTo: string | null
   assignee?: Pick<UserDTO, 'id' | 'fullName' | 'email'> | null
   createdBy: string
   creator?: Pick<UserDTO, 'id' | 'fullName'> | null
+  startDate: string | null
   dueDate: string | null
   estimatedHours: number | null
   actualHours: number | null
@@ -234,6 +236,7 @@ export interface ChangePasswordPayload {
 export interface CreateEventPayload {
   name: string
   description?: string
+  location?: string | null
   startDate: string
   endDate: string
   status?: EventStatus
@@ -249,6 +252,7 @@ export interface CreateTaskPayload {
   status?: TaskStatus
   eventId: string
   assignedTo?: string | null
+  startDate?: string | null
   dueDate?: string | null
   estimatedHours?: number | null
 }

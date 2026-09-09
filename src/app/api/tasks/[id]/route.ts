@@ -83,6 +83,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
+    // Merged start/due validation (payload-only values can't see stored dates).
+    const effectiveStart = body.startDate !== undefined ? body.startDate : existing.startDate
+    const effectiveDue = body.dueDate !== undefined ? body.dueDate : existing.dueDate
+    if (
+      effectiveStart &&
+      effectiveDue &&
+      new Date(effectiveStart).getTime() > new Date(effectiveDue).getTime()
+    ) {
+      throw new ApiError(400, 'Start date must be on or before the due date')
+    }
+
     // Resulting title used in notification messages.
     const title = body.title ?? existing.title
 
@@ -98,6 +109,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         : { disconnect: true }
     }
     if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null
+    if (body.startDate !== undefined) data.startDate = body.startDate ? new Date(body.startDate) : null
     if (body.estimatedHours !== undefined) data.estimatedHours = body.estimatedHours
     if (body.actualHours !== undefined) data.actualHours = body.actualHours
     if (body.dependsOnTaskIds) {

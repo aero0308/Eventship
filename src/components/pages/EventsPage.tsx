@@ -8,6 +8,7 @@ import {
   CalendarPlus,
   Download,
   Loader2,
+  MapPin,
   Plus,
   Search,
   Users,
@@ -55,6 +56,7 @@ interface EventsPageProps {
 interface EventFormState {
   name: string
   description: string
+  location: string
   startDate: string
   endDate: string
   teamId: string
@@ -64,6 +66,7 @@ interface EventFormState {
 const EMPTY_FORM: EventFormState = {
   name: '',
   description: '',
+  location: '',
   startDate: '',
   endDate: '',
   teamId: '',
@@ -180,6 +183,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
       const data = await api.post<{ event: EventDTO }>('/events', {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
+        location: form.location.trim() || undefined,
         startDate: new Date(`${form.startDate}T00:00:00`).toISOString(),
         endDate: new Date(`${form.endDate}T23:59:59`).toISOString(),
         teamId: form.teamId,
@@ -198,11 +202,12 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
 
   const handleExport = () => {
     const rows: (string | number | null)[][] = [
-      ['Name', 'Status', 'Team', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Created by'],
+      ['Name', 'Status', 'Team', 'Location', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Created by'],
       ...events.map((event) => [
         event.name,
         EVENT_STATUS_LABELS[event.status] ?? event.status,
         event.team?.name ?? teamNameById.get(event.teamId) ?? '',
+        event.location ?? '',
         format(new Date(event.startDate), 'yyyy-MM-dd'),
         format(new Date(event.endDate), 'yyyy-MM-dd'),
         event.taskStats?.total ?? event.taskCount ?? 0,
@@ -348,6 +353,13 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                       ) : null}
                     </div>
 
+                    {event.location ? (
+                      <p className="mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground" title={event.location}>
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        <span className="truncate">{event.location}</span>
+                      </p>
+                    ) : null}
+
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>
@@ -414,6 +426,22 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 placeholder="What is this event about?"
                 rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="event-location" className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                Location
+                <span className="text-xs font-normal text-muted-foreground">(optional — included in calendar exports)</span>
+              </Label>
+              <Input
+                id="event-location"
+                value={form.location}
+                onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                placeholder="e.g. Grand Hall downtown or a video link"
+                className="h-11"
+                maxLength={200}
               />
             </div>
 

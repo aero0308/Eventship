@@ -19,7 +19,7 @@ function endOfDay(date: Date): Date {
 
 /** Task include shape shared by the three focus buckets. */
 const FOCUS_INCLUDE = {
-  event: { select: { id: true, name: true, status: true } },
+  event: { select: { id: true, name: true, status: true, teamId: true } },
   assignee: { select: { id: true, fullName: true, email: true } },
 } as const
 
@@ -39,10 +39,11 @@ function serializeFocusTask(task: {
   priority: string
   status: string
   eventId: string
-  event: { id: string; name: string; status: string } | null
+  event: { id: string; name: string; status: string; teamId: string } | null
   assignedTo: string | null
   assignee: { id: string; fullName: string; email: string } | null
   createdBy: string
+  startDate: Date | null
   dueDate: Date | null
   estimatedHours: number | null
   actualHours: number | null
@@ -60,6 +61,7 @@ function serializeFocusTask(task: {
     assignedTo: task.assignedTo,
     assignee: task.assignee ?? null,
     createdBy: task.createdBy,
+    startDate: task.startDate ? task.startDate.toISOString() : null,
     dueDate: task.dueDate ? task.dueDate.toISOString() : null,
     estimatedHours: task.estimatedHours ?? null,
     actualHours: task.actualHours ?? null,
@@ -68,9 +70,13 @@ function serializeFocusTask(task: {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    await requireUser()
+    const user = await requireUser()
+    const { searchParams } = new URL(request.url)
+    // focus=mine scopes the three focus buckets to tasks assigned to the caller.
+    const focusMine = searchParams.get('focus') === 'mine'
+    const focusWhere = focusMine ? { assignedTo: user.id } : {}
     const now = new Date()
     const weekFromNow = new Date(now.getTime() + WEEK_MS)
 
@@ -123,7 +129,7 @@ export async function GET() {
           orderBy: { dueDate: 'asc' },
           take: 5,
           include: {
-            event: { select: { id: true, name: true, status: true } },
+            event: { select: { id: true, name: true, status: true, teamId: true } },
             assignee: { select: { id: true, fullName: true, email: true } },
           },
         }),
@@ -140,31 +146,31 @@ export async function GET() {
         // ---- "My focus" buckets: due today / due within a week / overdue ----
         Promise.all([
           db.task.findMany({
-            where: { dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
             orderBy: { dueDate: 'asc' },
             take: 7,
             include: FOCUS_INCLUDE,
           }),
           db.task.count({
-            where: { dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
           }),
           db.task.findMany({
-            where: { dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
             orderBy: { dueDate: 'asc' },
             take: 7,
             include: FOCUS_INCLUDE,
           }),
           db.task.count({
-            where: { dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
           }),
           db.task.findMany({
-            where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
             orderBy: { dueDate: 'asc' },
             take: 7,
             include: FOCUS_INCLUDE,
           }),
           db.task.count({
-            where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
+            where: { ...focusWhere, dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
           }),
         ]),
       ])
@@ -236,6 +242,7 @@ export async function GET() {
         assignedTo: task.assignedTo,
         assignee: task.assignee ?? null,
         createdBy: task.createdBy,
+        startDate: task.startDate ? task.startDate.toISOString() : null,
         dueDate: task.dueDate ? task.dueDate.toISOString() : null,
         estimatedHours: task.estimatedHours ?? null,
         actualHours: task.actualHours ?? null,

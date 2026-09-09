@@ -14,8 +14,10 @@ import {
   GanttChart,
   List,
   Loader2,
+  MapPin,
   MessageSquare,
   Pencil,
+  Play,
   Search,
   Trash2,
   Users,
@@ -83,28 +85,31 @@ export interface EventDetailPageProps {
   eventId: string
 }
 
-interface EditFormState {
-  name: string
-  description: string
-  startDate: string
-  endDate: string
-}
-
 interface TaskFormState {
   title: string
   description: string
   priority: string
   assignedTo: string
+  startDate: string
   dueDate: string
   estimatedHours: string
 }
 
-const EMPTY_EDIT: EditFormState = { name: '', description: '', startDate: '', endDate: '' }
+interface EditFormState {
+  name: string
+  description: string
+  location: string
+  startDate: string
+  endDate: string
+}
+
+const EMPTY_EDIT: EditFormState = { name: '', description: '', location: '', startDate: '', endDate: '' }
 const EMPTY_TASK: TaskFormState = {
   title: '',
   description: '',
   priority: 'MEDIUM',
   assignedTo: '__unassigned__',
+  startDate: '',
   dueDate: '',
   estimatedHours: '',
 }
@@ -167,9 +172,11 @@ interface TimelineViewProps {
 }
 
 /**
- * Gantt-lite: one row per task; the bar runs from the event start to the task's
- * due date (tasks without a due date get a dashed full-width "unslotted" bar).
- * Shares the status filter/search results with the list view (passed via tasks).
+ * Gantt-lite: one row per task; the bar runs from the task's start date (or the
+ * event start when unset) to its due date (tasks without a due date get a
+ * dashed full-width "unslotted" bar). A small ring-dot marks a task-specific
+ * start date inside the bar. Shares the status filter/search results with the
+ * list view (passed via tasks).
  */
 function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusChange, rowUpdatingId }: TimelineViewProps) {
   const start = new Date(event.startDate).getTime()
@@ -184,6 +191,7 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
     () => [...tasks].sort((a, b) => byDue(a.dueDate, b.dueDate)),
     [tasks]
   )
+  const anyStartDates = useMemo(() => tasks.some((t) => t.startDate !== null), [tasks])
 
   const ticks = useMemo(() => {
     // Adaptive tick count: fewer for short spans, more for long ones.
@@ -235,7 +243,12 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
       <ul className="divide-y divide-border/40">
         {ordered.map((task) => {
           const due = task.dueDate ? new Date(task.dueDate) : null
+          const taskStart = task.startDate ? new Date(task.startDate) : null
+          // Bar origin: the task's own start when set, otherwise the event start.
+          const barStartPct = taskStart ? pct(Math.max(taskStart.getTime(), start)) : 0
           const duePct = due ? pct(due.getTime()) : null
+          const barLeftPct = duePct !== null ? Math.min(barStartPct, duePct) : barStartPct
+          const barWidthPct = duePct !== null ? Math.max(Math.abs(duePct - barStartPct), 2) : null
           const overdue = due !== null && due.getTime() < Date.now() && task.status !== 'COMPLETED'
           const expanded = expandedTaskId === task.id
           return (
@@ -262,6 +275,7 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
                     </span>
                     <span className={cn('block truncate text-[10px]', overdue ? 'font-semibold text-red-600 dark:text-red-400' : 'text-muted-foreground/70')}>
                       {due ? (overdue ? `Overdue · ${format(due, 'MMM d')}` : `Due ${format(due, 'MMM d')}`) : 'No due date'}
+                      {taskStart ? ` · Starts ${format(taskStart, 'MMM d')}` : ''}
                     </span>
                   </span>
                 </span>
@@ -275,16 +289,22 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
                       aria-hidden="true"
                     />
                   ) : null}
-                  {duePct !== null ? (
+                  {duePct !== null && barWidthPct !== null ? (
                     <motion.span
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(duePct, 2)}%` }}
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: `${barWidthPct}%`, opacity: 1 }}
                       transition={{ duration: 0.45, ease: 'easeOut' }}
                       className={cn(
-                        'absolute inset-y-[5px] left-0 rounded-r-full rounded-l-sm bg-gradient-to-r shadow-sm transition-[filter] hover:brightness-105',
+                        'absolute inset-y-[5px] rounded-full bg-gradient-to-r shadow-sm transition-[filter] hover:brightness-105',
+                        barLeftPct <= 0.5 ? 'rounded-l-sm' : 'rounded-l-full',
                         TIMELINE_BAR[task.status] ?? TIMELINE_BAR.NOT_STARTED
                       )}
-                      title={`${task.title} — due ${due ? format(due, 'MMM d, yyyy') : '—'} (${TASK_STATUS_LABELS[task.status] ?? task.status})`}
+                      style={{ left: `${Math.max(barLeftPct, 0)}%` }}
+                      title={
+                        taskStart
+                          ? `${task.title} — ${format(taskStart, 'MMM d')} → ${format(due!, 'MMM d, yyyy')} (${TASK_STATUS_LABELS[task.status] ?? task.status})`
+                          : `${task.title} — due ${format(due!, 'MMM d, yyyy')} (${TASK_STATUS_LABELS[task.status] ?? task.status})`
+                      }
                     />
                   ) : (
                     <span
@@ -292,6 +312,14 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
                       title={`${task.title} — no due date`}
                     />
                   )}
+                  {taskStart && duePct !== null && barStartPct > 1 ? (
+                    <span
+                      className="absolute top-1/2 z-10 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-600 shadow dark:border-stone-900"
+                      style={{ left: `calc(${Math.max(barStartPct, 0)}% - 4px)` }}
+                      aria-hidden="true"
+                      title={`Starts ${format(taskStart, 'MMM d')}`}
+                    />
+                  ) : null}
                   {task.status === 'COMPLETED' && duePct !== null ? (
                     <CheckCircle2
                       className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 text-white drop-shadow"
@@ -359,6 +387,12 @@ function TimelineView({ event, tasks, expandedTaskId, onToggleExpand, onStatusCh
           <span className="h-3 w-0 border-l border-dashed border-amber-500" aria-hidden="true" />
           Today
         </span>
+        {anyStartDates ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+            <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-600 shadow-sm dark:border-stone-900" aria-hidden="true" />
+            Task start
+          </span>
+        ) : null}
         <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
           <span className="h-2.5 w-6 rounded-full border border-dashed border-stone-300 dark:border-stone-600" aria-hidden="true" />
           No due date
@@ -502,6 +536,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     setEdit({
       name: event.name,
       description: event.description ?? '',
+      location: event.location ?? '',
       startDate: toDateInput(event.startDate),
       endDate: toDateInput(event.endDate),
     })
@@ -517,6 +552,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
           uid: event.id,
           title: event.name,
           description: event.description ?? undefined,
+          location: event.location,
           start: event.startDate,
           end: event.endDate,
           status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
@@ -552,6 +588,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
       const data = await api.patch<{ event: EventDTO }>(`/events/${event.id}`, {
         name: edit.name.trim(),
         description: edit.description.trim() || undefined,
+        location: edit.location.trim() || null,
         startDate: new Date(`${edit.startDate}T00:00:00`).toISOString(),
         endDate: new Date(`${edit.endDate}T23:59:59`).toISOString(),
       })
@@ -593,6 +630,10 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
       setTaskError('Please give the task a title.')
       return
     }
+    if (taskForm.startDate && taskForm.dueDate && new Date(taskForm.startDate) > new Date(taskForm.dueDate)) {
+      setTaskError('The start date cannot be after the due date.')
+      return
+    }
 
     setTaskSaving(true)
     try {
@@ -602,6 +643,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
         priority: taskForm.priority as TaskDTO['priority'],
         eventId: event.id,
         assignedTo: taskForm.assignedTo === '__unassigned__' ? undefined : taskForm.assignedTo,
+        startDate: taskForm.startDate ? new Date(`${taskForm.startDate}T09:00:00`).toISOString() : undefined,
         dueDate: taskForm.dueDate ? new Date(`${taskForm.dueDate}T17:00:00`).toISOString() : undefined,
         estimatedHours: taskForm.estimatedHours ? Number(taskForm.estimatedHours) : undefined,
       })
@@ -683,12 +725,13 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
 
   const handleExportTasks = () => {
     const rows: (string | number | null)[][] = [
-      ['Title', 'Status', 'Priority', 'Assignee', 'Due date', 'Estimated hours', 'Actual hours', 'Comments'],
+      ['Title', 'Status', 'Priority', 'Assignee', 'Start date', 'Due date', 'Estimated hours', 'Actual hours', 'Comments'],
       ...tasks.map((task) => [
         task.title,
         TASK_STATUS_LABELS[task.status] ?? task.status,
         PRIORITY_LABELS[task.priority] ?? task.priority,
         task.assignee?.fullName ?? 'Unassigned',
+        task.startDate ? format(new Date(task.startDate), 'yyyy-MM-dd') : '',
         task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
         task.estimatedHours ?? '',
         task.actualHours ?? '',
@@ -769,6 +812,12 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                   {event.team.name}
                 </span>
               ) : null}
+              {event.location ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                  {event.location}
+                </span>
+              ) : null}
               {event.creator ? <span>Created by {event.creator.fullName}</span> : null}
             </div>
             {event.description ? (
@@ -834,6 +883,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                           uid: event.id,
                           title: event.name,
                           description: event.description,
+                          location: event.location,
                           start: event.startDate,
                           end: event.endDate,
                         },
@@ -1081,8 +1131,14 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                           {due ? (
                             <span className={cn('inline-flex items-center gap-1', overdue && 'font-semibold text-red-600 dark:text-red-400')}>
                               <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                              {task.startDate ? `${format(new Date(task.startDate), 'MMM d')} → ` : ''}
                               {overdue ? 'Overdue ' : 'Due '}
                               {format(due, 'MMM d')}
+                            </span>
+                          ) : task.startDate ? (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <Play className="h-3 w-3" aria-hidden="true" />
+                              Starts {format(new Date(task.startDate), 'MMM d')}
                             </span>
                           ) : null}
                           {task.assignee ? (
@@ -1221,6 +1277,22 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="edit-location" className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                Location
+                <span className="text-xs font-normal text-muted-foreground">(optional — included in calendar exports)</span>
+              </Label>
+              <Input
+                id="edit-location"
+                value={edit.location}
+                onChange={(e) => setEdit((f) => ({ ...f, location: e.target.value }))}
+                className="h-11"
+                placeholder="e.g. Innovation Hall, Room 204 or a video link"
+                maxLength={200}
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="edit-description">Description</Label>
               <Textarea
                 id="edit-description"
@@ -1305,7 +1377,17 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="task-start">Start date</Label>
+                <Input
+                  id="task-start"
+                  type="date"
+                  value={taskForm.startDate}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, startDate: e.target.value }))}
+                  className="h-11"
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="task-due">Due date</Label>
                 <Input
@@ -1317,7 +1399,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="task-hours">Estimated hours</Label>
+                <Label htmlFor="task-hours">Est. hours</Label>
                 <Input
                   id="task-hours"
                   type="number"

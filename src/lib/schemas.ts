@@ -105,6 +105,7 @@ export const createEventSchema = z.object({
     .min(1, 'Event name is required')
     .max(120, 'Event name must be at most 120 characters'),
   description: nullableText(2000),
+  location: nullableText(200),
   startDate: isoDateTime,
   endDate: isoDateTime,
   status: z.enum(EVENT_STATUSES).default('DRAFT'),
@@ -119,6 +120,7 @@ export const updateEventSchema = z.object({
     .max(120, 'Event name must be at most 120 characters')
     .optional(),
   description: nullableText(2000),
+  location: nullableText(200),
   startDate: isoDateTime.optional(),
   endDate: isoDateTime.optional(),
   status: z.enum(EVENT_STATUSES).optional(),
@@ -127,38 +129,52 @@ export const updateEventSchema = z.object({
 
 // ============ tasks ============
 
-export const createTaskSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, 'Task title is required')
-    .max(160, 'Task title must be at most 160 characters'),
-  description: nullableText(4000),
-  priority: z.enum(TASK_PRIORITIES).default('MEDIUM'),
-  status: z.enum(TASK_STATUSES).default('NOT_STARTED'),
-  eventId: z.uuid(),
-  assignedTo: nullableId,
-  dueDate: nullableDateTime,
-  estimatedHours: nullablePositiveNumber,
-})
+/** Rejects a start date that lands after the due date (both present). */
+const dateRange = <T extends { startDate?: string | null; dueDate?: string | null }>(data: T) => {
+  if (data.startDate && data.dueDate) {
+    return new Date(data.startDate).getTime() <= new Date(data.dueDate).getTime()
+  }
+  return true
+}
 
-export const updateTaskSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, 'Task title is required')
-    .max(160, 'Task title must be at most 160 characters')
-    .optional(),
-  description: nullableText(4000),
-  priority: z.enum(TASK_PRIORITIES).optional(),
-  status: z.enum(TASK_STATUSES).optional(),
-  eventId: z.uuid().optional(),
-  assignedTo: nullableId,
-  dueDate: nullableDateTime,
-  estimatedHours: nullablePositiveNumber,
-  actualHours: nullablePositiveNumber,
-  dependsOnTaskIds: z.array(z.uuid()).optional(),
-})
+export const createTaskSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Task title is required')
+      .max(160, 'Task title must be at most 160 characters'),
+    description: nullableText(4000),
+    priority: z.enum(TASK_PRIORITIES).default('MEDIUM'),
+    status: z.enum(TASK_STATUSES).default('NOT_STARTED'),
+    eventId: z.uuid(),
+    assignedTo: nullableId,
+    startDate: nullableDateTime,
+    dueDate: nullableDateTime,
+    estimatedHours: nullablePositiveNumber,
+  })
+  .refine(dateRange, { message: 'Start date must be on or before the due date', path: ['startDate'] })
+
+export const updateTaskSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Task title is required')
+      .max(160, 'Task title must be at most 160 characters')
+      .optional(),
+    description: nullableText(4000),
+    priority: z.enum(TASK_PRIORITIES).optional(),
+    status: z.enum(TASK_STATUSES).optional(),
+    eventId: z.uuid().optional(),
+    assignedTo: nullableId,
+    startDate: nullableDateTime,
+    dueDate: nullableDateTime,
+    estimatedHours: nullablePositiveNumber,
+    actualHours: nullablePositiveNumber,
+    dependsOnTaskIds: z.array(z.uuid()).optional(),
+  })
+  .refine(dateRange, { message: 'Start date must be on or before the due date', path: ['startDate'] })
 
 // ============ comments & notifications ============
 

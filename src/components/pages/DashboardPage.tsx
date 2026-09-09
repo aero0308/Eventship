@@ -17,6 +17,7 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
+  UserCheck,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -139,7 +140,17 @@ function focusDueLabel(dueDate: string | null): string {
   return `Due ${format(new Date(dueDate), 'EEE, MMM d')}`
 }
 
-function FocusStrip({ myFocus }: { myFocus: DashboardStatsDTO['myFocus'] }) {
+function FocusStrip({
+  myFocus,
+  scope,
+  pending,
+  onScopeChange,
+}: {
+  myFocus: DashboardStatsDTO['myFocus']
+  scope: 'all' | 'mine'
+  pending: boolean
+  onScopeChange: (scope: 'all' | 'mine') => void
+}) {
   const [open, setOpen] = useState<FocusKey | null>(null)
 
   const buckets: { key: FocusKey; count: number; tasks: TaskDTO[] }[] = [
@@ -152,7 +163,10 @@ function FocusStrip({ myFocus }: { myFocus: DashboardStatsDTO['myFocus'] }) {
   return (
     <section
       aria-label="My focus"
-      className="overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-card to-amber-50 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-card dark:to-amber-500/10"
+      className={cn(
+        'overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-card to-amber-50 shadow-sm transition-opacity dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-card dark:to-amber-500/10',
+        pending && 'opacity-60'
+      )}
     >
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -163,6 +177,35 @@ function FocusStrip({ myFocus }: { myFocus: DashboardStatsDTO['myFocus'] }) {
             <h2 className="text-sm font-semibold text-foreground">My focus</h2>
             <p className="text-xs text-muted-foreground">Tap a bucket to see what needs attention.</p>
           </div>
+        </div>
+        {/* Scope toggle: everyone's tasks vs. only mine */}
+        <div
+          className="inline-flex h-8 shrink-0 items-center rounded-full border border-border/70 bg-card/80 p-0.5"
+          role="group"
+          aria-label="Focus scope"
+        >
+          {(
+            [
+              { value: 'all', label: 'All tasks', icon: Users },
+              { value: 'mine', label: 'Mine only', icon: UserCheck },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={scope === option.value}
+              onClick={() => onScopeChange(option.value)}
+              className={cn(
+                'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-all',
+                scope === option.value
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <option.icon className="h-3 w-3" aria-hidden="true" />
+              {option.label}
+            </button>
+          ))}
         </div>
         <div className="flex flex-1 flex-wrap items-center justify-start gap-2 sm:justify-end" role="group" aria-label="Focus buckets">
           {buckets.map((bucket) => {
@@ -267,10 +310,17 @@ export function DashboardPage() {
   const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Focus strip scope — "All tasks" or "Mine only". Persisted per browser.
+  const [focusScope, setFocusScope] = useState<'all' | 'mine'>(() => {
+    if (typeof window === 'undefined') return 'all'
+    return window.localStorage.getItem('ems-focus-scope') === 'mine' ? 'mine' : 'all'
+  })
+  const [focusPending, setFocusPending] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     api
-      .get<{ stats: DashboardStatsDTO }>('/dashboard')
+      .get<{ stats: DashboardStatsDTO }>(`/dashboard${focusScope === 'mine' ? '?focus=mine' : ''}`)
       .then((data) => {
         if (!cancelled) setStats(data.stats)
       })
@@ -278,12 +328,26 @@ export function DashboardPage() {
         // Rendered empty state handles null stats below.
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          setFocusPending(false)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [focusScope])
+
+  const handleFocusScopeChange = (scope: 'all' | 'mine') => {
+    if (scope === focusScope) return
+    setFocusScope(scope)
+    setFocusPending(true)
+    try {
+      window.localStorage.setItem('ems-focus-scope', scope)
+    } catch {
+      // Storage unavailable — the toggle still works for this session.
+    }
+  }
 
   const statusData = useMemo(
     () => (stats?.tasksByStatus ?? []).map((entry) => ({ name: TASK_STATUS_LABELS[entry.status] ?? entry.status, count: entry.count, key: entry.status })),
@@ -309,7 +373,12 @@ export function DashboardPage() {
         <Skeleton className="h-20 rounded-2xl" />
       ) : stats ? (
         <div className="mt-1 mb-4">
-          <FocusStrip myFocus={stats.myFocus} />
+          <FocusStrip
+            myFocus={stats.myFocus}
+            scope={focusScope}
+            pending={focusPending}
+            onScopeChange={handleFocusScopeChange}
+          />
         </div>
       ) : null}
 

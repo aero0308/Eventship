@@ -17,6 +17,7 @@ export interface EventWithRelations {
   id: string
   name: string
   description: string | null
+  location: string | null
   startDate: Date
   endDate: Date
   status: string
@@ -78,6 +79,7 @@ export function serializeEvent(event: EventWithRelations, taskStats?: TaskStats)
     id: event.id,
     name: event.name,
     description: event.description,
+    location: event.location ?? null,
     startDate: event.startDate.toISOString(),
     endDate: event.endDate.toISOString(),
     status: event.status,

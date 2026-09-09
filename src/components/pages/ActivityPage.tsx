@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { History, RefreshCw, RotateCcw, SearchX } from 'lucide-react'
+import { FileDown, History, RefreshCw, RotateCcw, SearchX } from 'lucide-react'
 import type { ActivityFeedDTO, UserDTO } from '@/types'
-import { ACTIVITY_FILTER_GROUPS, ACTIVITY_GROUP_ACTIONS, ROUTES } from '@/lib/constants'
+import { ACTIVITY_FILTER_GROUPS, ACTIVITY_GROUP_ACTIONS, API_BASE, ROUTES } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import { csvDateStamp } from '@/lib/csv'
 import { navigate } from '@/hooks/use-hash-route'
+import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,6 +22,8 @@ const PAGE_SIZE = 25
 
 export function ActivityPage() {
   const { toast } = useToast()
+  const user = useAuthStore((s) => s.user)
+  const canExport = user?.role === 'EVENT_MANAGER'
 
   const [group, setGroup] = useState<string>('ALL')
   const [userFilter, setUserFilter] = useState<string>('everyone')
@@ -103,6 +107,41 @@ export function ActivityPage() {
 
   const isFiltered = group !== 'ALL' || userFilter !== 'everyone'
 
+  // Audit CSV export — EVENT_MANAGER only; honors the current filters.
+  const [exporting, setExporting] = useState(false)
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      const query = qs({
+        action: actionsParam?.join(','),
+        userId: userFilter !== 'everyone' ? userFilter : undefined,
+      })
+      const response = await fetch(`${API_BASE}/activity/export${query}`, { credentials: 'include' })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(payload?.error ?? `Export failed (${response.status})`)
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `eventflow-audit-${csvDateStamp()}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast({ title: 'Audit log exported', description: 'CSV downloaded with your current filters applied.' })
+    } catch (err) {
+      toast({
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -110,10 +149,24 @@ export function ActivityPage() {
         subtitle="A live trail of everything happening across your workspace."
         className="mb-0"
         actions={
-          <Button variant="outline" onClick={() => void load()} className="min-h-11" disabled={loading}>
-            <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
-            Refresh
-          </Button>
+          <>
+            {canExport ? (
+              <Button
+                variant="outline"
+                onClick={() => void exportCsv()}
+                disabled={exporting}
+                className="min-h-11"
+                title="Download the audit trail as CSV (manager only)"
+              >
+                <FileDown className={cn('mr-2 h-4 w-4', exporting && 'animate-pulse')} aria-hidden="true" />
+                {exporting ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => void load()} className="min-h-11" disabled={loading}>
+              <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
+              Refresh
+            </Button>
+          </>
         }
       />
 

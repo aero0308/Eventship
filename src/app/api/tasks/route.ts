@@ -87,6 +87,7 @@ export async function POST(request: Request) {
         eventId: body.eventId,
         assignedTo: body.assignedTo ?? null,
         createdBy: user.id,
+        startDate: body.startDate ? new Date(body.startDate) : null,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
         estimatedHours: body.estimatedHours ?? null,
       },

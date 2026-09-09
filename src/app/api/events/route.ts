@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       data: {
         name: body.name,
         description: body.description ?? null,
+        location: body.location ?? null,
         startDate,
         endDate,
         status: body.status,

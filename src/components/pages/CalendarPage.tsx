@@ -10,12 +10,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  CalendarArrowDown,
   CalendarDays,
   CalendarRange,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
+  Move,
   RefreshCw,
 } from 'lucide-react'
 import { format, isSameMonth, isToday } from 'date-fns'
@@ -24,6 +26,7 @@ import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_CLASSES, PRIORITY_L
 import { api, ApiClientError, qs } from '@/lib/api-client'
 import { buildIcs, downloadIcs } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
+import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -66,6 +69,22 @@ function shiftMonth(monthKey: string, delta: number): string {
   return monthKeyOf(d)
 }
 
+/**
+ * Who may drag-reschedule a task: the assignee, the creator, event managers,
+ * or the owning team's leader — mirrors the server's edit rules (dates are a
+ * full-manage field, so the server has the final word on 403s).
+ */
+function canEditTask(
+  task: Pick<TaskDTO, 'assignedTo' | 'createdBy' | 'event'>,
+  user: { id: string; role: string; teamId: string | null } | null
+): boolean {
+  if (!user) return false
+  if (user.role === 'EVENT_MANAGER') return true
+  if (task.assignedTo === user.id) return true
+  if (task.createdBy === user.id) return true
+  return user.role === 'TEAM_LEADER' && user.teamId !== null && task.event?.teamId === user.teamId
+}
+
 export function CalendarPage() {
   const { toast } = useToast()
 
@@ -85,6 +104,12 @@ export function CalendarPage() {
   const [teamFilter, setTeamFilter] = useState('all')
   const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me' | 'unassigned'>('all')
   const [agendaDate, setAgendaDate] = useState<Date | null>(null)
+
+  // Drag-to-reschedule: the chip being dragged + the cell currently hovered.
+  const user = useAuthStore((s) => s.user)
+  const dragTaskRef = useRef<TaskDTO | null>(null)
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
 
   const loadRef = useRef<AbortController | null>(null)
 
@@ -207,6 +232,69 @@ export function CalendarPage() {
   const monthLabel = format(new Date(year, monthIndex, 1), 'MMMM yyyy')
   const todayKey = dayKeyOf(new Date())
 
+  // ---- drag-to-reschedule -------------------------------------------------
+  const handleDragStart = useCallback(
+    (task: TaskDTO) => (event: React.DragEvent) => {
+      dragTaskRef.current = task
+      setDraggingTaskId(task.id)
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', task.id)
+    },
+    []
+  )
+
+  const handleDragEnd = useCallback(() => {
+    dragTaskRef.current = null
+    setDraggingTaskId(null)
+    setDragOverKey(null)
+  }, [])
+
+  const handleCellDragOver = useCallback(
+    (key: string) => (event: React.DragEvent) => {
+      if (!dragTaskRef.current) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      if (dragOverKey !== key) setDragOverKey(key)
+    },
+    [dragOverKey]
+  )
+
+  const rescheduleTask = useCallback(
+    async (task: TaskDTO, day: Date) => {
+      const currentKey = task.dueDate ? dayKeyOf(new Date(task.dueDate)) : null
+      const targetKey = dayKeyOf(day)
+      dragTaskRef.current = null
+      setDraggingTaskId(null)
+      setDragOverKey(null)
+      if (currentKey === targetKey) return
+
+      const previous = data
+      // Keep the original time-of-day; default to noon for tasks without a due date.
+      const base = task.dueDate ? new Date(task.dueDate) : null
+      const next = new Date(day.getFullYear(), day.getMonth(), day.getDate(), base?.getHours() ?? 12, base?.getMinutes() ?? 0)
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              tasks: current.tasks.map((t) => (t.id === task.id ? { ...t, dueDate: next.toISOString() } : t)),
+            }
+          : current
+      )
+      try {
+        await api.patch(`/tasks/${task.id}`, { dueDate: next.toISOString() })
+        toast({ title: 'Task rescheduled', description: `“${task.title}” is now due ${format(day, 'MMM d')}.` })
+      } catch (err) {
+        setData(previous)
+        toast({
+          title: 'Could not reschedule',
+          description: err instanceof ApiClientError ? err.message : 'Please try again.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [data, toast]
+  )
+
   const handleExportIcs = () => {
     const events = data?.events ?? []
     if (events.length === 0) {
@@ -218,6 +306,7 @@ export function CalendarPage() {
         uid: event.id,
         title: event.name,
         description: event.description,
+        location: event.location,
         start: event.startDate,
         end: event.endDate,
         status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
@@ -345,6 +434,10 @@ export function CalendarPage() {
           <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-emerald-500 bg-emerald-500/20" aria-hidden="true" />
           Event span
         </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Move className="h-3 w-3" aria-hidden="true" />
+          Drag a chip to another day to reschedule
+        </span>
       </div>
 
       {error ? (
@@ -397,6 +490,7 @@ export function CalendarPage() {
                       const dayEvents = eventsByDay.get(key) ?? []
                       const weekend = day.getDay() === 0 || day.getDay() === 6
                       const openCount = tasks.filter((t) => t.status !== 'COMPLETED').length
+                      const isDropTarget = dragOverKey === key && draggingTaskId !== null
                       return (
                         <button
                           key={key}
@@ -404,11 +498,20 @@ export function CalendarPage() {
                           onClick={() => setAgendaDate(day)}
                           role="gridcell"
                           aria-label={`${format(day, 'EEEE, MMMM d')}${tasks.length ? `, ${tasks.length} task${tasks.length === 1 ? '' : 's'} due` : ''}`}
+                          onDragOver={handleCellDragOver(key)}
+                          onDragLeave={() => setDragOverKey((current) => (current === key ? null : current))}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            const task = dragTaskRef.current
+                            if (task) void rescheduleTask(task, day)
+                          }}
                           className={cn(
-                            'group relative flex min-h-16 flex-col gap-1 p-1.5 text-left transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-emerald-600 sm:min-h-28 sm:p-2',
+                            'group relative flex min-h-16 flex-col gap-1 p-1.5 text-left transition-all focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-emerald-600 sm:min-h-28 sm:p-2',
                             inMonth ? 'bg-card' : 'bg-muted/40',
                             weekend && inMonth && 'bg-muted/25',
-                            'hover:bg-accent/50'
+                            'hover:bg-accent/50',
+                            isDropTarget &&
+                              'z-10 scale-[1.03] bg-emerald-50 ring-2 ring-inset ring-emerald-500 dark:bg-emerald-500/15'
                           )}
                         >
                           <span className="flex items-center justify-between gap-1">
@@ -461,14 +564,20 @@ export function CalendarPage() {
                           <span className="space-y-0.5 max-sm:hidden">
                             {tasks.slice(0, MAX_CHIPS).map((task) => {
                               const overdue = task.status !== 'COMPLETED' && task.dueDate !== null && new Date(task.dueDate) < new Date()
+                              const editable = canEditTask(task, user)
                               return (
                                 <span
                                   key={task.id}
+                                  draggable={editable}
+                                  onDragStart={editable ? handleDragStart(task) : undefined}
+                                  onDragEnd={editable ? handleDragEnd : undefined}
                                   className={cn(
                                     'flex items-center gap-1 truncate rounded-sm border-l-2 bg-muted/60 px-1 py-0.5 text-[10px] leading-tight transition-colors group-hover:bg-muted',
-                                    overdue && 'bg-red-50 dark:bg-red-500/10'
+                                    overdue && 'bg-red-50 dark:bg-red-500/10',
+                                    editable && 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-emerald-400/60',
+                                    draggingTaskId === task.id && 'opacity-40'
                                   )}
-                                  title={`${task.title} · ${TASK_STATUS_LABELS[task.status]}`}
+                                  title={`${task.title} · ${TASK_STATUS_LABELS[task.status]}${editable ? ' · drag to reschedule' : ''}`}
                                 >
                                   <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
                                   <span className={cn('truncate', task.status === 'COMPLETED' ? 'text-muted-foreground line-through' : 'text-foreground/90')}>
@@ -510,6 +619,8 @@ export function CalendarPage() {
         loading={loading}
         onClose={() => setAgendaDate(null)}
         onStatusChange={(task, status) => void quickStatusChange(task, status)}
+        onReschedule={(task, day) => void rescheduleTask(task, day)}
+        canEditTask={(task) => canEditTask(task, user)}
         onOpenEvent={(id) => {
           setAgendaDate(null)
           navigate(`${ROUTES.EVENTS}/${id}`)
@@ -529,11 +640,15 @@ interface AgendaDialogProps {
   loading: boolean
   onClose: () => void
   onStatusChange: (task: TaskDTO, status: string) => void
+  /** Move a task's due date to another day (optimistic, server-enforced). */
+  onReschedule: (task: TaskDTO, day: Date) => void
+  /** Whether the signed-in user may edit this task's dates. */
+  canEditTask: (task: TaskDTO) => boolean
   onOpenEvent: (eventId: string) => void
   todayKey: string
 }
 
-function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, onOpenEvent }: AgendaDialogProps) {
+function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, onReschedule, canEditTask, onOpenEvent }: AgendaDialogProps) {
   return (
     <Dialog open={date !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
@@ -595,41 +710,62 @@ function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, o
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {tasks.map((task) => (
-                    <li key={task.id} className="rounded-lg border border-border p-3">
-                      <div className="flex items-start gap-2.5">
-                        <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
-                        <div className="min-w-0 flex-1">
-                          <p className={cn('truncate text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'text-muted-foreground line-through')}>
-                            {task.title}
-                          </p>
-                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                            <span className="max-w-40 truncate">{task.event?.name ?? 'Unknown event'}</span>
-                            <span>·</span>
-                            <span>{task.assignee?.fullName ?? 'Unassigned'}</span>
-                            <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px]', PRIORITY_CLASSES[task.priority])}>
-                              {PRIORITY_LABELS[task.priority]}
-                            </Badge>
-                          </p>
+                  {tasks.map((task) => {
+                    const editable = canEditTask(task)
+                    return (
+                      <li key={task.id} className="rounded-lg border border-border p-3">
+                        <div className="flex items-start gap-2.5">
+                          <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
+                          <div className="min-w-0 flex-1">
+                            <p className={cn('truncate text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'text-muted-foreground line-through')}>
+                              {task.title}
+                            </p>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              <span className="max-w-40 truncate">{task.event?.name ?? 'Unknown event'}</span>
+                              <span>·</span>
+                              <span>{task.assignee?.fullName ?? 'Unassigned'}</span>
+                              <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px]', PRIORITY_CLASSES[task.priority])}>
+                                {PRIORITY_LABELS[task.priority]}
+                              </Badge>
+                            </p>
+                            {editable ? (
+                              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                <CalendarArrowDown className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                                <span className="sr-only">Due date for {task.title}</span>
+                                <input
+                                  type="date"
+                                  value={task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    if (!value) return
+                                    const [y, m, d] = value.split('-').map(Number)
+                                    onReschedule(task, new Date(y, m - 1, d, 12, 0))
+                                  }}
+                                  className="h-8 rounded-md border border-border bg-transparent px-2 text-xs text-foreground outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 [&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[color-scheme:dark]"
+                                  aria-label={`Reschedule ${task.title}`}
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                          <Select value={task.status} onValueChange={(status) => onStatusChange(task, status)}>
+                            <SelectTrigger
+                              aria-label={`Status for ${task.title}`}
+                              className="h-8 w-32 shrink-0 text-xs"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TASK_STATUSES.map((status) => (
+                                <SelectItem key={status} value={status}>
+                                  {TASK_STATUS_LABELS[status]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <Select value={task.status} onValueChange={(status) => onStatusChange(task, status)}>
-                          <SelectTrigger
-                            aria-label={`Status for ${task.title}`}
-                            className="h-8 w-32 shrink-0 text-xs"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TASK_STATUSES.map((status) => (
-                              <SelectItem key={status} value={status}>
-                                {TASK_STATUS_LABELS[status]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </li>
-                  ))}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </section>

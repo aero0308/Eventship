@@ -61,6 +61,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const data: Prisma.EventUpdateInput = {}
     if (body.name !== undefined) data.name = body.name
     if (body.description !== undefined) data.description = body.description
+    if (body.location !== undefined) data.location = body.location
     if (body.startDate !== undefined) data.startDate = nextStart
     if (body.endDate !== undefined) data.endDate = nextEnd
     if (body.teamId !== undefined) data.team = { connect: { id: body.teamId } }
@@ -70,6 +71,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const otherChanged =
       (body.name !== undefined && body.name !== existing.name) ||
       (body.description !== undefined && body.description !== existing.description) ||
+      (body.location !== undefined && body.location !== existing.location) ||
       body.startDate !== undefined ||
       body.endDate !== undefined ||
       (body.teamId !== undefined && body.teamId !== existing.teamId)

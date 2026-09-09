@@ -64,6 +64,7 @@ model Event {
   id          String  @id @default(uuid())
   name        String
   description String?
+  location    String?
   startDate   DateTime
   endDate     DateTime
   // DRAFT | PLANNING | IN_PROGRESS | COMPLETED | CANCELLED
@@ -98,6 +99,8 @@ model Task {
   assignee       User?   @relation("AssignedTasks", fields: [assignedTo], references: [id], onDelete: SetNull)
   createdBy      String
   creator        User    @relation("CreatedTasks", fields: [createdBy], references: [id])
+  // Optional scheduled start; when set, timeline bars run start → due.
+  startDate      DateTime?
   dueDate        DateTime?
   estimatedHours Float?
   actualHours    Float?

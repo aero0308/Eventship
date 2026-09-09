@@ -1,0 +1,650 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * Calendar — month grid of task due dates + event spans.
+     5→ * Server-month query (`/api/calendar?month=YYYY-MM`), client-side day grouping.
+     6→ * Click a day (or a chip) for the day agenda; quick status changes are
+     7→ * optimistic with server-side permission enforcement.
+     8→ */
+     9→
+    10→import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+    11→import { AnimatePresence, motion } from 'framer-motion'
+    12→import {
+    13→  CalendarDays,
+    14→  CalendarRange,
+    15→  CheckCircle2,
+    16→  ChevronLeft,
+    17→  ChevronRight,
+    18→  Download,
+    19→  RefreshCw,
+    20→} from 'lucide-react'
+    21→import { format, isSameMonth, isToday } from 'date-fns'
+    22→import type { CalendarResponseDTO, TaskDTO, TeamDTO } from '@/types'
+    23→import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_CLASSES, PRIORITY_LABELS, ROUTES, TASK_STATUSES, TASK_STATUS_LABELS } from '@/lib/constants'
+    24→import { api, ApiClientError, qs } from '@/lib/api-client'
+    25→import { buildIcs, downloadIcs } from '@/lib/ics'
+    26→import { navigate } from '@/hooks/use-hash-route'
+    27→import { useToast } from '@/hooks/use-toast'
+    28→import { cn } from '@/lib/utils'
+    29→import { Badge } from '@/components/ui/badge'
+    30→import { Button } from '@/components/ui/button'
+    31→import { Card, CardContent } from '@/components/ui/card'
+    32→import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    33→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    34→import { Skeleton } from '@/components/ui/skeleton'
+    35→import { EmptyState } from '@/components/shared/EmptyState'
+    36→import { PageHeader } from '@/components/shared/PageHeader'
+    37→
+    38→const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+    39→
+    40→/** Max chips shown in a day cell before "+N more". */
+    41→const MAX_CHIPS = 3
+    42→
+    43→const STATUS_DOT_CLASSES: Record<string, string> = {
+    44→  NOT_STARTED: 'bg-stone-400 dark:bg-stone-500',
+    45→  IN_PROGRESS: 'bg-amber-500',
+    46→  BLOCKED: 'bg-red-500',
+    47→  COMPLETED: 'bg-emerald-500',
+    48→}
+    49→
+    50→function monthKeyOf(date: Date): string {
+    51→  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    52→}
+    53→
+    54→function dayKeyOf(date: Date): string {
+    55→  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    56→}
+    57→
+    58→/** Monday-start offset of the 1st of the given month. */
+    59→function firstWeekdayOffset(year: number, monthIndex: number): number {
+    60→  return (new Date(year, monthIndex, 1).getDay() + 6) % 7
+    61→}
+    62→
+    63→function shiftMonth(monthKey: string, delta: number): string {
+    64→  const [y, m] = monthKey.split('-').map(Number)
+    65→  const d = new Date(y, m - 1 + delta, 1)
+    66→  return monthKeyOf(d)
+    67→}
+    68→
+    69→export function CalendarPage() {
+    70→  const { toast } = useToast()
+    71→
+    72→  const initialMonthRaw = typeof window !== 'undefined' ? window.location.hash : ''
+    73→  const initialMonth = useMemo(() => {
+    74→    const match = /[?&]month=(\d{4}-\d{2})/.exec(initialMonthRaw)
+    75→    return match ? match[1] : monthKeyOf(new Date())
+    76→  }, [initialMonthRaw])
+    77→
+    78→  const [monthKey, setMonthKey] = useState(initialMonth)
+    79→  const [direction, setDirection] = useState(0)
+    80→  const [data, setData] = useState<CalendarResponseDTO | null>(null)
+    81→  const [teams, setTeams] = useState<TeamDTO[]>([])
+    82→  const [loading, setLoading] = useState(true)
+    83→  const [error, setError] = useState<string | null>(null)
+    84→
+    85→  const [teamFilter, setTeamFilter] = useState('all')
+    86→  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me' | 'unassigned'>('all')
+    87→  const [agendaDate, setAgendaDate] = useState<Date | null>(null)
+    88→
+    89→  const loadRef = useRef<AbortController | null>(null)
+    90→
+    91→  // Keep the hash query in sync so months are deep-linkable.
+    92→  // Skips rewriting when the user has already navigated to another page.
+    93→  useEffect(() => {
+    94→    const currentPath = window.location.hash.replace(/^#/, '').split('?')[0] || ROUTES.CALENDAR
+    95→    if (currentPath !== ROUTES.CALENDAR) return
+    96→    if (!window.location.hash.includes(`month=${monthKey}`)) {
+    97→      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${ROUTES.CALENDAR}?month=${monthKey}`)
+    98→    }
+    99→  }, [monthKey])
+   100→
+   101→  const load = useCallback(async () => {
+   102→    loadRef.current?.abort()
+   103→    const controller = new AbortController()
+   104→    loadRef.current = controller
+   105→    setLoading(true)
+   106→    try {
+   107→      const query = qs({ month: monthKey, teamId: teamFilter !== 'all' ? teamFilter : undefined, assignedTo: assigneeFilter !== 'all' ? assigneeFilter : undefined })
+   108→      const result = await api.get<CalendarResponseDTO>(`/calendar${query}`, controller.signal)
+   109→      setData(result)
+   110→      setError(null)
+   111→    } catch (err) {
+   112→      if (controller.signal.aborted) return
+   113→      setError(err instanceof ApiClientError ? err.message : 'Failed to load the calendar.')
+   114→    } finally {
+   115→      if (!controller.signal.aborted) setLoading(false)
+   116→    }
+   117→  }, [monthKey, teamFilter, assigneeFilter])
+   118→
+   119→  useEffect(() => {
+   120→    void load()
+   121→    return () => loadRef.current?.abort()
+   122→  }, [load])
+   123→
+   124→  useEffect(() => {
+   125→    let cancelled = false
+   126→    void (async () => {
+   127→      try {
+   128→        const teamsData = await api.get<{ teams: TeamDTO[] }>('/teams')
+   129→        if (!cancelled) setTeams(teamsData.teams)
+   130→      } catch {
+   131→        // Non-fatal — the team filter simply stays empty.
+   132→      }
+   133→    })()
+   134→    return () => {
+   135→      cancelled = true
+   136→    }
+   137→  }, [])
+   138→
+   139→  // ---- grid math ----------------------------------------------------------
+   140→  const [year, monthIndex] = useMemo(() => monthKey.split('-').map(Number).map((n, i) => (i === 1 ? n - 1 : n)), [monthKey])
+   141→
+   142→  const gridDays = useMemo<Date[]>(() => {
+   143→    const offset = firstWeekdayOffset(year, monthIndex)
+   144→    return Array.from({ length: 42 }, (_, i) => new Date(year, monthIndex, 1 - offset + i))
+   145→  }, [year, monthIndex])
+   146→
+   147→  const tasksByDay = useMemo(() => {
+   148→    const map = new Map<string, TaskDTO[]>()
+   149→    for (const task of data?.tasks ?? []) {
+   150→      if (!task.dueDate) continue
+   151→      const key = dayKeyOf(new Date(task.dueDate))
+   152→      const list = map.get(key) ?? []
+   153→      list.push(task)
+   154→      map.set(key, list)
+   155→    }
+   156→    // Sort within a day: blocked → in-progress → not-started → completed, then priority.
+   157→    const rank: Record<string, number> = { BLOCKED: 0, IN_PROGRESS: 1, NOT_STARTED: 2, COMPLETED: 3 }
+   158→    for (const list of map.values()) {
+   159→      list.sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9))
+   160→    }
+   161→    return map
+   162→  }, [data])
+   163→
+   164→  /** Events anchored on a given day = starts that day, or ongoing when the day is the grid start. */
+   165→  const eventsByDay = useMemo(() => {
+   166→    const map = new Map<string, CalendarResponseDTO['events']>()
+   167→    const gridStart = gridDays[0]
+   168→    for (const event of data?.events ?? []) {
+   169→      const start = new Date(event.startDate)
+   170→      const anchor = start < gridStart && gridStart <= new Date(event.endDate) ? gridStart : start
+   171→      const key = dayKeyOf(anchor)
+   172→      const list = map.get(key) ?? []
+   173→      list.push(event)
+   174→      map.set(key, list)
+   175→    }
+   176→    return map
+   177→  }, [data, gridDays])
+   178→
+   179→  const summary = data?.summary ?? { dueTasks: 0, completed: 0, overdue: 0, events: 0 }
+   180→
+   181→  const quickStatusChange = useCallback(
+   182→    async (task: TaskDTO, status: string) => {
+   183→      const previous = data
+   184→      setData((current) =>
+   185→        current
+   186→          ? {
+   187→              ...current,
+   188→              tasks: current.tasks.map((t) => (t.id === task.id ? { ...t, status: status as TaskDTO['status'] } : t)),
+   189→            }
+   190→          : current
+   191→      )
+   192→      try {
+   193→        await api.patch(`/tasks/${task.id}`, { status })
+   194→        toast({ title: `Moved to ${TASK_STATUS_LABELS[status] ?? status}`, description: task.title })
+   195→      } catch (err) {
+   196→        setData(previous)
+   197→        toast({
+   198→          title: 'Could not update task',
+   199→          description: err instanceof ApiClientError ? err.message : 'Please try again.',
+   200→          variant: 'destructive',
+   201→        })
+   202→      }
+   203→    },
+   204→    [data, toast]
+   205→  )
+   206→
+   207→  const monthLabel = format(new Date(year, monthIndex, 1), 'MMMM yyyy')
+   208→  const todayKey = dayKeyOf(new Date())
+   209→
+   210→  const handleExportIcs = () => {
+   211→    const events = data?.events ?? []
+   212→    if (events.length === 0) {
+   213→      toast({ title: 'Nothing to export', description: `No events overlap ${monthLabel}.` })
+   214→      return
+   215→    }
+   216→    const ics = buildIcs(
+   217→      events.map((event) => ({
+   218→        uid: event.id,
+   219→        title: event.name,
+   220→        description: event.description,
+   221→        start: event.startDate,
+   222→        end: event.endDate,
+   223→        status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
+   224→        url: `${window.location.origin}/#/events/${event.id}`,
+   225→      })),
+   226→      `EventFlow — ${monthLabel}`
+   227→    )
+   228→    downloadIcs(`eventflow-${monthKey}.ics`, ics)
+   229→    toast({ title: 'Calendar exported', description: `${events.length} event(s) exported for ${monthLabel}.` })
+   230→  }
+   231→
+   232→  const goMonth = (delta: number) => {
+   233→    setDirection(delta)
+   234→    setMonthKey((key) => shiftMonth(key, delta))
+   235→  }
+   236→
+   237→  return (
+   238→    <div className="space-y-5">
+   239→      <PageHeader
+   240→        title="Calendar"
+   241→        subtitle="Every deadline and event on one month grid."
+   242→        className="mb-0"
+   243→        actions={
+   244→          <>
+   245→            <Button variant="outline" onClick={() => void load()} disabled={loading} className="min-h-11">
+   246→              <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
+   247→              Refresh
+   248→            </Button>
+   249→            <Button
+   250→              variant="outline"
+   251→              className="min-h-11"
+   252→              onClick={() => {
+   253→                setDirection(monthKey < monthKeyOf(new Date()) ? 1 : -1)
+   254→                setMonthKey(monthKeyOf(new Date()))
+   255→              }}
+   256→            >
+   257→              Today
+   258→            </Button>
+   259→            <Button variant="outline" onClick={handleExportIcs} disabled={!data || data.events.length === 0} className="min-h-11">
+   260→              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+   261→              Export .ics
+   262→            </Button>
+   263→          </>
+   264→        }
+   265→      />
+   266→
+   267→      {/* Toolbar */}
+   268→      <Card className="py-0">
+   269→        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+   270→          <div className="flex items-center gap-1">
+   271→            <Button variant="ghost" size="icon" className="h-10 w-10" aria-label="Previous month" onClick={() => goMonth(-1)}>
+   272→              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+   273→            </Button>
+   274→            <AnimatePresence mode="wait" initial={false}>
+   275→              <motion.h2
+   276→                key={monthKey}
+   277→                initial={{ opacity: 0, y: direction * -8 }}
+   278→                animate={{ opacity: 1, y: 0 }}
+   279→                exit={{ opacity: 0, y: direction * 8 }}
+   280→                transition={{ duration: 0.18, ease: 'easeOut' }}
+   281→                className="min-w-44 text-center text-lg font-bold tracking-tight text-foreground"
+   282→                aria-live="polite"
+   283→              >
+   284→                {monthLabel}
+   285→              </motion.h2>
+   286→            </AnimatePresence>
+   287→            <Button variant="ghost" size="icon" className="h-10 w-10" aria-label="Next month" onClick={() => goMonth(1)}>
+   288→              <ChevronRight className="h-5 w-5" aria-hidden="true" />
+   289→            </Button>
+   290→          </div>
+   291→
+   292→          {/* Month summary chips */}
+   293→          <div className="flex flex-wrap items-center gap-1.5">
+   294→            <Badge variant="outline" className="border-border bg-muted/50 text-xs text-muted-foreground">
+   295→              {summary.dueTasks} task{summary.dueTasks === 1 ? '' : 's'} due
+   296→            </Badge>
+   297→            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-xs text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+   298→              {summary.completed} completed
+   299→            </Badge>
+   300→            <Badge variant="outline" className="border-red-200 bg-red-50 text-xs text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">
+   301→              {summary.overdue} overdue
+   302→            </Badge>
+   303→            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+   304→              {summary.events} event{summary.events === 1 ? '' : 's'}
+   305→            </Badge>
+   306→          </div>
+   307→
+   308→          <div className="flex gap-2 lg:ml-auto">
+   309→            <Select value={teamFilter} onValueChange={setTeamFilter}>
+   310→              <SelectTrigger className="h-10 w-full sm:w-44" aria-label="Filter by team">
+   311→                <SelectValue />
+   312→              </SelectTrigger>
+   313→              <SelectContent>
+   314→                <SelectItem value="all">All teams</SelectItem>
+   315→                {teams.map((team) => (
+   316→                  <SelectItem key={team.id} value={team.id}>
+   317→                    {team.name}
+   318→                  </SelectItem>
+   319→                ))}
+   320→              </SelectContent>
+   321→            </Select>
+   322→            <Select value={assigneeFilter} onValueChange={(v) => setAssigneeFilter(v as typeof assigneeFilter)}>
+   323→              <SelectTrigger className="h-10 w-full sm:w-40" aria-label="Filter by assignee">
+   324→                <SelectValue />
+   325→              </SelectTrigger>
+   326→              <SelectContent>
+   327→                <SelectItem value="all">Everyone</SelectItem>
+   328→                <SelectItem value="me">My tasks</SelectItem>
+   329→                <SelectItem value="unassigned">Unassigned</SelectItem>
+   330→              </SelectContent>
+   331→            </Select>
+   332→          </div>
+   333→        </CardContent>
+   334→      </Card>
+   335→
+   336→      {/* Legend */}
+   337→      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-muted-foreground">
+   338→        {TASK_STATUSES.map((status) => (
+   339→          <span key={status} className="inline-flex items-center gap-1.5">
+   340→            <span className={cn('h-2 w-2 rounded-full', STATUS_DOT_CLASSES[status])} aria-hidden="true" />
+   341→            {TASK_STATUS_LABELS[status]}
+   342→          </span>
+   343→        ))}
+   344→        <span className="inline-flex items-center gap-1.5">
+   345→          <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-emerald-500 bg-emerald-500/20" aria-hidden="true" />
+   346→          Event span
+   347→        </span>
+   348→      </div>
+   349→
+   350→      {error ? (
+   351→        <EmptyState
+   352→          icon={CalendarDays}
+   353→          title="Could not load the calendar"
+   354→          hint={error}
+   355→          action={
+   356→            <Button onClick={() => void load()} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   357→              Try again
+   358→            </Button>
+   359→          }
+   360→        />
+   361→      ) : (
+   362→        <Card className="overflow-hidden py-0">
+   363→          <CardContent className="p-0 sm:p-2">
+   364→            {/* Weekday header */}
+   365→            <div className="grid grid-cols-7 border-b border-border max-sm:hidden">
+   366→              {WEEKDAY_LABELS.map((label) => (
+   367→                <div key={label} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+   368→                  {label}
+   369→                </div>
+   370→              ))}
+   371→            </div>
+   372→
+   373→            {loading && !data ? (
+   374→              <div className="grid grid-cols-7 gap-px p-2">
+   375→                {Array.from({ length: 35 }).map((_, i) => (
+   376→                  <Skeleton key={i} className="aspect-square w-full rounded-md" />
+   377→                ))}
+   378→              </div>
+   379→            ) : (
+   380→              <div className="relative">
+   381→                <AnimatePresence mode="wait" initial={false} custom={direction}>
+   382→                  <motion.div
+   383→                    key={monthKey}
+   384→                    custom={direction}
+   385→                    initial={{ opacity: 0, x: direction * 48 }}
+   386→                    animate={{ opacity: 1, x: 0 }}
+   387→                    exit={{ opacity: 0, x: direction * -48 }}
+   388→                    transition={{ duration: 0.22, ease: 'easeOut' }}
+   389→                    className="grid grid-cols-7 gap-px bg-border sm:gap-px"
+   390→                    role="grid"
+   391→                    aria-label={`Calendar for ${monthLabel}`}
+   392→                  >
+   393→                    {gridDays.map((day) => {
+   394→                      const key = dayKeyOf(day)
+   395→                      const inMonth = isSameMonth(day, new Date(year, monthIndex, 1))
+   396→                      const tasks = tasksByDay.get(key) ?? []
+   397→                      const dayEvents = eventsByDay.get(key) ?? []
+   398→                      const weekend = day.getDay() === 0 || day.getDay() === 6
+   399→                      const openCount = tasks.filter((t) => t.status !== 'COMPLETED').length
+   400→                      return (
+   401→                        <button
+   402→                          key={key}
+   403→                          type="button"
+   404→                          onClick={() => setAgendaDate(day)}
+   405→                          role="gridcell"
+   406→                          aria-label={`${format(day, 'EEEE, MMMM d')}${tasks.length ? `, ${tasks.length} task${tasks.length === 1 ? '' : 's'} due` : ''}`}
+   407→                          className={cn(
+   408→                            'group relative flex min-h-16 flex-col gap-1 p-1.5 text-left transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-emerald-600 sm:min-h-28 sm:p-2',
+   409→                            inMonth ? 'bg-card' : 'bg-muted/40',
+   410→                            weekend && inMonth && 'bg-muted/25',
+   411→                            'hover:bg-accent/50'
+   412→                          )}
+   413→                        >
+   414→                          <span className="flex items-center justify-between gap-1">
+   415→                            <span
+   416→                              className={cn(
+   417→                                'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
+   418→                                isToday(day)
+   419→                                  ? 'bg-emerald-600 text-white shadow-sm'
+   420→                                  : inMonth
+   421→                                    ? 'text-foreground'
+   422→                                    : 'text-muted-foreground/50'
+   423→                              )}
+   424→                            >
+   425→                              {format(day, 'd')}
+   426→                            </span>
+   427→                            {openCount > 0 ? (
+   428→                              <span
+   429→                                className={cn(
+   430→                                  'text-[10px] font-bold',
+   431→                                  tasks.some((t) => t.status === 'BLOCKED')
+   432→                                    ? 'text-red-600 dark:text-red-300'
+   433→                                    : 'text-muted-foreground/70'
+   434→                                )}
+   435→                              >
+   436→                                {openCount}
+   437→                              </span>
+   438→                            ) : null}
+   439→                          </span>
+   440→
+   441→                          {/* Event spans */}
+   442→                          <span className="max-sm:hidden">
+   443→                            {dayEvents.slice(0, 1).map((event) => (
+   444→                              <span
+   445→                                key={event.id}
+   446→                                className="mb-0.5 flex items-center gap-1 truncate rounded-sm border border-emerald-300 bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-300"
+   447→                                title={event.name}
+   448→                              >
+   449→                                <CalendarRange className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+   450→                                <span className="truncate">{event.name}</span>
+   451→                              </span>
+   452→                            ))}
+   453→                            {dayEvents.length > 1 ? (
+   454→                              <span className="block text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+   455→                                +{dayEvents.length - 1} event{dayEvents.length - 1 === 1 ? '' : 's'}
+   456→                              </span>
+   457→                            ) : null}
+   458→                          </span>
+   459→
+   460→                          {/* Task chips */}
+   461→                          <span className="space-y-0.5 max-sm:hidden">
+   462→                            {tasks.slice(0, MAX_CHIPS).map((task) => {
+   463→                              const overdue = task.status !== 'COMPLETED' && task.dueDate !== null && new Date(task.dueDate) < new Date()
+   464→                              return (
+   465→                                <span
+   466→                                  key={task.id}
+   467→                                  className={cn(
+   468→                                    'flex items-center gap-1 truncate rounded-sm border-l-2 bg-muted/60 px-1 py-0.5 text-[10px] leading-tight transition-colors group-hover:bg-muted',
+   469→                                    overdue && 'bg-red-50 dark:bg-red-500/10'
+   470→                                  )}
+   471→                                  title={`${task.title} · ${TASK_STATUS_LABELS[task.status]}`}
+   472→                                >
+   473→                                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
+   474→                                  <span className={cn('truncate', task.status === 'COMPLETED' ? 'text-muted-foreground line-through' : 'text-foreground/90')}>
+   475→                                    {task.title}
+   476→                                  </span>
+   477→                                </span>
+   478→                              )
+   479→                            })}
+   480→                            {tasks.length > MAX_CHIPS ? (
+   481→                              <span className="block pl-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+   482→                                +{tasks.length - MAX_CHIPS} more
+   483→                              </span>
+   484→                            ) : null}
+   485→                          </span>
+   486→
+   487→                          {/* Mobile: status dots only */}
+   488→                          <span className="flex flex-wrap gap-0.5 sm:hidden">
+   489→                            {tasks.slice(0, 4).map((task) => (
+   490→                              <span key={task.id} className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
+   491→                            ))}
+   492→                            {tasks.length > 4 ? <span className="text-[9px] font-bold text-muted-foreground">+{tasks.length - 4}</span> : null}
+   493→                          </span>
+   494→                        </button>
+   495→                      )
+   496→                    })}
+   497→                  </motion.div>
+   498→                </AnimatePresence>
+   499→              </div>
+   500→            )}
+   501→          </CardContent>
+   502→        </Card>
+   503→      )}
+   504→
+   505→      {/* Day agenda */}
+   506→      <AgendaDialog
+   507→        date={agendaDate}
+   508→        tasks={agendaDate ? tasksByDay.get(dayKeyOf(agendaDate)) ?? [] : []}
+   509→        events={agendaDate ? eventsByDay.get(dayKeyOf(agendaDate)) ?? [] : []}
+   510→        loading={loading}
+   511→        onClose={() => setAgendaDate(null)}
+   512→        onStatusChange={(task, status) => void quickStatusChange(task, status)}
+   513→        onOpenEvent={(id) => {
+   514→          setAgendaDate(null)
+   515→          navigate(`${ROUTES.EVENTS}/${id}`)
+   516→        }}
+   517→        todayKey={todayKey}
+   518→      />
+   519→    </div>
+   520→  )
+   521→}
+   522→
+   523→// ============ Day agenda dialog ============
+   524→
+   525→interface AgendaDialogProps {
+   526→  date: Date | null
+   527→  tasks: TaskDTO[]
+   528→  events: CalendarResponseDTO['events']
+   529→  loading: boolean
+   530→  onClose: () => void
+   531→  onStatusChange: (task: TaskDTO, status: string) => void
+   532→  onOpenEvent: (eventId: string) => void
+   533→  todayKey: string
+   534→}
+   535→
+   536→function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, onOpenEvent }: AgendaDialogProps) {
+   537→  return (
+   538→    <Dialog open={date !== null} onOpenChange={(open) => !open && onClose()}>
+   539→      <DialogContent className="sm:max-w-lg">
+   540→        <DialogHeader>
+   541→          <DialogTitle className="flex items-center gap-2">
+   542→            <CalendarDays className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+   543→            {date ? format(date, 'EEEE, MMMM d') : ''}
+   544→            {date && isToday(date) ? (
+   545→              <Badge className="bg-emerald-600 text-white">Today</Badge>
+   546→            ) : null}
+   547→          </DialogTitle>
+   548→          <DialogDescription>
+   549→            {tasks.length === 0 && events.length === 0
+   550→              ? 'Nothing scheduled for this day.'
+   551→              : `${tasks.length} task${tasks.length === 1 ? '' : 's'} due · ${events.length} event${events.length === 1 ? '' : 's'}`}
+   552→          </DialogDescription>
+   553→        </DialogHeader>
+   554→
+   555→        <div className="scrollbar-thin max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+   556→          {events.length > 0 ? (
+   557→            <section aria-label="Events on this day">
+   558→              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
+   559→              <ul className="space-y-1.5">
+   560→                {events.map((event) => (
+   561→                  <li key={event.id}>
+   562→                    <button
+   563→                      type="button"
+   564→                      onClick={() => onOpenEvent(event.id)}
+   565→                      className="flex w-full items-center gap-2 rounded-lg border border-border p-2.5 text-left transition-colors hover:bg-accent"
+   566→                    >
+   567→                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+   568→                        <CalendarRange className="h-4 w-4" aria-hidden="true" />
+   569→                      </span>
+   570→                      <span className="min-w-0 flex-1">
+   571→                        <span className="block truncate text-sm font-semibold text-foreground">{event.name}</span>
+   572→                        <span className="block truncate text-xs text-muted-foreground">
+   573→                          {format(new Date(event.startDate), 'MMM d')} – {format(new Date(event.endDate), 'MMM d')}
+   574→                          {event.team ? ` · ${event.team.name}` : ''}
+   575→                        </span>
+   576→                      </span>
+   577→                      <Badge variant="outline" className={cn('shrink-0 text-[10px]', EVENT_STATUS_CLASSES[event.status] ?? '')}>
+   578→                        {EVENT_STATUS_LABELS[event.status] ?? event.status}
+   579→                      </Badge>
+   580→                    </button>
+   581→                  </li>
+   582→                ))}
+   583→              </ul>
+   584→            </section>
+   585→          ) : null}
+   586→
+   587→          {tasks.length > 0 ? (
+   588→            <section aria-label="Tasks due this day">
+   589→              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tasks due</p>
+   590→              {loading ? (
+   591→                <div className="space-y-2">
+   592→                  {Array.from({ length: Math.min(tasks.length, 3) }).map((_, i) => (
+   593→                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+   594→                  ))}
+   595→                </div>
+   596→              ) : (
+   597→                <ul className="space-y-2">
+   598→                  {tasks.map((task) => (
+   599→                    <li key={task.id} className="rounded-lg border border-border p-3">
+   600→                      <div className="flex items-start gap-2.5">
+   601→                        <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', STATUS_DOT_CLASSES[task.status])} aria-hidden="true" />
+   602→                        <div className="min-w-0 flex-1">
+   603→                          <p className={cn('truncate text-sm font-semibold text-foreground', task.status === 'COMPLETED' && 'text-muted-foreground line-through')}>
+   604→                            {task.title}
+   605→                          </p>
+   606→                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+   607→                            <span className="max-w-40 truncate">{task.event?.name ?? 'Unknown event'}</span>
+   608→                            <span>·</span>
+   609→                            <span>{task.assignee?.fullName ?? 'Unassigned'}</span>
+   610→                            <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px]', PRIORITY_CLASSES[task.priority])}>
+   611→                              {PRIORITY_LABELS[task.priority]}
+   612→                            </Badge>
+   613→                          </p>
+   614→                        </div>
+   615→                        <Select value={task.status} onValueChange={(status) => onStatusChange(task, status)}>
+   616→                          <SelectTrigger
+   617→                            aria-label={`Status for ${task.title}`}
+   618→                            className="h-8 w-32 shrink-0 text-xs"
+   619→                          >
+   620→                            <SelectValue />
+   621→                          </SelectTrigger>
+   622→                          <SelectContent>
+   623→                            {TASK_STATUSES.map((status) => (
+   624→                              <SelectItem key={status} value={status}>
+   625→                                {TASK_STATUS_LABELS[status]}
+   626→                              </SelectItem>
+   627→                            ))}
+   628→                          </SelectContent>
+   629→                        </Select>
+   630→                      </div>
+   631→                    </li>
+   632→                  ))}
+   633→                </ul>
+   634→              )}
+   635→            </section>
+   636→          ) : null}
+   637→
+   638→          {tasks.length === 0 && events.length === 0 ? (
+   639→            <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-stone-300 bg-muted/60 px-6 py-8 text-center dark:border-stone-600">
+   640→              <CheckCircle2 className="h-8 w-8 text-emerald-500" aria-hidden="true" />
+   641→              <p className="text-sm font-semibold text-foreground">Clear day</p>
+   642→              <p className="text-xs text-muted-foreground">No tasks due and no events scheduled.</p>
+   643→            </div>
+   644→          ) : null}
+   645→        </div>
+   646→      </DialogContent>
+   647→    </Dialog>
+   648→  )
+   649→}
+   650→
