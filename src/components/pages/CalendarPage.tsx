@@ -24,6 +24,14 @@ import { format, isSameMonth, isToday } from 'date-fns'
 import type { CalendarResponseDTO, TaskDTO, TeamDTO } from '@/types'
 import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_CLASSES, PRIORITY_LABELS, ROUTES, TASK_STATUSES, TASK_STATUS_LABELS } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import {
+  clearRealtimeRooms,
+  getRealtimeSocket,
+  setRealtimeRooms,
+  setRealtimeUser,
+  type BoardChangePayload,
+} from '@/lib/realtime-client'
+import { LiveBadge } from '@/components/shared/RealtimeChrome'
 import { buildIcs, downloadIcs } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
@@ -123,11 +131,11 @@ export function CalendarPage() {
     }
   }, [monthKey])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     loadRef.current?.abort()
     const controller = new AbortController()
     loadRef.current = controller
-    setLoading(true)
+    if (!options?.silent) setLoading(true)
     try {
       const query = qs({ month: monthKey, teamId: teamFilter !== 'all' ? teamFilter : undefined, assignedTo: assigneeFilter !== 'all' ? assigneeFilter : undefined })
       const result = await api.get<CalendarResponseDTO>(`/calendar${query}`, controller.signal)
@@ -137,7 +145,7 @@ export function CalendarPage() {
       if (controller.signal.aborted) return
       setError(err instanceof ApiClientError ? err.message : 'Failed to load the calendar.')
     } finally {
-      if (!controller.signal.aborted) setLoading(false)
+      if (!controller.signal.aborted && !options?.silent) setLoading(false)
     }
   }, [monthKey, teamFilter, assigneeFilter])
 
@@ -160,6 +168,46 @@ export function CalendarPage() {
       cancelled = true
     }
   }, [])
+
+  // ---- Realtime: live month grid ------------------------------------------
+  // Join the rooms of every event visible on this month grid; when someone
+  // else changes a task or event, silently refetch the month (debounced — no
+  // skeleton flicker). Own changes are skipped: drag-reschedule already
+  // updates the grid optimistically.
+  const loadFnRef = useRef(load)
+  loadFnRef.current = load
+
+  const calendarRooms = useMemo(() => {
+    const ids = new Set<string>()
+    for (const event of data?.events ?? []) ids.add(event.id)
+    for (const task of data?.tasks ?? []) ids.add(task.eventId)
+    return [...ids].slice(0, 50).map((id) => `event:${id}`)
+  }, [data])
+  const calendarRoomsKey = calendarRooms.join(',')
+
+  useEffect(() => {
+    if (!user) return
+    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+    setRealtimeRooms('calendar', calendarRoomsKey ? calendarRoomsKey.split(',') : [])
+    return () => clearRealtimeRooms('calendar')
+  }, [calendarRoomsKey, user])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const handler = (payload: BoardChangePayload) => {
+      if (payload.actorId === user.id) return // own change — grid already updated
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => void loadFnRef.current({ silent: true }), 400)
+    }
+    socket.on('board:changed', handler)
+    return () => {
+      socket.off('board:changed', handler)
+      if (timer) clearTimeout(timer)
+    }
+  }, [user])
 
   // ---- grid math ----------------------------------------------------------
   const [year, monthIndex] = useMemo(() => monthKey.split('-').map(Number).map((n, i) => (i === 1 ? n - 1 : n)), [monthKey])
@@ -380,6 +428,7 @@ export function CalendarPage() {
 
           {/* Month summary chips */}
           <div className="flex flex-wrap items-center gap-1.5">
+            <LiveBadge className="mr-1 hidden sm:inline-flex" />
             <Badge variant="outline" className="border-border bg-muted/50 text-xs text-muted-foreground">
               {summary.dueTasks} task{summary.dueTasks === 1 ? '' : 's'} due
             </Badge>
@@ -510,6 +559,7 @@ export function CalendarPage() {
                             inMonth ? 'bg-card' : 'bg-muted/40',
                             weekend && inMonth && 'bg-muted/25',
                             'hover:bg-accent/50',
+                            isToday(day) && inMonth && 'bg-emerald-50/50 dark:bg-emerald-500/[0.07]',
                             isDropTarget &&
                               'z-10 scale-[1.03] bg-emerald-50 ring-2 ring-inset ring-emerald-500 dark:bg-emerald-500/15'
                           )}

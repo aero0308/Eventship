@@ -13,6 +13,9 @@
  * Presence: every `event:*` room tracks connected viewers (id + name + role)
  * and broadcasts the list whenever it changes, so pages can show who is
  * looking at the same board right now.
+ *
+ * Typing: clients emit `comment:typing` ({room, user}) while composing a task
+ * comment; the server relays it to everyone else in the room (rate-limited).
  */
 
 import { createServer } from 'http'
@@ -29,6 +32,9 @@ interface PresenceUser {
 
 /** room -> socketId -> presence */
 const presence = new Map<string, Map<string, PresenceUser>>()
+
+/** socketId:room -> last relayed typing ts (rate limit) */
+const typingLast = new Map<string, number>()
 
 function roomViewers(room: string): PresenceUser[] {
   const bySocket = presence.get(room)
@@ -128,6 +134,31 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     forgetSocket(io, socket)
+    // Reap this socket's typing entries.
+    for (const key of typingLast.keys()) {
+      if (key.startsWith(`${socket.id}:`)) typingLast.delete(key)
+    }
+  })
+
+  /**
+   * Relay "someone is typing a comment" to the rest of an event room.
+   * Client→server emit (high frequency, ephemeral) — never persisted, never
+   * echoed back to the sender, rate-limited to one relay per 800ms.
+   */
+  socket.on('comment:typing', (payload: { room?: string; user?: PresenceUser }) => {
+    const room = typeof payload?.room === 'string' ? payload.room : ''
+    if (!room.startsWith('event:') || room.length > 128) return
+    const user = payload.user
+    if (!user || typeof user.id !== 'string' || typeof user.fullName !== 'string') return
+    const key = `${socket.id}:${room}`
+    const now = Date.now()
+    if (now - (typingLast.get(key) ?? 0) < 800) return
+    typingLast.set(key, now)
+    socket.to(room).emit('comment:typing', {
+      room,
+      user: { id: user.id, fullName: user.fullName },
+      at: new Date(now).toISOString(),
+    })
   })
 })
 

@@ -25,7 +25,18 @@ export interface BoardChangePayload {
   actorId: string
   at: string
   taskId?: string
+  taskTitle?: string
   bulk?: boolean
+  /** task:updated / task:created — the serialized DTO for optimistic patching. */
+  task?: unknown
+  /** comment:added — the serialized comment for live dialog append. */
+  comment?: unknown
+}
+
+export interface CommentTypingPayload {
+  room: string
+  user: { id: string; fullName: string }
+  at: string
 }
 
 export interface PresenceUser {

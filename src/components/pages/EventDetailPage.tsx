@@ -150,6 +150,17 @@ const TIMELINE_BAR: Record<string, string> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** Runtime guard for realtime task payloads (server sends a serialized DTO). */
+function isTaskDTO(value: unknown): value is TaskDTO {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { id?: unknown; title?: unknown; status?: unknown }
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.status === 'string'
+  )
+}
+
 function byDue(a: string | null, b: string | null): number {
   if (!a && !b) return 0
   if (!a) return 1 // no due date sinks to the bottom
@@ -478,6 +489,41 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     let timer: ReturnType<typeof setTimeout> | null = null
     const onBoardChange = (payload: BoardChangePayload) => {
       if (payload.actorId === user.id) return // own change — optimistic UI already applied
+
+      // Bulk ops carry no per-task payloads — one debounced refetch.
+      if (payload.bulk) {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          void reloadRef.current?.tasks({ silent: true })
+        }, 400)
+        return
+      }
+
+      // Every task here belongs to this event, so patching is unambiguous.
+      if (payload.type === 'task:updated' && isTaskDTO(payload.task)) {
+        const task = payload.task
+        setTasks((list) => list.map((t) => (t.id === task.id ? { ...t, ...task } : t)))
+        return
+      }
+      if (payload.type === 'task:created' && isTaskDTO(payload.task)) {
+        const task = payload.task
+        setTasks((list) => (list.some((t) => t.id === task.id) ? list : [task, ...list]))
+        return
+      }
+      if (payload.type === 'task:deleted' && payload.taskId) {
+        const taskId = payload.taskId
+        setTasks((list) => list.filter((t) => t.id !== taskId))
+        return
+      }
+      if (payload.type === 'comment:added' && payload.taskId) {
+        const taskId = payload.taskId
+        setTasks((list) =>
+          list.map((t) => (t.id === taskId ? { ...t, commentCount: (t.commentCount ?? 0) + 1 } : t))
+        )
+        return
+      }
+
+      // event:updated / unknown — refetch the event header + list silently.
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         void reloadRef.current?.tasks({ silent: true })

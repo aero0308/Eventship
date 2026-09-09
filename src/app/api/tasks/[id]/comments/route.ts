@@ -35,7 +35,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       taskId,
       taskTitle: task.title,
     })
-    emitBoardChange(task.eventId, 'comment:added', user.id, { taskId })
+    // The serialized comment rides the broadcast so open task dialogs on other
+    // clients can append it live (plus a typing indicator beforehand).
+    emitBoardChange(task.eventId, 'comment:added', user.id, {
+      taskId,
+      taskTitle: task.title,
+      comment: {
+        id: comment.id,
+        content: comment.content,
+        taskId: comment.taskId,
+        userId: comment.userId,
+        user: comment.user ?? null,
+        createdAt: comment.createdAt.toISOString(),
+      },
+    })
 
     return ok(
       {

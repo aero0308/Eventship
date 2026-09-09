@@ -121,7 +121,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     await db.task.update({ where: { id }, data })
-    emitBoardChange(existing.eventId, 'task:updated', user.id, { taskId: id })
 
     if (assignedToChanged && body.assignedTo) {
       // Contract message: no priority suffix on reassignment.
@@ -155,9 +154,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await logActivity(user.id, notifyType, { taskId: id, title, from: existing.status, to: body.status })
     }
 
+    // Serialize once; the full DTO also rides the realtime broadcast so other
+    // clients can patch their boards optimistically without refetching.
     const task = await fetchTaskDetail(id)
     if (!task) throw new ApiError(404, 'Task not found')
-    return ok({ task: serializeTaskDetail(task) })
+    const serialized = serializeTaskDetail(task)
+    emitBoardChange(existing.eventId, 'task:updated', user.id, { taskId: id, task: serialized })
+
+    return ok({ task: serialized })
   } catch (error) {
     return handleApiError(error)
   }

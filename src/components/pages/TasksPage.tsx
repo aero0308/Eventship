@@ -39,6 +39,7 @@ import {
   setRealtimeRooms,
   setRealtimeUser,
   type BoardChangePayload,
+  type CommentTypingPayload,
 } from '@/lib/realtime-client'
 import { LiveBadge } from '@/components/shared/RealtimeChrome'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
@@ -93,6 +94,14 @@ const COLUMN_BORDER: Record<string, string> = {
   COMPLETED: 'border-t-emerald-500',
 }
 
+/** Status-tinted count pill shown in each column header. */
+const COLUMN_COUNT_PILL: Record<string, string> = {
+  NOT_STARTED: 'bg-stone-100 text-stone-600 ring-stone-200 dark:bg-stone-500/15 dark:text-stone-300 dark:ring-stone-500/25',
+  IN_PROGRESS: 'bg-amber-100 text-amber-800 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25',
+  BLOCKED: 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/25',
+  COMPLETED: 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25',
+}
+
 const PRIORITY_DOT: Record<string, string> = {
   HIGH: 'bg-red-500',
   MEDIUM: 'bg-amber-500',
@@ -100,6 +109,23 @@ const PRIORITY_DOT: Record<string, string> = {
 }
 
 const UNASSIGNED = '__unassigned__'
+
+/** Runtime guards for realtime payloads (the server sends serialized DTOs). */
+function isTaskDTO(value: unknown): value is TaskDTO {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { id?: unknown; title?: unknown; status?: unknown }
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.status === 'string'
+  )
+}
+
+function isCommentDTO(value: unknown): value is TaskCommentDTO {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { id?: unknown; content?: unknown }
+  return typeof candidate.id === 'string' && typeof candidate.content === 'string'
+}
 const NO_EVENT = '__no_event__'
 
 interface TaskFormState {
@@ -163,7 +189,7 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen, selected
     <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform) }} className={cn(isDragging && 'z-20 opacity-60')}>
       <Card
         className={cn(
-          'group cursor-pointer gap-2 border-l-4 py-3 shadow-sm transition-all hover:shadow-md',
+          'group cursor-pointer gap-2 border-l-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
           'border-l-red-500',
           task.priority === 'MEDIUM' && 'border-l-amber-500',
           task.priority === 'LOW' && 'border-l-stone-300',
@@ -273,14 +299,14 @@ interface ColumnProps {
 }
 
 function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
-  const { setNodeRef } = useDroppable({ id: status })
+  const { setNodeRef, isOver } = useDroppable({ id: status })
 
   return (
     <section
       ref={setNodeRef}
       aria-label={`${TASK_STATUS_LABELS[status]} column`}
       className={cn(
-        'flex min-h-40 flex-col rounded-lg border border-t-4 border-border bg-muted/80 transition-colors',
+        'flex min-h-40 flex-col rounded-xl border border-t-4 border-border bg-muted/80 shadow-sm transition-all duration-200',
         COLUMN_BORDER[status],
         highlight && 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200',
         status === 'COMPLETED' && 'border-t-emerald-500'
@@ -289,11 +315,29 @@ function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
       <header className="flex items-center justify-between gap-2 border-b border-border/80 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', COLUMN_DOT[status])} aria-hidden="true" />
-          <h3 className="truncate text-sm font-semibold text-foreground">{TASK_STATUS_LABELS[status]}</h3>
+          <h3 className="truncate text-sm font-semibold uppercase tracking-wide text-foreground/90">{TASK_STATUS_LABELS[status]}</h3>
         </div>
-        <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-muted-foreground ring-1 ring-stone-200">{count}</span>
+        <span
+          className={cn(
+            'shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ring-1 transition-colors',
+            COLUMN_COUNT_PILL[status]
+          )}
+          aria-label={`${count} ${TASK_STATUS_LABELS[status]} tasks`}
+        >
+          {count}
+        </span>
       </header>
-      <div className="scrollbar-thin flex max-h-[34rem] flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">{children}</div>
+      <div className="scrollbar-thin flex max-h-[34rem] flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
+        {children}
+        {isOver && count === 0 ? (
+          <div
+            className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-emerald-400/70 bg-emerald-50/50 py-6 text-xs font-medium text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
+            aria-hidden="true"
+          >
+            Drop here
+          </div>
+        ) : null}
+      </div>
     </section>
   )
 }
@@ -393,31 +437,34 @@ export function TasksPage() {
   const loadTasksRef = useRef(loadTasks)
   loadTasksRef.current = loadTasks
 
+  // Latest filter values for the realtime optimistic matcher — the socket
+  // effect below subscribes once; refs keep the predicate current without
+  // resubscribing on every keystroke.
+  const filtersRef = useRef({ eventFilter, assigneeFilter, priorityFilter, search })
+  filtersRef.current = { eventFilter, assigneeFilter, priorityFilter, search }
+
+  // Events + users feed the filter dropdowns; refetched on event:updated.
+  const loadMeta = useCallback(async () => {
+    try {
+      const [eventsData, usersData] = await Promise.all([
+        api.get<{ events: EventDTO[] }>('/events'),
+        api.get<{ users: UserDTO[] }>('/users'),
+      ])
+      setEvents(eventsData.events)
+      setUsers(usersData.users)
+    } catch {
+      // Filter dropdowns stay empty; main list still works.
+    }
+  }, [])
+  const loadMetaRef = useRef(loadMeta)
+  loadMetaRef.current = loadMeta
+
   useEffect(() => {
     if (!user) return
     setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
     setRealtimeRooms('board', roomsKey ? roomsKey.split(',') : [])
     return () => clearRealtimeRooms('board')
   }, [roomsKey, user])
-
-  useEffect(() => {
-    if (!user) return
-    const socket = getRealtimeSocket()
-    if (!socket) return
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const handler = (payload: BoardChangePayload) => {
-      if (payload.actorId === user.id) return // own change — optimistic UI already applied
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        void loadTasksRef.current({ silent: true })
-      }, 400)
-    }
-    socket.on('board:changed', handler)
-    return () => {
-      socket.off('board:changed', handler)
-      if (timer) clearTimeout(timer)
-    }
-  }, [user])
 
   useEffect(() => {
     const timer = setTimeout(() => void loadTasks(), 250)
@@ -454,25 +501,8 @@ export function TasksPage() {
   }, [selectedIds.size, bulkDeleteOpen])
 
   useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const [eventsData, usersData] = await Promise.all([
-          api.get<{ events: EventDTO[] }>('/events'),
-          api.get<{ users: UserDTO[] }>('/users'),
-        ])
-        if (!cancelled) {
-          setEvents(eventsData.events)
-          setUsers(usersData.users)
-        }
-      } catch {
-        // Filter dropdowns stay empty; main list still works.
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    void loadMeta()
+  }, [loadMeta])
 
   // ============ DnD ============
   const sensors = useSensors(
@@ -644,6 +674,164 @@ export function TasksPage() {
   const applyTaskUpdate = (updated: TaskDTO) => {
     setTasks((list) => list.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
   }
+
+  // ---- Realtime typing indicator (comment composer) ------------------------
+  // While someone else composes a comment on any task in this board's rooms,
+  // the realtime service relays ephemeral `comment:typing` pings. We show the
+  // indicator only inside the open task detail dialog.
+  const [typers, setTypers] = useState<{ id: string; fullName: string; at: number }[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    const onTyping = (payload: CommentTypingPayload) => {
+      if (!payload?.user || payload.user.id === user.id) return
+      setTypers((prev) => [
+        ...prev.filter((t) => t.id !== payload.user.id && Date.now() - t.at < 4000),
+        { id: payload.user.id, fullName: payload.user.fullName, at: Date.now() },
+      ])
+    }
+    socket.on('comment:typing', onTyping)
+    const prune = setInterval(() => {
+      setTypers((prev) => {
+        const next = prev.filter((t) => Date.now() - t.at < 4000)
+        return next.length === prev.length ? prev : next
+      })
+    }, 1000)
+    return () => {
+      socket.off('comment:typing', onTyping)
+      clearInterval(prune)
+    }
+  }, [user])
+
+  // Switching tasks (or closing the dialog) clears the indicator.
+  useEffect(() => {
+    setTypers([])
+  }, [detailId])
+
+  const detailRef = useRef(detail)
+  detailRef.current = detail
+  const lastTypingSentRef = useRef(0)
+
+  /** Throttled "I'm typing" ping for the open task's event room. */
+  const notifyTyping = useCallback(() => {
+    const current = detailRef.current
+    if (!user || !current) return
+    const socket = getRealtimeSocket()
+    if (!socket?.connected) return
+    const now = Date.now()
+    if (now - lastTypingSentRef.current < 1200) return
+    lastTypingSentRef.current = now
+    socket.emit('comment:typing', {
+      room: `event:${current.eventId}`,
+      user: { id: user.id, fullName: user.fullName },
+    })
+  }, [user])
+
+  // ---- Realtime: optimistic board patching ---------------------------------
+  // Someone else changed a task/comment. The full DTO rides the broadcast, so
+  // we patch local state in place (no flicker, no refetch round-trip); any
+  // ambiguous change (bulk ops, out-of-view moves, event edits) falls back to
+  // the debounced silent refetch.
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const scheduleRefetch = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => void loadTasksRef.current({ silent: true }), 400)
+    }
+
+    /** Would a remotely-changed task belong in the current (filtered) view? */
+    const matchesFilters = (task: TaskDTO) => {
+      const f = filtersRef.current
+      if (f.eventFilter !== 'all' && task.eventId !== f.eventFilter) return false
+      if (f.assigneeFilter !== 'all') {
+        const okAssignee =
+          f.assigneeFilter === UNASSIGNED ? task.assignedTo === null : task.assignedTo === f.assigneeFilter
+        if (!okAssignee) return false
+      }
+      if (f.priorityFilter !== 'all' && task.priority !== f.priorityFilter) return false
+      const needle = f.search.trim().toLowerCase()
+      if (needle) {
+        const haystack = `${task.title} ${task.description ?? ''} ${task.event?.name ?? ''}`.toLowerCase()
+        if (!haystack.includes(needle)) return false
+      }
+      return true
+    }
+
+    const handler = (payload: BoardChangePayload) => {
+      if (payload.actorId === user.id) return // own change — optimistic UI already applied
+
+      // Bulk ops carry no per-task payloads — one debounced refetch.
+      if (payload.bulk) {
+        scheduleRefetch()
+        return
+      }
+
+      if (payload.type === 'task:updated' && isTaskDTO(payload.task)) {
+        const task = payload.task
+        if (matchesFilters(task)) {
+          setTasks((list) =>
+            list.some((t) => t.id === task.id)
+              ? list.map((t) => (t.id === task.id ? { ...t, ...task } : t))
+              : [...list, task]
+          )
+          setDetail((prev) => (prev && prev.id === task.id ? { ...prev, ...task } : prev))
+        } else {
+          // No longer part of this view (moved to another event/assignee…).
+          setTasks((list) => list.filter((t) => t.id !== task.id))
+          scheduleRefetch()
+        }
+        return
+      }
+
+      if (payload.type === 'task:created' && isTaskDTO(payload.task)) {
+        const task = payload.task
+        if (matchesFilters(task)) {
+          setTasks((list) => (list.some((t) => t.id === task.id) ? list : [task, ...list]))
+        } else {
+          scheduleRefetch()
+        }
+        return
+      }
+
+      if (payload.type === 'task:deleted' && payload.taskId) {
+        const taskId = payload.taskId
+        setTasks((list) => list.filter((t) => t.id !== taskId))
+        setDetailId((current) => (current === taskId ? null : current))
+        return
+      }
+
+      if (payload.type === 'comment:added' && payload.taskId && isCommentDTO(payload.comment)) {
+        const taskId = payload.taskId
+        const comment = payload.comment
+        setTypers((prev) => prev.filter((t) => t.id !== payload.actorId))
+        setTasks((list) =>
+          list.map((t) => (t.id === taskId ? { ...t, commentCount: (t.commentCount ?? 0) + 1 } : t))
+        )
+        setDetail((prev) =>
+          prev && prev.id === taskId
+            ? { ...prev, comments: [...(prev.comments ?? []).filter((c) => c.id !== comment.id), comment] }
+            : prev
+        )
+        return
+      }
+
+      // event:updated / unknown — refresh dropdown labels + board silently.
+      scheduleRefetch()
+      void loadMetaRef.current()
+    }
+
+    socket.on('board:changed', handler)
+    return () => {
+      socket.off('board:changed', handler)
+      if (timer) clearTimeout(timer)
+    }
+  }, [user])
 
   const handleEditSave = async () => {
     if (!detail || !edit) return
@@ -1129,6 +1317,11 @@ export function TasksPage() {
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           {detailLoading || !detail || !edit ? (
             <div className="space-y-4 py-2">
+              {/* Radix requires a DialogTitle at mount — hidden while loading. */}
+              <DialogHeader className="sr-only">
+                <DialogTitle>Loading task…</DialogTitle>
+                <DialogDescription>Fetching the task details.</DialogDescription>
+              </DialogHeader>
               <Skeleton className="h-7 w-2/3" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-10 w-full" />
@@ -1306,10 +1499,26 @@ export function TasksPage() {
                     )}
                   </div>
 
+                  {typers.length > 0 ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                      <span className="flex items-end gap-0.5" aria-hidden="true">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:300ms]" />
+                      </span>
+                      <span className="truncate">
+                        {typers.map((t) => t.fullName).join(', ')} {typers.length === 1 ? 'is' : 'are'} typing…
+                      </span>
+                    </div>
+                  ) : null}
+
                   <div className="mt-3 flex items-end gap-2">
                     <Textarea
                       value={comment}
-                      onChange={(e) => setComment(e.target.value)}
+                      onChange={(e) => {
+                        setComment(e.target.value)
+                        notifyTyping()
+                      }}
                       placeholder="Write a comment…"
                       rows={2}
                       className="min-h-11 flex-1"

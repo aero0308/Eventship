@@ -110,12 +110,15 @@ export async function POST(request: Request) {
       taskId: created.id,
       title: body.title,
     })
-    emitBoardChange(body.eventId, 'task:created', user.id, { taskId: created.id })
 
     const task = await db.task.findUniqueOrThrow({
       where: { id: created.id },
       include: taskInclude,
     })
+    // The full DTO rides the realtime broadcast so other clients can add the
+    // task optimistically without refetching.
+    emitBoardChange(body.eventId, 'task:created', user.id, { taskId: created.id, task: serializeTask(task) })
+
     return ok({ task: serializeTask(task) }, 201)
   } catch (error) {
     return handleApiError(error)

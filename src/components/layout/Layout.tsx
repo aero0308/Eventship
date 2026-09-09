@@ -351,8 +351,13 @@ export function Layout({ children }: LayoutProps) {
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-2">
-                                  <span className="truncate text-xs font-semibold text-foreground">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
-                                  {!n.read ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="unread" /> : null}
+                                  <span className="truncate text-xs font-semibold uppercase tracking-wide text-foreground">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
+                                  {!n.read ? (
+                                    <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label="unread">
+                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" aria-hidden="true" />
+                                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                    </span>
+                                  ) : null}
                                 </span>
                                 <span className="mt-0.5 block text-sm leading-snug text-foreground">{n.message}</span>
                                 <span className="mt-1 block text-xs text-muted-foreground/70">
