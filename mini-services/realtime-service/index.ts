@@ -36,6 +36,15 @@ const presence = new Map<string, Map<string, PresenceUser>>()
 /** socketId:room -> last relayed typing ts (rate limit) */
 const typingLast = new Map<string, number>()
 
+/**
+ * Rooms that track presence. `event:{id}` rooms serve the event workspace and
+ * per-event boards; `board:*` rooms serve global boards (e.g. `board:tasks`,
+ * the all-tasks kanban) where no single event room applies.
+ */
+function isPresenceRoom(room: string): boolean {
+  return room.startsWith('event:') || room.startsWith('board:')
+}
+
 function roomViewers(room: string): PresenceUser[] {
   const bySocket = presence.get(room)
   if (!bySocket) return []
@@ -55,7 +64,7 @@ function forgetSocket(io: Server, socket: Socket) {
   const joined = (socket.data.joinedRooms as Set<string> | undefined) ?? new Set<string>()
   const user = socket.data.user as PresenceUser | undefined
   for (const room of joined) {
-    if (!room.startsWith('event:')) continue
+    if (!isPresenceRoom(room)) continue
     const bySocket = presence.get(room)
     if (!bySocket) continue
     bySocket.delete(socket.id)
@@ -96,7 +105,7 @@ io.on('connection', (socket) => {
         if (typeof room !== 'string' || room.length === 0 || room.length > 128) continue
         socket.join(room)
         ;(socket.data.joinedRooms as Set<string>).add(room)
-        if (room.startsWith('event:')) {
+        if (isPresenceRoom(room)) {
           if (user && typeof user.id === 'string' && typeof user.fullName === 'string') {
             const bySocket = presence.get(room) ?? new Map<string, PresenceUser>()
             bySocket.set(socket.id, { id: user.id, fullName: user.fullName, role: user.role ?? 'EMPLOYEE' })
@@ -117,7 +126,7 @@ io.on('connection', (socket) => {
     for (const room of rooms) {
       socket.leave(room)
       joined.delete(room)
-      if (room.startsWith('event:')) {
+      if (isPresenceRoom(room)) {
         const bySocket = presence.get(room)
         if (bySocket) {
           bySocket.delete(socket.id)

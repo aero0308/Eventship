@@ -394,3 +394,34 @@ Stage Summary:
 - New: full-DTO realtime broadcasts (server), optimistic cross-client board patching with filter-aware fallback (TasksPage + EventDetailPage), comment typing indicator end-to-end (mini-service relay + UI), live calendar refresh + LiveBadge, sr-only dialog loading title (a11y), styling detail pass across 6 shared/page surfaces.
 - Ops notes: dev server restart command recorded above (died once mid-session, unrelated to code); realtime svc hot-reloads via bun --hot; keep testing socket features through the :81 gateway.
 - Risks/next: optimistic matcher is substring-based on search filter (close enough; refetch backstop corrects edge cases); task:deleted does not close the delete-confirm AlertDialog if it happens to be open (cosmetic); presence/typing remain ephemeral by design. Next-phase candidates: drag tasks between calendar days on touch (long-press sheet), apply presence avatars to the tasks board header (currently event-detail only), per-event digest/recap emails (needs SMTP), service worker/PWA offline shell, timeline PNG export, task dependencies visualization on the board.
+
+---
+Task ID: 7 (webDevReview round 4)
+Agent: Z.ai Code (orchestrator)
+Task: QA sweep + Round-4 features (dependency health on the board, board presence avatars, styling detail pass)
+
+Work Log:
+- QA BASELINE: dev.log clean, lint 0/0, tsc clean (app files), agent-browser sweep of all 8 routes (dashboard/events/calendar/tasks/teams/activity/admin/profile) — all h1s render, login/session persisted, task dialog + deps + comments + notifications + dark mode all green. Phase 1-3 confirmed stable → proceeded to new features.
+- DEPENDENCY HEALTH API: task serializer (src/app/api/_lib/tasks.ts) now selects dependsOnTask.status and exposes dependsOnTaskStatus per dependency row; TaskDTO type extended in src/types/index.ts. GET /api/tasks + GET /api/tasks/[id] both include it (17 seeded tasks, 4 with deps: 2 blocked + 2 ready).
+- BLOCKED/READY CHIPS (TasksPage cards): new dependencyHealth() derives blocked/ready from dep statuses. Cards now show a red "Blocked by N" chip with animated ping dot (waiting on unfinished deps), an emerald "✓ Ready" chip (all deps complete, task itself open), or the neutral link-count for completed tasks. Tooltips explain each state.
+- BLOCKED-ONLY QUICK FILTER: 5th control in the filter row (grid lg:grid-cols-5) — red toggle chip with live count pill; filters the board client-side; Select-all + EmptyState respect it ("Nothing is blocked" empty state with ShieldAlert icon); aria-pressed wired.
+- MOVE GUARD: completing a task with unfinished deps via DnD now toasts "Task moved — dependencies incomplete" with a count (move still allowed — informational, not blocking).
+- LIVE DEP PROPAGATION (bug found & fixed during QA): realtime task:updated patches and own DnD moves previously left dependent cards' dep statuses stale (verified: sofia completed a dep via API → admin's dependent card kept "Blocked by 1"). New module helper withDepStatusRefresh() rewrites dependsOnTaskStatus on every dependent card; wired into moveTask optimistic update + board:changed task:updated handler (both match/no-match branches). Verified live both directions (IN_PROGRESS↔COMPLETED flips chips + blocked-count without reload).
+- DETAIL DIALOG DEPS: each dependency badge now shows a status dot (emerald/amber/red/stone) + uppercase status label (Done/In progress/Blocked/Not started); Done deps get emerald tint.
+- BOARD PRESENCE (realtime svc): isPresenceRoom() now tracks presence for `event:*` AND `board:*` rooms (join/leave/forget paths). TasksPage always joins `board:tasks` (rides along with event rooms in the same scope) and listens for presence:updated filtered to that room, excluding self. Header shows PresenceStack next to LiveBadge. Verified end-to-end: bun socket probe joined as "David Kim" → admin saw "1 other person viewing the tasks board" + DK avatar; probe exit → stack disappeared. Event-detail presence regression-checked (default context label intact).
+- PRESENCE STACK (styling): PresenceStack gained context + compact props, soft emerald halo glow behind the stack, hover bg tint + avatar scale-up micro-interaction; aria/tooltip now say what space is being viewed ("the tasks board" / "this event").
+- ENV NOTE (important for future QA): realtime only connects when the app is served through the Caddy gateway (:81). Testing via http://localhost:3000 directly cannot reach socket.io (Next.js serves / and doesn't proxy WS → ws-error 1006). All realtime QA must open http://localhost:81/#/... . API curl tests (no sockets) can hit :3000 directly.
+
+Verification (agent-browser via :81 gateway + curl + bun socket probes):
+- Chips: DOM counts matched DB state exactly (2 blocked + 2 ready at baseline; 3 ready + 1 blocked after completing a dep; live-flips verified in both directions as another actor).
+- Blocked-only: toggle → only the 2 blocked cards render (cols [0,2,0,0]); count pill shows 2; light + dark variants screenshot-verified.
+- Dialog: dependency chip "Confirm gala venue… IN PROGRESS" with amber dot + uppercase label.
+- Presence: join → "1 other person viewing the tasks board"/avatar appears; leave → clears. Event detail default label intact. Socket via :81 connected:true.
+- Regression: all 8 routes render via :81, lint 0/0, tsc 0 app errors, dev.log clean, dark-mode board + filter chip verified.
+- Demo data state: "Confirm gala venue & decor theme" left IN_PROGRESS (original state restored after QA flips); sofia/david/admin sessions used via curl (cookies in /tmp, ephemeral). Notification count for admin grew during QA (status-change notifications) — real app behavior, left as-is.
+- New scratch tooling: /home/z/my-project/.qa/qa-presence.ts + qa-presence-event.ts (bun socket probes for presence QA; self-exit after 15-25s; safe to delete).
+
+Stage Summary:
+- New: dependency health chips (blocked/ready) on board cards, blocked-only quick filter, incomplete-deps move warning, live dependency propagation to dependent cards (own + remote changes), per-dep status dots in dialog, board-wide presence avatars via new `board:tasks` room, PresenceStack context/compact + glow/hover polish.
+- Ops notes: presence now covers event:* and board:* rooms; keep realtime QA on the :81 gateway; probe scripts live in .qa/.
+- Risks/next: dependency health is client-derived per card (no transitive/cycle analysis — deps of deps not propagated in one pass; refetch backstop corrects); presence dedupes by user id per room but a user in two rooms shows twice across different headers (by design). Next-phase candidates: dependency chains viz (small graph in dialog), "complete dependencies first" hard block for ADMIN preference, calendar day drag (long-press sheet), PWA offline shell, per-event digest (needs SMTP), presence on event cards grid (who's where).

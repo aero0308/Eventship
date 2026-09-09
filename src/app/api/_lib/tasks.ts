@@ -11,7 +11,7 @@ export const taskInclude = {
   assignee: { select: { id: true, fullName: true, email: true } },
   creator: { select: { id: true, fullName: true } },
   _count: { select: { comments: true } },
-  dependencies: { include: { dependsOnTask: { select: { title: true } } } },
+  dependencies: { include: { dependsOnTask: { select: { title: true, status: true } } } },
 } as const satisfies Prisma.TaskInclude
 
 export interface TaskWithRelations {
@@ -31,7 +31,7 @@ export interface TaskWithRelations {
   estimatedHours: number | null
   actualHours: number | null
   _count?: { comments: number }
-  dependencies?: { id: string; dependsOnTaskId: string; dependsOnTask: { title: string } }[]
+  dependencies?: { id: string; dependsOnTaskId: string; dependsOnTask: { title: string; status: string } }[]
   createdAt: Date
   updatedAt: Date
 }
@@ -81,6 +81,7 @@ export function serializeTask(task: TaskWithRelations) {
       id: dep.id,
       dependsOnTaskId: dep.dependsOnTaskId,
       dependsOnTaskTitle: dep.dependsOnTask.title,
+      dependsOnTaskStatus: dep.dependsOnTask.status,
     })),
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),

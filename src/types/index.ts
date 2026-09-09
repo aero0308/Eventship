@@ -86,7 +86,13 @@ export interface TaskDTO {
   estimatedHours: number | null
   actualHours: number | null
   commentCount?: number
-  dependencies?: { id: string; dependsOnTaskId: string; dependsOnTaskTitle?: string }[]
+  dependencies?: {
+    id: string
+    dependsOnTaskId: string
+    dependsOnTaskTitle?: string
+    /** Status of the depended-on task — powers the board's blocked/ready chips. */
+    dependsOnTaskStatus?: string
+  }[]
   createdAt: string
   updatedAt: string
 }

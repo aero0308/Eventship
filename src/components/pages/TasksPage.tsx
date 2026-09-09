@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  CheckCircle2,
   Clock,
   Download,
   Layers,
@@ -15,6 +16,7 @@ import {
   Save,
   Search,
   Send,
+  ShieldAlert,
   Trash2,
   X,
 } from 'lucide-react'
@@ -40,8 +42,10 @@ import {
   setRealtimeUser,
   type BoardChangePayload,
   type CommentTypingPayload,
+  type PresencePayload,
+  type PresenceUser,
 } from '@/lib/realtime-client'
-import { LiveBadge } from '@/components/shared/RealtimeChrome'
+import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
@@ -165,6 +169,52 @@ function dueChip(task: TaskDTO): { label: string; classes: string } | null {
   return { label: `Due ${format(due, 'MMM d')}`, classes: 'border-border bg-muted/50 text-muted-foreground' }
 }
 
+/**
+ * Dependency health for a task, derived from the serialized dependency
+ * statuses (dependsOnTaskStatus). A task is "blocked" while any dependency
+ * is not COMPLETED; once all finish it becomes "ready".
+ */
+function dependencyHealth(task: TaskDTO): { hasDeps: boolean; blockedBy: number; ready: boolean } {
+  const deps = task.dependencies ?? []
+  const incomplete = deps.filter((dep) => dep.dependsOnTaskStatus !== 'COMPLETED').length
+  return {
+    hasDeps: deps.length > 0,
+    blockedBy: task.status === 'COMPLETED' ? 0 : incomplete,
+    ready: deps.length > 0 && incomplete === 0 && task.status !== 'COMPLETED',
+  }
+}
+
+/** Status dot + short label for a dependency row in the detail dialog. */
+function depStatusMeta(status?: string): { dot: string; label: string } {
+  switch (status) {
+    case 'COMPLETED':
+      return { dot: 'bg-emerald-500', label: 'Done' }
+    case 'IN_PROGRESS':
+      return { dot: 'bg-amber-500', label: 'In progress' }
+    case 'BLOCKED':
+      return { dot: 'bg-red-500', label: 'Blocked' }
+    default:
+      return { dot: 'bg-stone-400', label: 'Not started' }
+  }
+}
+
+/**
+ * Refresh the dependency health of every card that depends on `changed`, so
+ * blocked/ready chips stay truthful the moment a dependency's status moves
+ * (own DnD moves and realtime patches from other clients share this).
+ */
+function withDepStatusRefresh(list: TaskDTO[], changed: Pick<TaskDTO, 'id' | 'status'>): TaskDTO[] {
+  return list.map((t) => {
+    if (!(t.dependencies ?? []).some((dep) => dep.dependsOnTaskId === changed.id)) return t
+    return {
+      ...t,
+      dependencies: (t.dependencies ?? []).map((dep) =>
+        dep.dependsOnTaskId === changed.id ? { ...dep, dependsOnTaskStatus: changed.status } : dep
+      ),
+    }
+  })
+}
+
 // ============ Draggable task card ============
 
 interface TaskCardProps {
@@ -266,10 +316,34 @@ function DraggableTaskCard({ task, canDrag, mobileStatusSelect, onOpen, selected
               </span>
             ) : null}
             {(task.dependencies?.length ?? 0) > 0 ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70" title={`${task.dependencies?.length ?? 0} dependencies`}>
-                <Link2 className="h-3 w-3" aria-hidden="true" />
-                {task.dependencies?.length}
-              </span>
+              dependencyHealth(task).blockedBy > 0 ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-red-200 bg-red-50 text-[10px] font-normal text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300"
+                  title={`Waiting on ${dependencyHealth(task).blockedBy} unfinished ${dependencyHealth(task).blockedBy === 1 ? 'dependency' : 'dependencies'}`}
+                >
+                  <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                  </span>
+                  <Link2 className="h-3 w-3" aria-hidden="true" />
+                  Blocked by {dependencyHealth(task).blockedBy}
+                </Badge>
+              ) : dependencyHealth(task).ready ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  title="All dependencies are complete — ready to work on"
+                >
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  Ready
+                </Badge>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70" title={`${task.dependencies?.length ?? 0} dependencies (all complete)`}>
+                  <Link2 className="h-3 w-3" aria-hidden="true" />
+                  {task.dependencies?.length}
+                </span>
+              )
             ) : null}
           </div>
 
@@ -372,6 +446,8 @@ export function TasksPage() {
   const [eventFilter, setEventFilter] = useState<string>('all')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
+  // Quick filter: only tasks waiting on unfinished dependencies.
+  const [blockedOnly, setBlockedOnly] = useState(false)
 
   // Mobile detection (dnd disabled below md).
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
@@ -429,8 +505,11 @@ export function TasksPage() {
   // else changes a task/comment, refetch the board (debounced).
   const user = useAuthStore((s) => s.user)
   const boardRooms = useMemo(() => {
-    if (eventFilter !== 'all') return [`event:${eventFilter}`]
-    return events.map((event) => `event:${event.id}`)
+    // `board:tasks` is the presence room for the all-tasks kanban — it always
+    // rides along so colleagues on the same board see each other, regardless
+    // of which event rooms are subscribed for live updates.
+    if (eventFilter !== 'all') return ['board:tasks', `event:${eventFilter}`]
+    return ['board:tasks', ...events.map((event) => `event:${event.id}`)]
   }, [eventFilter, events])
   const roomsKey = boardRooms.join(',')
 
@@ -458,6 +537,24 @@ export function TasksPage() {
   }, [])
   const loadMetaRef = useRef(loadMeta)
   loadMetaRef.current = loadMeta
+
+  // ---- Realtime: board presence ------------------------------------------
+  // Who else is looking at the tasks board right now (room `board:tasks`).
+  const [viewers, setViewers] = useState<PresenceUser[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    const onPresence = (payload: PresencePayload) => {
+      if (payload.room !== 'board:tasks') return
+      setViewers(payload.viewers.filter((viewer) => viewer.id !== user.id))
+    }
+    socket.on('presence:updated', onPresence)
+    return () => {
+      socket.off('presence:updated', onPresence)
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -517,10 +614,24 @@ export function TasksPage() {
     async (task: TaskDTO, nextStatus: TaskStatus) => {
       if (task.status === nextStatus) return
       const previous = tasks
-      setTasks((list) => list.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)))
+      // Optimistic: move the task AND refresh the dependency health of any
+      // card that depends on it, so its blocked/ready chip flips instantly.
+      setTasks((list) => withDepStatusRefresh(
+        list.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)),
+        { id: task.id, status: nextStatus }
+      ))
       try {
         await api.patch(`/tasks/${task.id}`, { status: nextStatus })
-        toast({ title: 'Task moved', description: `“${task.title}” is now ${TASK_STATUS_LABELS[nextStatus]}.` })
+        // Heads-up when completing a task that still waits on dependencies —
+        // allowed, but the mover should know.
+        const health = dependencyHealth(task)
+        const completingWithOpenDeps = nextStatus === 'COMPLETED' && health.blockedBy > 0
+        toast({
+          title: completingWithOpenDeps ? 'Task moved — dependencies incomplete' : 'Task moved',
+          description: completingWithOpenDeps
+            ? `“${task.title}” is now Completed, but ${health.blockedBy} of its ${health.blockedBy === 1 ? 'dependency is' : 'dependencies are'} still unfinished.`
+            : `“${task.title}” is now ${TASK_STATUS_LABELS[nextStatus]}.`,
+        })
       } catch (error) {
         setTasks(previous)
         const message = error instanceof ApiClientError ? error.message : 'Failed to update the task status.'
@@ -776,14 +887,17 @@ export function TasksPage() {
         const task = payload.task
         if (matchesFilters(task)) {
           setTasks((list) =>
-            list.some((t) => t.id === task.id)
-              ? list.map((t) => (t.id === task.id ? { ...t, ...task } : t))
-              : [...list, task]
+            withDepStatusRefresh(
+              list.some((t) => t.id === task.id)
+                ? list.map((t) => (t.id === task.id ? { ...t, ...task } : t))
+                : [...list, task],
+              task
+            )
           )
           setDetail((prev) => (prev && prev.id === task.id ? { ...prev, ...task } : prev))
         } else {
           // No longer part of this view (moved to another event/assignee…).
-          setTasks((list) => list.filter((t) => t.id !== task.id))
+          setTasks((list) => withDepStatusRefresh(list.filter((t) => t.id !== task.id), task))
           scheduleRefetch()
         }
         return
@@ -959,12 +1073,23 @@ export function TasksPage() {
   )
 
   // ============ Derived ============
+  const visibleTasks = useMemo(
+    () => (blockedOnly ? tasks.filter((task) => dependencyHealth(task).blockedBy > 0) : tasks),
+    [tasks, blockedOnly]
+  )
+
+  /** How many tasks on the board are currently waiting on dependencies. */
+  const blockedTasksCount = useMemo(
+    () => tasks.reduce((sum, task) => sum + (dependencyHealth(task).blockedBy > 0 ? 1 : 0), 0),
+    [tasks]
+  )
+
   const byStatus = useMemo(() => {
     const map = new Map<TaskStatus, TaskDTO[]>()
     TASK_STATUSES.forEach((status) => map.set(status, []))
-    tasks.forEach((task) => map.get(task.status)?.push(task))
+    visibleTasks.forEach((task) => map.get(task.status)?.push(task))
     return map
-  }, [tasks])
+  }, [visibleTasks])
 
   const eventNameById = useMemo(() => {
     const map = new Map<string, string>()
@@ -998,17 +1123,18 @@ export function TasksPage() {
         actions={
           <>
             <LiveBadge className="mr-1 hidden sm:inline-flex" />
-            {tasks.length > 0 ? (
+            <PresenceStack viewers={viewers} context="the tasks board" />
+            {visibleTasks.length > 0 ? (
               <Button
                 variant="outline"
                 className="min-h-11"
                 onClick={() =>
-                  setSelectedIds(selectedIds.size === tasks.length ? new Set() : new Set(tasks.map((t) => t.id)))
+                  setSelectedIds(selectedIds.size === visibleTasks.length ? new Set() : new Set(visibleTasks.map((t) => t.id)))
                 }
-                aria-label={selectedIds.size === tasks.length ? 'Deselect all tasks' : 'Select all tasks'}
+                aria-label={selectedIds.size === visibleTasks.length ? 'Deselect all tasks' : 'Select all tasks'}
               >
                 <Layers className="mr-2 h-4 w-4" aria-hidden="true" />
-                {selectedIds.size === tasks.length ? 'Deselect all' : 'Select all'}
+                {selectedIds.size === visibleTasks.length ? 'Deselect all' : 'Select all'}
                 {selectedIds.size > 0 ? (
                   <span className="ml-1.5 rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white">{selectedIds.size}</span>
                 ) : null}
@@ -1049,7 +1175,7 @@ export function TasksPage() {
       />
 
       {/* Filters */}
-      <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Task filters">
+      <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Task filters">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
           <Input
@@ -1102,6 +1228,32 @@ export function TasksPage() {
             ))}
           </SelectContent>
         </Select>
+        <button
+          type="button"
+          onClick={() => setBlockedOnly((v) => !v)}
+          aria-pressed={blockedOnly}
+          className={cn(
+            'inline-flex h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition-all duration-200',
+            blockedOnly
+              ? 'border-red-300 bg-red-50 text-red-700 shadow-sm ring-1 ring-red-200 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
+              : 'border-input bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+          )}
+        >
+          <ShieldAlert className={cn('h-4 w-4', blockedOnly && 'animate-pulse')} aria-hidden="true" />
+          Blocked only
+          {blockedTasksCount > 0 ? (
+            <span
+              className={cn(
+                'rounded-full px-1.5 text-[10px] font-bold tabular-nums ring-1',
+                blockedOnly
+                  ? 'bg-red-600 text-white ring-red-600'
+                  : 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/25'
+              )}
+            >
+              {blockedTasksCount}
+            </span>
+          ) : null}
+        </button>
       </section>
 
       {/* Kanban */}
@@ -1111,11 +1263,15 @@ export function TasksPage() {
             <Skeleton key={i} className="h-72 rounded-lg" />
           ))}
         </div>
-      ) : tasks.length === 0 ? (
+      ) : visibleTasks.length === 0 ? (
         <EmptyState
-          icon={ListTodo}
-          title="No tasks match your filters"
-          hint="Adjust the filters above, or create a new task to get things moving."
+          icon={blockedOnly ? ShieldAlert : ListTodo}
+          title={blockedOnly ? 'Nothing is blocked' : 'No tasks match your filters'}
+          hint={
+            blockedOnly
+              ? 'Every task on this board has its dependencies satisfied — nice and unblocked.'
+              : 'Adjust the filters above, or create a new task to get things moving.'
+          }
           action={
             <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
               <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1443,14 +1599,27 @@ export function TasksPage() {
                     <p className="text-sm text-muted-foreground/70">No dependencies.</p>
                   ) : (
                     <ul className="flex flex-wrap gap-1.5">
-                      {detail.dependencies?.map((dep) => (
-                        <li key={dep.id}>
-                          <Badge variant="outline" className="max-w-56 border-border bg-muted/50 font-normal text-muted-foreground">
-                            <Link2 className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{dep.dependsOnTaskTitle ?? `Task ${dep.dependsOnTaskId.slice(0, 8)}`}</span>
-                          </Badge>
-                        </li>
-                      ))}
+                      {detail.dependencies?.map((dep) => {
+                        const meta = depStatusMeta(dep.dependsOnTaskStatus)
+                        return (
+                          <li key={dep.id}>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'max-w-56 gap-1.5 font-normal',
+                                meta.label === 'Done'
+                                  ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                  : 'border-border bg-muted/50 text-muted-foreground'
+                              )}
+                              title={`Dependency status: ${meta.label}`}
+                            >
+                              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', meta.dot)} aria-hidden="true" />
+                              <span className="truncate">{dep.dependsOnTaskTitle ?? `Task ${dep.dependsOnTaskId.slice(0, 8)}`}</span>
+                              <span className="shrink-0 text-[9px] uppercase tracking-wide opacity-70">{meta.label}</span>
+                            </Badge>
+                          </li>
+                        )
+                      })}
                     </ul>
                   )}
                 </div>
