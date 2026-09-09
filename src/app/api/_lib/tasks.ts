@@ -36,10 +36,35 @@ export interface TaskWithRelations {
   updatedAt: Date
 }
 
-// ============ detail shape (adds comments) ============
+/** One nested upstream dependency row (dep-of-dep), used by the chain viz. */
+export interface UpstreamDepRow {
+  id: string
+  title: string
+  status: string
+}
+
+// ============ detail shape (adds comments + one nested dependency level) ============
 
 export const taskDetailInclude = {
   ...taskInclude,
+  dependencies: {
+    include: {
+      dependsOnTask: {
+        // select-only: Prisma forbids select+include at the same level. The
+        // nested relation rides INSIDE the select as its own select shape.
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          dependencies: {
+            select: {
+              dependsOnTask: { select: { id: true, title: true, status: true } },
+            },
+          },
+        },
+      },
+    },
+  },
   comments: {
     include: { user: { select: { id: true, fullName: true, role: true } } },
     orderBy: { createdAt: 'asc' },
@@ -77,12 +102,23 @@ export function serializeTask(task: TaskWithRelations) {
     estimatedHours: task.estimatedHours ?? null,
     actualHours: task.actualHours ?? null,
     commentCount: task._count?.comments ?? 0,
-    dependencies: (task.dependencies ?? []).map((dep) => ({
-      id: dep.id,
-      dependsOnTaskId: dep.dependsOnTaskId,
-      dependsOnTaskTitle: dep.dependsOnTask.title,
-      dependsOnTaskStatus: dep.dependsOnTask.status,
-    })),
+    dependencies: (task.dependencies ?? []).map((dep) => {
+      const upstreamTask = dep.dependsOnTask as {
+        title: string
+        status: string
+        dependencies?: { dependsOnTask: UpstreamDepRow }[]
+      }
+      const upstream = (upstreamTask.dependencies ?? [])
+        .map((nested) => nested.dependsOnTask)
+        .filter((d): d is UpstreamDepRow => Boolean(d))
+      return {
+        id: dep.id,
+        dependsOnTaskId: dep.dependsOnTaskId,
+        dependsOnTaskTitle: upstreamTask.title,
+        dependsOnTaskStatus: upstreamTask.status,
+        ...(upstream.length > 0 ? { upstream } : {}),
+      }
+    }),
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   }

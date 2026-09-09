@@ -46,8 +46,34 @@ import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { useAuthStore } from '@/stores/auth-store'
+import {
+  fetchPresenceSummary,
+  getRealtimeSocket,
+  setRealtimeUser,
+  type PresenceGlobalPayload,
+  type PresenceUser,
+} from '@/lib/realtime-client'
 
 const NO_TEAM = '__no_team__'
+
+/** Status-colored top hairline on event cards — instant scannability in the grid. */
+const EVENT_CARD_TOP_BORDER: Record<EventStatus, string> = {
+  DRAFT: 'border-t-stone-400',
+  PLANNING: 'border-t-amber-500',
+  IN_PROGRESS: 'border-t-emerald-500',
+  COMPLETED: 'border-t-teal-500',
+  CANCELLED: 'border-t-red-400',
+}
+
+function initialsOfName(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+}
 
 interface EventsPageProps {
   searchPlaceholder?: string
@@ -86,6 +112,7 @@ function formatRange(startISO: string, endISO: string): string {
 export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const { toast } = useToast()
   const path = useHashRoute()
+  const user = useAuthStore((s) => s.user)
 
   const [events, setEvents] = useState<EventDTO[]>([])
   const [teams, setTeams] = useState<TeamDTO[]>([])
@@ -93,6 +120,56 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [teamFilter, setTeamFilter] = useState<string>('all')
+
+  // ---- Live "who is where" (presence observer) ---------------------------
+  // The grid joins no rooms; it snapshots event:* presence via an ack and
+  // stays live through the site-wide presence:global echo.
+  const [viewersByEvent, setViewersByEvent] = useState<Record<string, PresenceUser[]>>({})
+
+  useEffect(() => {
+    if (!user) return
+    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+    const socket = getRealtimeSocket()
+    if (!socket) return
+
+    let disposed = false
+    const snapshot = async () => {
+      const summaries = await fetchPresenceSummary(['event:'])
+      if (disposed) return
+      setViewersByEvent((prev) => {
+        const next: Record<string, PresenceUser[]> = { ...prev }
+        // Refresh every known room; prune rooms that vanished.
+        for (const { room, viewers } of summaries) {
+          const eventId = room.slice('event:'.length)
+          const others = viewers.filter((v) => v.id !== user.id)
+          if (others.length > 0) next[eventId] = others
+          else delete next[eventId]
+        }
+        return next
+      })
+    }
+
+    const onGlobal = (payload: PresenceGlobalPayload) => {
+      if (!payload?.room?.startsWith('event:')) return
+      const eventId = payload.room.slice('event:'.length)
+      const others = payload.viewers.filter((v) => v.id !== user.id)
+      setViewersByEvent((prev) => {
+        const next = { ...prev }
+        if (others.length > 0) next[eventId] = others
+        else delete next[eventId]
+        return next
+      })
+    }
+
+    socket.on('presence:global', onGlobal)
+    socket.once('connect', snapshot)
+    if (socket.connected) void snapshot()
+    return () => {
+      disposed = true
+      socket.off('presence:global', onGlobal)
+      socket.off('connect', snapshot)
+    }
+  }, [user])
 
   // Create dialog
   const [createOpen, setCreateOpen] = useState(false)
@@ -308,6 +385,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
             const completed = event.taskStats?.completed ?? 0
             const blocked = event.taskStats?.blocked ?? 0
             const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+            const viewers = viewersByEvent[event.id] ?? []
             return (
               <motion.div
                 key={event.id}
@@ -316,7 +394,10 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                 transition={{ duration: 0.3, delay: Math.min(index * 0.05, 0.3), ease: 'easeOut' }}
               >
                 <Card
-                  className="h-full cursor-pointer gap-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
+                  className={cn(
+                    'h-full cursor-pointer gap-3 overflow-hidden border-t-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md',
+                    EVENT_CARD_TOP_BORDER[event.status]
+                  )}
                   onClick={() => navigate(`${ROUTES.EVENTS}/${event.id}`)}
                   role="button"
                   tabIndex={0}
@@ -379,6 +460,31 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
                         <Badge variant="outline" className="border-red-200 bg-red-50 text-[11px] font-normal text-red-700">
                           {blocked} blocked
                         </Badge>
+                      ) : null}
+                      {viewers.length > 0 ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/80 py-0.5 pl-1 pr-2 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                          title={`${viewers.map((v) => v.fullName).join(', ')} ${viewers.length === 1 ? 'is' : 'are'} viewing this event right now`}
+                          aria-label={`${viewers.length} ${viewers.length === 1 ? 'person is' : 'people are'} viewing this event`}
+                        >
+                          <span className="flex -space-x-1" aria-hidden="true">
+                            {viewers.slice(0, 3).map((viewer) => (
+                              <span
+                                key={viewer.id}
+                                className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-600 text-[7px] font-bold text-white ring-1 ring-background"
+                              >
+                                {initialsOfName(viewer.fullName)}
+                              </span>
+                            ))}
+                          </span>
+                          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          </span>
+                          <span className="text-[10px] font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                            {viewers.length}
+                          </span>
+                        </span>
                       ) : null}
                       {event.creator ? (
                         <span className="ml-auto text-[11px] text-muted-foreground/70">by {event.creator.fullName}</span>

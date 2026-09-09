@@ -188,7 +188,11 @@ export function CalendarPage() {
   useEffect(() => {
     if (!user) return
     setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
-    setRealtimeRooms('calendar', calendarRoomsKey ? calendarRoomsKey.split(',') : [])
+    // The calendar subscribes to many event rooms for live refreshes, but it
+    // is a read-only observer — announce presence in none of them.
+    setRealtimeRooms('calendar', calendarRoomsKey ? calendarRoomsKey.split(',') : [], {
+      presenceRooms: [],
+    })
     return () => clearRealtimeRooms('calendar')
   }, [calendarRoomsKey, user])
 

@@ -50,15 +50,26 @@ export interface PresencePayload {
   viewers: PresenceUser[]
 }
 
+/** Site-wide presence echo — any presence change in any room (observer surfaces). */
+export interface PresenceGlobalPayload {
+  room: string
+  viewers: PresenceUser[]
+}
+
+export interface PresenceSummary {
+  room: string
+  viewers: PresenceUser[]
+}
+
 let socket: Socket | null = null
 let currentUser: RealtimeUser | null = null
-const scopes = new Map<string, Set<string>>()
+const scopes = new Map<string, { rooms: Set<string>; presenceRooms: Set<string> }>()
 const stateListeners = new Set<(connected: boolean) => void>()
 
 function allRooms(): string[] {
   const union = new Set<string>()
-  for (const rooms of scopes.values()) {
-    for (const room of rooms) union.add(room)
+  for (const scope of scopes.values()) {
+    for (const room of scope.rooms) union.add(room)
   }
   return [...union]
 }
@@ -107,14 +118,20 @@ export function setRealtimeUser(user: RealtimeUser | null) {
 /**
  * Replace the room set for one scope. Leaving/joining is diffed so repeated
  * renders don't spam the server.
+ *
+ * `opts.presenceRooms` — the subset of `rooms` where this scope should
+ * announce presence. Defaults to ALL rooms (legacy behavior). Pass `[]` for
+ * pure observers (e.g. the calendar) or a single room for surfaces with one
+ * presence context plus background subscriptions (e.g. the tasks board).
  */
-export function setRealtimeRooms(scope: string, rooms: string[]) {
+export function setRealtimeRooms(scope: string, rooms: string[], opts?: { presenceRooms?: string[] }) {
   if (typeof window === 'undefined') return
   const next = new Set(rooms)
-  const previous = scopes.get(scope) ?? new Set<string>()
-  const toLeave = [...previous].filter((room) => !next.has(room))
-  const toJoin = [...next].filter((room) => !previous.has(room))
-  scopes.set(scope, next)
+  const nextPresence = new Set((opts?.presenceRooms ?? rooms).filter((room) => next.has(room)))
+  const previous = scopes.get(scope) ?? { rooms: new Set<string>(), presenceRooms: new Set<string>() }
+  const toLeave = [...previous.rooms].filter((room) => !next.has(room))
+  const toJoin = [...next].filter((room) => !previous.rooms.has(room))
+  scopes.set(scope, { rooms: next, presenceRooms: nextPresence })
   if (toLeave.length === 0 && toJoin.length === 0) return
 
   const sock = getRealtimeSocket()
@@ -123,13 +140,41 @@ export function setRealtimeRooms(scope: string, rooms: string[]) {
     sock.emit('room:leave', { rooms: toLeave })
   }
   if (toJoin.length > 0 && sock.connected) {
-    sock.emit('room:join', { rooms: toJoin, user: currentUser })
+    sock.emit('room:join', {
+      rooms: toJoin,
+      user: currentUser,
+      presenceRooms: toJoin.filter((room) => nextPresence.has(room)),
+    })
   }
 }
 
 /** Release a scope's rooms (call from the component's cleanup). */
 export function clearRealtimeRooms(scope: string) {
   setRealtimeRooms(scope, [])
+}
+
+/**
+ * Snapshot of "who is where" for surfaces that join no rooms (events grid).
+ * Resolves with per-room viewer lists for every presence room matching one of
+ * the prefixes; empty array when the realtime service is unreachable.
+ */
+export function fetchPresenceSummary(prefixes: string[] = ['event:']): Promise<PresenceSummary[]> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve([])
+    const sock = getRealtimeSocket()
+    if (!sock?.connected) return resolve([])
+    let settled = false
+    const done = (summaries: PresenceSummary[]) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(summaries)
+    }
+    const timer = setTimeout(() => done([]), 3000)
+    sock.emit('presence:summary', { prefixes }, (response?: { summaries?: PresenceSummary[] }) => {
+      done(Array.isArray(response?.summaries) ? response.summaries : [])
+    })
+  })
 }
 
 /** Subscribe to realtime connection state. Returns an unsubscribe function. */
@@ -149,7 +194,11 @@ if (typeof window !== 'undefined') {
         hasSocket: socket !== null,
         connected: socket?.connected ?? false,
         listenerCount: stateListeners.size,
-        scopes: [...scopes.entries()].map(([scope, rooms]) => ({ scope, rooms: [...rooms] })),
+        scopes: [...scopes.entries()].map(([scope, s]) => ({
+          scope,
+          rooms: [...s.rooms],
+          presenceRooms: [...s.presenceRooms],
+        })),
         socketId: socket?.id ?? null,
       }
     },

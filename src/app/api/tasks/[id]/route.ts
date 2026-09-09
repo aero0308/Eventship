@@ -42,7 +42,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params
     const existing = await db.task.findUnique({
       where: { id },
-      include: { event: { select: { teamId: true } } },
+      include: {
+        event: { select: { teamId: true } },
+        dependencies: { include: { dependsOnTask: { select: { id: true, title: true, status: true } } } },
+      },
     })
     if (!existing) throw new ApiError(404, 'Task not found')
 
@@ -93,6 +96,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       new Date(effectiveStart).getTime() > new Date(effectiveDue).getTime()
     ) {
       throw new ApiError(400, 'Start date must be on or before the due date')
+    }
+
+    // Strict dependency guard (per-user workflow preference): refuse to mark a
+    // task COMPLETED while any of its dependencies is unfinished.
+    if (
+      body.status === 'COMPLETED' &&
+      existing.status !== 'COMPLETED' &&
+      user.strictDependencyGuard
+    ) {
+      const unfinished = existing.dependencies.filter((dep) => dep.dependsOnTask.status !== 'COMPLETED')
+      if (unfinished.length > 0) {
+        const names = unfinished
+          .slice(0, 2)
+          .map((dep) => `“${dep.dependsOnTask.title}”`)
+          .join(', ')
+        throw new ApiError(
+          409,
+          `Dependency guard is on — finish ${unfinished.length === 1 ? 'this task' : `${unfinished.length} tasks`} first: ${names}${unfinished.length > 2 ? ` +${unfinished.length - 2} more` : ''}`
+        )
+      }
     }
 
     // Resulting title used in notification messages.

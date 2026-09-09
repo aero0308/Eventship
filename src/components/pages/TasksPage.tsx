@@ -46,6 +46,7 @@ import {
   type PresenceUser,
 } from '@/lib/realtime-client'
 import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
+import { DependencyChain } from '@/components/shared/DependencyChain'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
@@ -181,20 +182,6 @@ function dependencyHealth(task: TaskDTO): { hasDeps: boolean; blockedBy: number;
     hasDeps: deps.length > 0,
     blockedBy: task.status === 'COMPLETED' ? 0 : incomplete,
     ready: deps.length > 0 && incomplete === 0 && task.status !== 'COMPLETED',
-  }
-}
-
-/** Status dot + short label for a dependency row in the detail dialog. */
-function depStatusMeta(status?: string): { dot: string; label: string } {
-  switch (status) {
-    case 'COMPLETED':
-      return { dot: 'bg-emerald-500', label: 'Done' }
-    case 'IN_PROGRESS':
-      return { dot: 'bg-amber-500', label: 'In progress' }
-    case 'BLOCKED':
-      return { dot: 'bg-red-500', label: 'Blocked' }
-    default:
-      return { dot: 'bg-stone-400', label: 'Not started' }
   }
 }
 
@@ -559,7 +546,12 @@ export function TasksPage() {
   useEffect(() => {
     if (!user) return
     setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
-    setRealtimeRooms('board', roomsKey ? roomsKey.split(',') : [])
+    // Presence only for `board:tasks` — the event rooms ride along for live
+    // updates, but sitting on the global board must NOT mark you as viewing
+    // every individual event (see the events-grid presence chips).
+    setRealtimeRooms('board', roomsKey ? roomsKey.split(',') : [], {
+      presenceRooms: ['board:tasks'],
+    })
     return () => clearRealtimeRooms('board')
   }, [roomsKey, user])
 
@@ -613,6 +605,24 @@ export function TasksPage() {
   const moveTask = useCallback(
     async (task: TaskDTO, nextStatus: TaskStatus) => {
       if (task.status === nextStatus) return
+      // Strict dependency guard (client pre-check — the server 409s as well):
+      // refuse to complete a task whose dependencies are unfinished.
+      const health = dependencyHealth(task)
+      if (
+        user?.strictDependencyGuard &&
+        nextStatus === 'COMPLETED' &&
+        task.status !== 'COMPLETED' &&
+        health.blockedBy > 0
+      ) {
+        toast({
+          title: 'Dependency guard is on',
+          description:
+            `“${task.title}” still waits on ${health.blockedBy} unfinished ${health.blockedBy === 1 ? 'dependency' : 'dependencies'}. ` +
+            `Finish ${health.blockedBy === 1 ? 'it' : 'them'} first — or relax the guard in your profile settings.`,
+          variant: 'destructive',
+        })
+        return
+      }
       const previous = tasks
       // Optimistic: move the task AND refresh the dependency health of any
       // card that depends on it, so its blocked/ready chip flips instantly.
@@ -624,7 +634,6 @@ export function TasksPage() {
         await api.patch(`/tasks/${task.id}`, { status: nextStatus })
         // Heads-up when completing a task that still waits on dependencies —
         // allowed, but the mover should know.
-        const health = dependencyHealth(task)
         const completingWithOpenDeps = nextStatus === 'COMPLETED' && health.blockedBy > 0
         toast({
           title: completingWithOpenDeps ? 'Task moved — dependencies incomplete' : 'Task moved',
@@ -638,7 +647,7 @@ export function TasksPage() {
         toast({ title: 'Could not move task', description: message, variant: 'destructive' })
       }
     },
-    [tasks, toast]
+    [tasks, user, toast]
   )
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -955,6 +964,21 @@ export function TasksPage() {
     }
     if (edit.startDate && edit.dueDate && new Date(edit.startDate) > new Date(edit.dueDate)) {
       toast({ title: 'Invalid dates', description: 'The start date cannot be after the due date.', variant: 'destructive' })
+      return
+    }
+    // Strict dependency guard (client pre-check; the server 409s as well).
+    if (
+      user?.strictDependencyGuard &&
+      edit.status === 'COMPLETED' &&
+      detail.status !== 'COMPLETED' &&
+      dependencyHealth(detail).blockedBy > 0
+    ) {
+      const n = dependencyHealth(detail).blockedBy
+      toast({
+        title: 'Dependency guard is on',
+        description: `This task still waits on ${n} unfinished ${n === 1 ? 'dependency' : 'dependencies'}. Finish ${n === 1 ? 'it' : 'them'} first — or relax the guard in your profile settings.`,
+        variant: 'destructive',
+      })
       return
     }
     setEditSaving(true)
@@ -1589,7 +1613,7 @@ export function TasksPage() {
                   </Button>
                 </div>
 
-                {/* Dependencies */}
+                {/* Dependencies — mini chain with nested upstream tasks */}
                 <div>
                   <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1598,29 +1622,11 @@ export function TasksPage() {
                   {(detail.dependencies?.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground/70">No dependencies.</p>
                   ) : (
-                    <ul className="flex flex-wrap gap-1.5">
-                      {detail.dependencies?.map((dep) => {
-                        const meta = depStatusMeta(dep.dependsOnTaskStatus)
-                        return (
-                          <li key={dep.id}>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                'max-w-56 gap-1.5 font-normal',
-                                meta.label === 'Done'
-                                  ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200'
-                                  : 'border-border bg-muted/50 text-muted-foreground'
-                              )}
-                              title={`Dependency status: ${meta.label}`}
-                            >
-                              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', meta.dot)} aria-hidden="true" />
-                              <span className="truncate">{dep.dependsOnTaskTitle ?? `Task ${dep.dependsOnTaskId.slice(0, 8)}`}</span>
-                              <span className="shrink-0 text-[9px] uppercase tracking-wide opacity-70">{meta.label}</span>
-                            </Badge>
-                          </li>
-                        )
-                      })}
-                    </ul>
+                    <DependencyChain
+                      taskId={detail.id}
+                      dependencies={detail.dependencies ?? []}
+                      onOpenTask={(id) => setDetailId(id)}
+                    />
                   )}
                 </div>
 

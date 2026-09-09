@@ -52,6 +52,20 @@ export async function POST(request: Request) {
     const taskById = new Map(tasks.map((t) => [t.id, t]))
     const touchedEvents = new Set<string>()
 
+    // Strict dependency guard (per-user preference): pre-compute unfinished
+    // dependency counts for the selected tasks so COMPLETED can be refused.
+    const unfinishedDeps = new Map<string, number>()
+    if (body.action === 'status' && body.status === 'COMPLETED' && user.strictDependencyGuard) {
+      const depRows = await db.taskDependency.findMany({
+        where: { taskId: { in: ids } },
+        select: { taskId: true, dependsOnTask: { select: { status: true } } },
+      })
+      for (const row of depRows) {
+        if (row.dependsOnTask.status === 'COMPLETED') continue
+        unfinishedDeps.set(row.taskId, (unfinishedDeps.get(row.taskId) ?? 0) + 1)
+      }
+    }
+
     let updated = 0
     let deleted = 0
     const failed: { id: string; title: string; reason: string }[] = []
@@ -78,6 +92,15 @@ export async function POST(request: Request) {
           const isAssignee = task.assignedTo === user.id
           if (!fullManager && !isAssignee) {
             failed.push({ id, title: task.title, reason: 'You can only change status of your own tasks' })
+            continue
+          }
+          const blockedBy = unfinishedDeps.get(id) ?? 0
+          if (body.status === 'COMPLETED' && task.status !== 'COMPLETED' && blockedBy > 0) {
+            failed.push({
+              id,
+              title: task.title,
+              reason: `Dependency guard is on — ${blockedBy} unfinished ${blockedBy === 1 ? 'dependency' : 'dependencies'}`,
+            })
             continue
           }
           if (task.status !== body.status) {

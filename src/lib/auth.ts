@@ -85,6 +85,7 @@ export function toPublicUser(user: {
   isActive: boolean
   teamId: string | null
   team?: { id: string; name: string } | null
+  strictDependencyGuard: boolean
   createdAt: Date
   updatedAt: Date
 }) {
@@ -96,6 +97,7 @@ export function toPublicUser(user: {
     isActive: user.isActive,
     teamId: user.teamId,
     team: user.team ?? null,
+    strictDependencyGuard: user.strictDependencyGuard,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   }

@@ -7,6 +7,7 @@ import {
   Clock,
   History,
   KeyRound,
+  Link2,
   Loader2,
   LogIn,
   ShieldCheck,
@@ -28,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ActivityItem } from '@/components/shared/ActivityFeed'
 
@@ -51,6 +53,32 @@ export function ProfilePage() {
   const [pwForm, setPwForm] = useState<PasswordForm>(EMPTY_PASSWORD)
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSaving, setPwSaving] = useState(false)
+
+  const setUser = useAuthStore((s) => s.setUser)
+  const [guardSaving, setGuardSaving] = useState(false)
+
+  const handleGuardToggle = async (enabled: boolean) => {
+    if (!user) return
+    setGuardSaving(true)
+    // Optimistic flip; revert on failure.
+    setUser({ ...user, strictDependencyGuard: enabled })
+    try {
+      const data = await api.patch<{ user: UserDTO }>('/auth/me', { strictDependencyGuard: enabled })
+      setUser(data.user)
+      toast({
+        title: enabled ? 'Dependency guard enabled' : 'Dependency guard disabled',
+        description: enabled
+          ? 'You can no longer mark tasks complete while their dependencies are unfinished.'
+          : 'Tasks can be completed regardless of their dependencies again.',
+      })
+    } catch (error) {
+      setUser(user)
+      const message = error instanceof ApiClientError ? error.message : 'Failed to update the workflow preference.'
+      toast({ title: 'Could not update preference', description: message, variant: 'destructive' })
+    } finally {
+      setGuardSaving(false)
+    }
+  }
 
   const loadAll = useCallback(async () => {
     try {
@@ -299,6 +327,44 @@ export function ProfilePage() {
 
         {/* Right column */}
         <div className="space-y-6">
+          {/* Workflow preferences */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Link2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                Workflow preferences
+              </CardTitle>
+              <CardDescription>Guardrails that shape how you move work across the board.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div
+                className={cn(
+                  'flex items-start justify-between gap-4 rounded-xl border p-3 transition-colors',
+                  user.strictDependencyGuard
+                    ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+                    : 'border-border bg-muted/40'
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Strict dependency guard</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Stops you from marking a task “Completed” while any task it depends on is still open. Applies to
+                    drag-and-drop, the task dialog and bulk actions.
+                  </p>
+                </div>
+                <Switch
+                  checked={user.strictDependencyGuard}
+                  onCheckedChange={(checked) => void handleGuardToggle(checked)}
+                  disabled={guardSaving}
+                  aria-label="Toggle strict dependency guard"
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground/70">
+                The guard is personal — it only constrains your own actions, never your teammates’.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* My teams */}
           <Card className="py-0">
             <CardContent className="px-6">

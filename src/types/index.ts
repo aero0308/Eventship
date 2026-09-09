@@ -23,6 +23,8 @@ export interface UserDTO {
   isActive: boolean
   teamId: string | null
   team?: Pick<TeamDTO, 'id' | 'name'> | null
+  /** Workflow guard: block completing tasks whose dependencies are unfinished. */
+  strictDependencyGuard: boolean
   createdAt: string
   updatedAt: string
 }
@@ -92,6 +94,8 @@ export interface TaskDTO {
     dependsOnTaskTitle?: string
     /** Status of the depended-on task — powers the board's blocked/ready chips. */
     dependsOnTaskStatus?: string
+    /** Deps-of-deps (one nested level, task detail only) — powers the chain viz. */
+    upstream?: { id: string; title: string; status: string }[]
   }[]
   createdAt: string
   updatedAt: string

@@ -71,6 +71,15 @@ export const changePasswordSchema = z.object({
     .max(128, 'New password must be at most 128 characters'),
 })
 
+/** Self-service profile/workflow updates (PATCH /api/auth/me). */
+export const updateSelfSchema = z
+  .object({
+    strictDependencyGuard: z.boolean().optional(),
+  })
+  .refine((data) => Object.values(data).some((v) => v !== undefined), {
+    message: 'Nothing to update',
+  })
+
 // ============ teams ============
 
 export const createTeamSchema = z.object({
