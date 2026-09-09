@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft,
   ArrowDownUp,
+  CalendarClock,
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
@@ -34,6 +35,7 @@ import {
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
+import { buildIcs, downloadIcs, googleCalendarUrl, slugifyFilename } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
@@ -60,6 +62,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
@@ -388,6 +398,8 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
   const [sortBy, setSortBy] = useState<TaskSort>('due-asc')
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list')
   const [expandedTimelineTaskId, setExpandedTimelineTaskId] = useState<string | null>(null)
+  // List-view progressive disclosure ("Show more")
+  const [tasksShown, setTasksShown] = useState(8)
 
   // Delete confirm
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -495,6 +507,26 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
     })
     setEditError(null)
     setEditOpen(true)
+  }
+
+  const handleDownloadIcs = () => {
+    if (!event) return
+    const ics = buildIcs(
+      [
+        {
+          uid: event.id,
+          title: event.name,
+          description: event.description ?? undefined,
+          start: event.startDate,
+          end: event.endDate,
+          status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
+          url: `${window.location.origin}/#/events/${event.id}`,
+        },
+      ],
+      `EventFlow — ${event.name}`
+    )
+    downloadIcs(`${slugifyFilename(event.name)}.ics`, ics)
+    toast({ title: 'Calendar file downloaded', description: `Import “${event.name}.ics” into any calendar app.` })
   }
 
   const handleEditSave = async (submitEvent: FormEvent<HTMLFormElement>) => {
@@ -777,6 +809,49 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
               <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />
               Add task
             </Button>
+            {event ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="min-h-11" aria-label="Add this event to a calendar">
+                    <CalendarClock className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Add to calendar
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Keep this event with you</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleDownloadIcs} className="cursor-pointer">
+                    <Download className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <span>
+                      Download .ics file
+                      <span className="block text-[11px] text-muted-foreground">Works with Outlook, Apple, Google…</span>
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <a
+                      href={googleCalendarUrl(
+                        {
+                          uid: event.id,
+                          title: event.name,
+                          description: event.description,
+                          start: event.startDate,
+                          end: event.endDate,
+                        },
+                        `${window.location.origin}/#/events/${event.id}`
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <span>
+                        Open in Google Calendar
+                        <span className="block text-[11px] text-muted-foreground">Pre-filled template — just hit save</span>
+                      </span>
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
       </div>
@@ -872,14 +947,20 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
                   <Input
                     value={taskQuery}
-                    onChange={(e) => setTaskQuery(e.target.value)}
+                    onChange={(e) => {
+                      setTaskQuery(e.target.value)
+                      setTasksShown(8)
+                    }}
                     placeholder="Filter by title…"
                     className="h-9 w-40 pl-8 text-xs sm:w-48"
                     aria-label="Filter tasks by title"
                   />
                 </div>
                 {viewMode === 'list' ? (
-                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as TaskSort)}>
+                  <Select value={sortBy} onValueChange={(value) => {
+                    setSortBy(value as TaskSort)
+                    setTasksShown(8)
+                  }}>
                     <SelectTrigger className="h-9 w-44 text-xs" aria-label="Sort tasks">
                       <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
                       <SelectValue />
@@ -904,7 +985,10 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                   <button
                     key={status}
                     type="button"
-                    onClick={() => setStatusFilter(status)}
+                    onClick={() => {
+                      setStatusFilter(status)
+                      setTasksShown(8)
+                    }}
                     aria-pressed={active}
                     className={cn(
                       'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
@@ -949,6 +1033,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     onClick={() => {
                       setTaskQuery('')
                       setStatusFilter('all')
+                      setTasksShown(8)
                     }}
                   >
                     Clear filters
@@ -966,8 +1051,9 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
               rowUpdatingId={rowUpdatingId}
             />
           ) : (
-            <ul className="divide-y divide-border/60">
-              {visibleTasks.map((task, index) => {
+            <>
+              <ul className="divide-y divide-border/60">
+                {visibleTasks.slice(0, tasksShown).map((task, index) => {
                 const due = task.dueDate ? new Date(task.dueDate) : null
                 const overdue = due !== null && due.getTime() < Date.now() && task.status !== 'COMPLETED'
                 return (
@@ -1063,8 +1149,24 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     </div>
                   </motion.li>
                 )
-              })}
-            </ul>
+                })}
+              </ul>
+              {visibleTasks.length > tasksShown ? (
+                <div className="border-t border-border/60 p-3 text-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTasksShown((n) => n + 8)}
+                    className="min-h-9 text-xs text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                  >
+                    Show more tasks
+                    <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200">
+                      {visibleTasks.length - tasksShown} remaining
+                    </span>
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </CardContent>
       </Card>

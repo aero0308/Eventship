@@ -169,6 +169,18 @@ export interface CalendarResponseDTO {
   summary: { dueTasks: number; completed: number; overdue: number; events: number }
 }
 
+/** GET /api/dashboard — one bucket of the "my focus" strip (count + preview tasks). */
+export interface DashboardFocusBucketDTO {
+  count: number
+  tasks: TaskDTO[]
+}
+
+export interface DashboardMyFocusDTO {
+  dueToday: DashboardFocusBucketDTO
+  dueThisWeek: DashboardFocusBucketDTO
+  overdue: DashboardFocusBucketDTO
+}
+
 export interface DashboardStatsDTO {
   totals: {
     events: number
@@ -188,6 +200,7 @@ export interface DashboardStatsDTO {
   recentActivity: ActivityLogDTO[]
   teamWorkload: { teamId: string; teamName: string; openTasks: number; completedTasks: number }[]
   completionRate: number
+  myFocus: DashboardMyFocusDTO
 }
 
 export interface AuthResponse {

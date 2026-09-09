@@ -9,6 +9,65 @@ import { serializeEvent, computeTaskStatsMap, emptyTaskStats } from '../_lib/eve
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function endOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+}
+
+/** Task include shape shared by the three focus buckets. */
+const FOCUS_INCLUDE = {
+  event: { select: { id: true, name: true, status: true } },
+  assignee: { select: { id: true, fullName: true, email: true } },
+} as const
+
+const PRIORITY_RANK: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
+
+/** Urgency order for focus buckets: priority first, then due date. */
+function byUrgency(a: { priority: string; dueDate: Date | null }, b: { priority: string; dueDate: Date | null }): number {
+  const p = (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3)
+  if (p !== 0) return p
+  return (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity)
+}
+
+function serializeFocusTask(task: {
+  id: string
+  title: string
+  description: string | null
+  priority: string
+  status: string
+  eventId: string
+  event: { id: string; name: string; status: string } | null
+  assignedTo: string | null
+  assignee: { id: string; fullName: string; email: string } | null
+  createdBy: string
+  dueDate: Date | null
+  estimatedHours: number | null
+  actualHours: number | null
+  createdAt: Date
+  updatedAt: Date
+}) {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    status: task.status,
+    eventId: task.eventId,
+    event: task.event ?? null,
+    assignedTo: task.assignedTo,
+    assignee: task.assignee ?? null,
+    createdBy: task.createdBy,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    estimatedHours: task.estimatedHours ?? null,
+    actualHours: task.actualHours ?? null,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  }
+}
+
 export async function GET() {
   try {
     await requireUser()
@@ -47,7 +106,7 @@ export async function GET() {
     const priorityCounts = new Map(taskPriorityGroups.map((g) => [g.priority, g._count._all]))
     const eventStatusCounts = new Map(eventStatusGroups.map((g) => [g.status, g._count._all]))
 
-    const [upcomingEvents, upcomingDeadlineTasks, recentActivityLogs, teams, allTasks] =
+    const [upcomingEvents, upcomingDeadlineTasks, recentActivityLogs, teams, allTasks, focusQueries] =
       await Promise.all([
         db.event.findMany({
           where: { startDate: { gte: now } },
@@ -78,7 +137,43 @@ export async function GET() {
           select: { id: true, name: true, events: { select: { id: true } } },
         }),
         db.task.findMany({ select: { eventId: true, status: true } }),
+        // ---- "My focus" buckets: due today / due within a week / overdue ----
+        Promise.all([
+          db.task.findMany({
+            where: { dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
+            orderBy: { dueDate: 'asc' },
+            take: 7,
+            include: FOCUS_INCLUDE,
+          }),
+          db.task.count({
+            where: { dueDate: { gte: startOfDay(now), lte: endOfDay(now) }, status: { not: 'COMPLETED' } },
+          }),
+          db.task.findMany({
+            where: { dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
+            orderBy: { dueDate: 'asc' },
+            take: 7,
+            include: FOCUS_INCLUDE,
+          }),
+          db.task.count({
+            where: { dueDate: { gt: endOfDay(now), lte: endOfDay(new Date(now.getTime() + WEEK_MS)) }, status: { not: 'COMPLETED' } },
+          }),
+          db.task.findMany({
+            where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
+            orderBy: { dueDate: 'asc' },
+            take: 7,
+            include: FOCUS_INCLUDE,
+          }),
+          db.task.count({
+            where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } },
+          }),
+        ]),
       ])
+
+    const [dueTodayTasks, dueTodayCount, dueWeekTasks, dueWeekCount, overdueTasks, overdueCount] = focusQueries
+
+    dueTodayTasks.sort(byUrgency)
+    dueWeekTasks.sort(byUrgency)
+    overdueTasks.sort(byUrgency)
 
     // Contract: upcomingEvents must carry per-event taskStats.
     const upcomingStatsMap = await computeTaskStatsMap(upcomingEvents.map((event) => event.id))
@@ -156,6 +251,11 @@ export async function GET() {
         timestamp: log.timestamp.toISOString(),
       })),
       teamWorkload,
+      myFocus: {
+        dueToday: { count: dueTodayCount, tasks: dueTodayTasks.map(serializeFocusTask) },
+        dueThisWeek: { count: dueWeekCount, tasks: dueWeekTasks.map(serializeFocusTask) },
+        overdue: { count: overdueCount, tasks: overdueTasks.map(serializeFocusTask) },
+      },
       completionRate:
         totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
     }

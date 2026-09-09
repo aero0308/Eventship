@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity as ActivityIcon,
   AlertTriangle,
@@ -8,12 +9,14 @@ import {
   CalendarPlus,
   CalendarRange,
   CheckCircle2,
+  ChevronDown,
   Clock,
   ListPlus,
   ListTodo,
   LogIn,
   MessageSquare,
   RefreshCw,
+  Sparkles,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -35,6 +38,7 @@ import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, TaskDTO } from '@/typ
 import {
   EVENT_STATUS_CLASSES,
   EVENT_STATUS_LABELS,
+  PRIORITY_CLASSES,
   PRIORITY_LABELS,
   ROUTES,
   TASK_STATUS_LABELS,
@@ -103,6 +107,161 @@ function greeting(): string {
   return 'Good evening'
 }
 
+type FocusKey = 'dueToday' | 'dueThisWeek' | 'overdue'
+
+const FOCUS_META: Record<FocusKey, { label: string; hint: string; dot: string; activeChip: string }> = {
+  dueToday: {
+    label: 'Due today',
+    hint: 'Deadline is today',
+    dot: 'bg-amber-500',
+    activeChip: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200',
+  },
+  dueThisWeek: {
+    label: 'Due next 7 days',
+    hint: 'Coming up this week',
+    dot: 'bg-emerald-500',
+    activeChip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200',
+  },
+  overdue: {
+    label: 'Overdue',
+    hint: 'Past the deadline',
+    dot: 'bg-red-500',
+    activeChip: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  },
+}
+
+function focusDueLabel(dueDate: string | null): string {
+  if (!dueDate) return 'No due date'
+  const diff = differenceInCalendarDays(new Date(dueDate), new Date())
+  if (diff === 0) return 'Due today'
+  if (diff === 1) return 'Due tomorrow'
+  if (diff < 0) return `Overdue by ${Math.abs(diff)}d`
+  return `Due ${format(new Date(dueDate), 'EEE, MMM d')}`
+}
+
+function FocusStrip({ myFocus }: { myFocus: DashboardStatsDTO['myFocus'] }) {
+  const [open, setOpen] = useState<FocusKey | null>(null)
+
+  const buckets: { key: FocusKey; count: number; tasks: TaskDTO[] }[] = [
+    { key: 'dueToday', count: myFocus.dueToday.count, tasks: myFocus.dueToday.tasks },
+    { key: 'dueThisWeek', count: myFocus.dueThisWeek.count, tasks: myFocus.dueThisWeek.tasks },
+    { key: 'overdue', count: myFocus.overdue.count, tasks: myFocus.overdue.tasks },
+  ]
+  const active = buckets.find((b) => b.key === open) ?? null
+
+  return (
+    <section
+      aria-label="My focus"
+      className="overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-card to-amber-50 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-card dark:to-amber-500/10"
+    >
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+            <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">My focus</h2>
+            <p className="text-xs text-muted-foreground">Tap a bucket to see what needs attention.</p>
+          </div>
+        </div>
+        <div className="flex flex-1 flex-wrap items-center justify-start gap-2 sm:justify-end" role="group" aria-label="Focus buckets">
+          {buckets.map((bucket) => {
+            const meta = FOCUS_META[bucket.key]
+            const isActive = open === bucket.key
+            return (
+              <button
+                key={bucket.key}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setOpen(isActive ? null : bucket.key)}
+                className={cn(
+                  'group flex min-h-11 items-center gap-2.5 rounded-xl border px-3.5 py-2 text-left transition-all',
+                  isActive
+                    ? 'border-transparent shadow-sm ' + meta.activeChip
+                    : 'border-border/70 bg-card/80 text-foreground hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-sm dark:hover:border-emerald-500/40'
+                )}
+              >
+                <span className={cn('h-2 w-2 shrink-0 rounded-full', meta.dot, bucket.count === 0 && 'opacity-30')} aria-hidden="true" />
+                <span className="text-xl font-bold leading-none tabular-nums">{bucket.count}</span>
+                <span className="text-xs font-medium leading-tight">{meta.label}</span>
+                <ChevronDown
+                  className={cn('h-3.5 w-3.5 shrink-0 opacity-50 transition-transform', isActive && 'rotate-180 opacity-80')}
+                  aria-hidden="true"
+                />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {active ? (
+          <motion.div
+            key={active.key}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="overflow-hidden border-t border-border/60 bg-card/60"
+          >
+            {active.tasks.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-muted-foreground">Nothing here right now — enjoy the calm.</p>
+            ) : (
+              <ul className="max-h-72 divide-y divide-border/60 overflow-y-auto" role="list">
+                {active.tasks.map((task) => (
+                  <li key={task.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/events/${task.eventId}`)}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-emerald-50/60 dark:hover:bg-emerald-500/10"
+                    >
+                      <span
+                        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-stone-400')}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{task.title}</span>
+                      {task.event ? (
+                        <span className="hidden max-w-44 truncate text-xs text-muted-foreground sm:block">{task.event.name}</span>
+                      ) : null}
+                      {task.assignee ? (
+                        <span className="hidden text-xs text-muted-foreground md:block">{task.assignee.fullName}</span>
+                      ) : null}
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                          active.key === 'overdue'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+                            : active.key === 'dueToday'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
+                              : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {focusDueLabel(task.dueDate)}
+                      </span>
+                      <span className={cn('hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline-flex', PRIORITY_CLASSES[task.priority] ?? '')}>
+                        {PRIORITY_LABELS[task.priority] ?? task.priority}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {active.count > active.tasks.length ? (
+              <p className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+                Showing {active.tasks.length} of {active.count} — {FOCUS_META[active.key].hint.toLowerCase()}
+                {' · '}
+                <button type="button" className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-300" onClick={() => navigate(ROUTES.CALENDAR)}>
+                  View calendar
+                </button>
+              </p>
+            ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </section>
+  )
+}
+
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
@@ -144,6 +303,15 @@ export function DashboardPage() {
         title="Dashboard"
         subtitle={user ? `${greeting()}, ${user.fullName} — here's what's happening across your events.` : "Here's what's happening across your events."}
       />
+
+      {/* ============ My focus strip ============ */}
+      {loading ? (
+        <Skeleton className="h-20 rounded-2xl" />
+      ) : stats ? (
+        <div className="mt-1 mb-4">
+          <FocusStrip myFocus={stats.myFocus} />
+        </div>
+      ) : null}
 
       {/* ============ Stat cards ============ */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key statistics">

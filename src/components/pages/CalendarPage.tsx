@@ -15,12 +15,14 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   RefreshCw,
 } from 'lucide-react'
 import { format, isSameMonth, isToday } from 'date-fns'
 import type { CalendarResponseDTO, TaskDTO, TeamDTO } from '@/types'
 import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_CLASSES, PRIORITY_LABELS, ROUTES, TASK_STATUSES, TASK_STATUS_LABELS } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
+import { buildIcs, downloadIcs } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -205,6 +207,28 @@ export function CalendarPage() {
   const monthLabel = format(new Date(year, monthIndex, 1), 'MMMM yyyy')
   const todayKey = dayKeyOf(new Date())
 
+  const handleExportIcs = () => {
+    const events = data?.events ?? []
+    if (events.length === 0) {
+      toast({ title: 'Nothing to export', description: `No events overlap ${monthLabel}.` })
+      return
+    }
+    const ics = buildIcs(
+      events.map((event) => ({
+        uid: event.id,
+        title: event.name,
+        description: event.description,
+        start: event.startDate,
+        end: event.endDate,
+        status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
+        url: `${window.location.origin}/#/events/${event.id}`,
+      })),
+      `EventFlow — ${monthLabel}`
+    )
+    downloadIcs(`eventflow-${monthKey}.ics`, ics)
+    toast({ title: 'Calendar exported', description: `${events.length} event(s) exported for ${monthLabel}.` })
+  }
+
   const goMonth = (delta: number) => {
     setDirection(delta)
     setMonthKey((key) => shiftMonth(key, delta))
@@ -231,6 +255,10 @@ export function CalendarPage() {
               }}
             >
               Today
+            </Button>
+            <Button variant="outline" onClick={handleExportIcs} disabled={!data || data.events.length === 0} className="min-h-11">
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              Export .ics
             </Button>
           </>
         }

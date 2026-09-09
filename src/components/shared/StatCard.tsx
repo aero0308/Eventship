@@ -54,7 +54,7 @@ export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', prog
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
-      <div className={cn('h-full rounded-xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md', className)}>
+      <div className={cn('h-full rounded-xl border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-emerald-500/20 dark:hover:ring-emerald-400/20', className)}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
