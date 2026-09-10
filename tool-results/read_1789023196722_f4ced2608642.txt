@@ -1,0 +1,620 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * Admin · User management (EVENT_MANAGER only).
+     5→ * Role changes, team assignment, activate/deactivate — server enforces the
+     6→ * same guardrails (no self-demotion, sessions revoked on deactivation).
+     7→ */
+     8→
+     9→import { useCallback, useEffect, useMemo, useState } from 'react'
+    10→import {
+    11→  CalendarClock,
+    12→  CircleUser,
+    13→  ListChecks,
+    14→  RefreshCw,
+    15→  SearchX,
+    16→  Search,
+    17→  ShieldCheck,
+    18→  ShieldOff,
+    19→  ShieldQuestion,
+    20→  UserCheck,
+    21→  Users,
+    22→} from 'lucide-react'
+    23→import { formatDistanceToNow } from 'date-fns'
+    24→import type { TeamDTO, UpdateUserPayload, UserWithStatsDTO } from '@/types'
+    25→import { ROLE_BADGE_CLASSES, ROLE_LABELS, ROLES } from '@/lib/constants'
+    26→import { api, ApiClientError } from '@/lib/api-client'
+    27→import { useAuthStore } from '@/stores/auth-store'
+    28→import { useToast } from '@/hooks/use-toast'
+    29→import { cn } from '@/lib/utils'
+    30→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    31→import { Badge } from '@/components/ui/badge'
+    32→import { Button } from '@/components/ui/button'
+    33→import { Card, CardContent } from '@/components/ui/card'
+    34→import {
+    35→  AlertDialog,
+    36→  AlertDialogAction,
+    37→  AlertDialogCancel,
+    38→  AlertDialogContent,
+    39→  AlertDialogDescription,
+    40→  AlertDialogFooter,
+    41→  AlertDialogHeader,
+    42→  AlertDialogTitle,
+    43→} from '@/components/ui/alert-dialog'
+    44→import { Input } from '@/components/ui/input'
+    45→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    46→import { Skeleton } from '@/components/ui/skeleton'
+    47→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    48→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    49→import { EmptyState } from '@/components/shared/EmptyState'
+    50→import { PageHeader } from '@/components/shared/PageHeader'
+    51→import { StatCard } from '@/components/shared/StatCard'
+    52→import { initialsOf } from '@/components/layout/Layout'
+    53→
+    54→type RoleFilter = 'ALL' | 'EVENT_MANAGER' | 'TEAM_LEADER' | 'EMPLOYEE'
+    55→type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE'
+    56→
+    57→function initials(name: string): string {
+    58→  return name
+    59→    .split(/\s+/)
+    60→    .filter(Boolean)
+    61→    .slice(0, 2)
+    62→    .map((p) => p[0]?.toUpperCase() ?? '')
+    63→    .join('')
+    64→}
+    65→
+    66→export function AdminPage() {
+    67→  const viewer = useAuthStore((s) => s.user)
+    68→  const { toast } = useToast()
+    69→
+    70→  const [users, setUsers] = useState<UserWithStatsDTO[]>([])
+    71→  const [teams, setTeams] = useState<TeamDTO[]>([])
+    72→  const [loading, setLoading] = useState(true)
+    73→  const [error, setError] = useState<string | null>(null)
+    74→  const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+    75→
+    76→  const [search, setSearch] = useState('')
+    77→  const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL')
+    78→  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+    79→  const [deactivateTarget, setDeactivateTarget] = useState<UserWithStatsDTO | null>(null)
+    80→
+    81→  const load = useCallback(async () => {
+    82→    try {
+    83→      const [usersData, teamsData] = await Promise.all([
+    84→        api.get<{ users: UserWithStatsDTO[] }>('/users'),
+    85→        api.get<{ teams: TeamDTO[] }>('/teams'),
+    86→      ])
+    87→      setUsers(usersData.users)
+    88→      setTeams(teamsData.teams)
+    89→      setError(null)
+    90→    } catch (err) {
+    91→      setError(err instanceof ApiClientError ? err.message : 'Failed to load users.')
+    92→    } finally {
+    93→      setLoading(false)
+    94→    }
+    95→  }, [])
+    96→
+    97→  useEffect(() => {
+    98→    void load()
+    99→  }, [load])
+   100→
+   101→  const patchUser = useCallback(
+   102→    async (target: UserWithStatsDTO, payload: UpdateUserPayload, successTitle: string) => {
+   103→      setBusyIds((prev) => new Set(prev).add(target.id))
+   104→      const previous = users
+   105→      // Optimistic update
+   106→      setUsers((list) => list.map((u) => (u.id === target.id ? { ...u, ...payload } : u)))
+   107→      try {
+   108→        const data = await api.patch<{ user: UserWithStatsDTO }>(`/users/${target.id}`, payload)
+   109→        setUsers((list) => list.map((u) => (u.id === target.id ? { ...u, ...data.user } : u)))
+   110→        toast({ title: successTitle, description: `${data.user.fullName} updated.` })
+   111→      } catch (err) {
+   112→        setUsers(previous)
+   113→        toast({
+   114→          title: 'Update failed',
+   115→          description: err instanceof ApiClientError ? err.message : 'Please try again.',
+   116→          variant: 'destructive',
+   117→        })
+   118→      } finally {
+   119→        setBusyIds((prev) => {
+   120→          const next = new Set(prev)
+   121→          next.delete(target.id)
+   122→          return next
+   123→        })
+   124→      }
+   125→    },
+   126→    [users, toast]
+   127→  )
+   128→
+   129→  const filtered = useMemo(() => {
+   130→    const term = search.trim().toLowerCase()
+   131→    return users.filter((u) => {
+   132→      if (term && !u.fullName.toLowerCase().includes(term) && !u.email.toLowerCase().includes(term)) return false
+   133→      if (roleFilter !== 'ALL' && u.role !== roleFilter) return false
+   134→      if (statusFilter === 'ACTIVE' && !u.isActive) return false
+   135→      if (statusFilter === 'INACTIVE' && u.isActive) return false
+   136→      return true
+   137→    })
+   138→  }, [users, search, roleFilter, statusFilter])
+   139→
+   140→  const summary = useMemo(
+   141→    () => ({
+   142→      total: users.length,
+   143→      active: users.filter((u) => u.isActive).length,
+   144→      managers: users.filter((u) => u.role === 'EVENT_MANAGER').length,
+   145→      inactive: users.filter((u) => !u.isActive).length,
+   146→    }),
+   147→    [users]
+   148→  )
+   149→
+   150→  if (viewer?.role !== 'EVENT_MANAGER') {
+   151→    return (
+   152→      <div className="py-10">
+   153→        <EmptyState
+   154→          icon={ShieldOff}
+   155→          title="Access restricted"
+   156→          hint="User management is only available to event managers. If you believe this is a mistake, ask an administrator."
+   157→          action={
+   158→            <Button onClick={() => window.history.back()} variant="outline" className="min-h-11">
+   159→              Go back
+   160→            </Button>
+   161→          }
+   162→        />
+   163→      </div>
+   164→    )
+   165→  }
+   166→
+   167→  const isFiltered = search.trim() !== '' || roleFilter !== 'ALL' || statusFilter !== 'ALL'
+   168→
+   169→  return (
+   170→    <div className="space-y-6">
+   171→      <PageHeader
+   172→        title="User management"
+   173→        subtitle="Roles, team assignments and account access across the workspace."
+   174→        className="mb-0"
+   175→        actions={
+   176→          <Button variant="outline" onClick={() => void load()} disabled={loading} className="min-h-11">
+   177→            <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
+   178→            Refresh
+   179→          </Button>
+   180→        }
+   181→      />
+   182→
+   183→      {/* Summary tiles */}
+   184→      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+   185→        <StatCard icon={Users} label="Total users" value={summary.total} sub="workspace accounts" tint="stone" />
+   186→        <StatCard icon={UserCheck} label="Active" value={summary.active} sub="can sign in now" tint="emerald" />
+   187→        <StatCard icon={ShieldCheck} label="Event managers" value={summary.managers} sub="full workspace control" tint="amber" />
+   188→        <StatCard icon={ShieldOff} label="Deactivated" value={summary.inactive} sub="sessions revoked" tint="red" />
+   189→      </div>
+   190→
+   191→      {/* Filters */}
+   192→      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+   193→        <div className="relative w-full lg:max-w-xs">
+   194→          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+   195→          <Input
+   196→            value={search}
+   197→            onChange={(e) => setSearch(e.target.value)}
+   198→            placeholder="Search name or email…"
+   199→            aria-label="Search users"
+   200→            className="h-11 pl-9"
+   201→          />
+   202→        </div>
+   203→        <div className="flex gap-3">
+   204→          <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as RoleFilter)}>
+   205→            <SelectTrigger className="h-11 w-full sm:w-44" aria-label="Filter by role">
+   206→              <SelectValue />
+   207→            </SelectTrigger>
+   208→            <SelectContent>
+   209→              <SelectItem value="ALL">All roles</SelectItem>
+   210→              {ROLES.map((role) => (
+   211→                <SelectItem key={role} value={role}>
+   212→                  {ROLE_LABELS[role]}
+   213→                </SelectItem>
+   214→              ))}
+   215→            </SelectContent>
+   216→          </Select>
+   217→          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+   218→            <SelectTrigger className="h-11 w-full sm:w-40" aria-label="Filter by status">
+   219→              <SelectValue />
+   220→            </SelectTrigger>
+   221→            <SelectContent>
+   222→              <SelectItem value="ALL">All statuses</SelectItem>
+   223→              <SelectItem value="ACTIVE">Active</SelectItem>
+   224→              <SelectItem value="INACTIVE">Deactivated</SelectItem>
+   225→            </SelectContent>
+   226→          </Select>
+   227→        </div>
+   228→        <p className="text-xs text-muted-foreground lg:ml-auto">
+   229→          {loading ? 'Loading…' : `${filtered.length} of ${users.length} users`}
+   230→        </p>
+   231→      </div>
+   232→
+   233→      {/* Directory */}
+   234→      <Card className="py-0">
+   235→        <CardContent className="p-0">
+   236→          {loading ? (
+   237→            <div className="space-y-4 p-6">
+   238→              {Array.from({ length: 5 }).map((_, i) => (
+   239→                <div key={i} className="flex items-center gap-4">
+   240→                  <Skeleton className="h-10 w-10 rounded-full" />
+   241→                  <div className="flex-1 space-y-2">
+   242→                    <Skeleton className="h-4 w-1/3" />
+   243→                    <Skeleton className="h-3 w-1/4" />
+   244→                  </div>
+   245→                  <Skeleton className="h-9 w-36" />
+   246→                  <Skeleton className="h-9 w-28" />
+   247→                </div>
+   248→              ))}
+   249→            </div>
+   250→          ) : error ? (
+   251→            <div className="p-6">
+   252→              <EmptyState
+   253→                icon={SearchX}
+   254→                title="Could not load users"
+   255→                hint={error}
+   256→                action={
+   257→                  <Button onClick={() => void load()} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   258→                    Try again
+   259→                  </Button>
+   260→                }
+   261→              />
+   262→            </div>
+   263→          ) : filtered.length === 0 ? (
+   264→            <div className="p-6">
+   265→              <EmptyState
+   266→                icon={CircleUser}
+   267→                title={isFiltered ? 'No matching users' : 'No users yet'}
+   268→                hint={isFiltered ? 'Try clearing the search or filters.' : 'Invite your team by sharing the register link.'}
+   269→                action={
+   270→                  isFiltered ? (
+   271→                    <Button
+   272→                      variant="outline"
+   273→                      onClick={() => {
+   274→                        setSearch('')
+   275→                        setRoleFilter('ALL')
+   276→                        setStatusFilter('ALL')
+   277→                      }}
+   278→                    >
+   279→                      Clear filters
+   280→                    </Button>
+   281→                  ) : undefined
+   282→                }
+   283→              />
+   284→            </div>
+   285→          ) : (
+   286→            <TooltipProvider delayDuration={250}>
+   287→              {/* Desktop table */}
+   288→              <div className="hidden md:block">
+   289→                <Table>
+   290→                  <TableHeader>
+   291→                    <TableRow className="hover:bg-transparent">
+   292→                      <TableHead className="pl-6">User</TableHead>
+   293→                      <TableHead>Role</TableHead>
+   294→                      <TableHead>Team</TableHead>
+   295→                      <TableHead className="text-center">Tasks</TableHead>
+   296→                      <TableHead>Last sign-in</TableHead>
+   297→                      <TableHead>Status</TableHead>
+   298→                      <TableHead className="pr-6 text-right">Actions</TableHead>
+   299→                    </TableRow>
+   300→                  </TableHeader>
+   301→                  <TableBody>
+   302→                    {filtered.map((u) => {
+   303→                      const isSelf = u.id === viewer?.id
+   304→                      const busy = busyIds.has(u.id)
+   305→                      return (
+   306→                        <TableRow key={u.id} className={cn(!u.isActive && 'opacity-60')}>
+   307→                          <TableCell className="pl-6">
+   308→                            <div className="flex items-center gap-3">
+   309→                              <Avatar className="h-9 w-9 border border-border">
+   310→                                <AvatarFallback
+   311→                                  className={cn(
+   312→                                    'text-xs font-semibold text-white',
+   313→                                    u.isActive ? 'bg-emerald-600' : 'bg-stone-400'
+   314→                                  )}
+   315→                                >
+   316→                                  {initials(u.fullName)}
+   317→                                </AvatarFallback>
+   318→                              </Avatar>
+   319→                              <div className="min-w-0">
+   320→                                <p className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
+   321→                                  {u.fullName}
+   322→                                  {isSelf ? (
+   323→                                    <Badge variant="outline" className="border-border bg-muted/60 px-1.5 py-0 text-[10px] text-muted-foreground">
+   324→                                      you
+   325→                                    </Badge>
+   326→                                  ) : null}
+   327→                                </p>
+   328→                                <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+   329→                              </div>
+   330→                            </div>
+   331→                          </TableCell>
+   332→                          <TableCell>
+   333→                            <Tooltip>
+   334→                              <TooltipTrigger asChild>
+   335→                                <span>
+   336→                                  <Select
+   337→                                    value={u.role}
+   338→                                    disabled={isSelf || busy}
+   339→                                    onValueChange={(role) =>
+   340→                                      void patchUser(u, { role: role as UserWithStatsDTO['role'] }, 'Role updated')
+   341→                                    }
+   342→                                  >
+   343→                                    <SelectTrigger
+   344→                                      aria-label={`Role for ${u.fullName}`}
+   345→                                      className={cn(
+   346→                                        'h-9 w-40 border-transparent bg-transparent text-xs font-medium shadow-none hover:border-border',
+   347→                                        ROLE_BADGE_CLASSES[u.role]
+   348→                                      )}
+   349→                                    >
+   350→                                      <ShieldQuestion className="mr-1 h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+   351→                                      <SelectValue />
+   352→                                    </SelectTrigger>
+   353→                                    <SelectContent>
+   354→                                      {ROLES.map((role) => (
+   355→                                        <SelectItem key={role} value={role} disabled={role === u.role}>
+   356→                                          {ROLE_LABELS[role]}
+   357→                                        </SelectItem>
+   358→                                      ))}
+   359→                                    </SelectContent>
+   360→                                  </Select>
+   361→                                </span>
+   362→                              </TooltipTrigger>
+   363→                              {isSelf ? <TooltipContent>You cannot change your own role</TooltipContent> : null}
+   364→                            </Tooltip>
+   365→                          </TableCell>
+   366→                          <TableCell>
+   367→                            <Select
+   368→                              value={u.teamId ?? 'none'}
+   369→                              disabled={busy}
+   370→                              onValueChange={(teamId) =>
+   371→                                void patchUser(u, { teamId: teamId === 'none' ? null : teamId }, 'Team updated')
+   372→                              }
+   373→                            >
+   374→                              <SelectTrigger
+   375→                                aria-label={`Team for ${u.fullName}`}
+   376→                                className="h-9 w-36 border-transparent bg-transparent text-xs shadow-none hover:border-border"
+   377→                              >
+   378→                                <Users className="mr-1 h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+   379→                                <SelectValue />
+   380→                              </SelectTrigger>
+   381→                              <SelectContent>
+   382→                                <SelectItem value="none">No team</SelectItem>
+   383→                                {teams.map((team) => (
+   384→                                  <SelectItem key={team.id} value={team.id}>
+   385→                                    {team.name}
+   386→                                  </SelectItem>
+   387→                                ))}
+   388→                              </SelectContent>
+   389→                            </Select>
+   390→                          </TableCell>
+   391→                          <TableCell className="text-center">
+   392→                            <Tooltip>
+   393→                              <TooltipTrigger asChild>
+   394→                                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+   395→                                  <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+   396→                                  {u.stats.openTasks}
+   397→                                  {u.stats.overdueTasks > 0 ? (
+   398→                                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-100 px-1 text-[10px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
+   399→                                      {u.stats.overdueTasks}
+   400→                                    </span>
+   401→                                  ) : null}
+   402→                                </span>
+   403→                              </TooltipTrigger>
+   404→                              <TooltipContent>
+   405→                                {u.stats.openTasks} open · {u.stats.overdueTasks} overdue · {u.stats.completedTasks} completed
+   406→                              </TooltipContent>
+   407→                            </Tooltip>
+   408→                          </TableCell>
+   409→                          <TableCell>
+   410→                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+   411→                              <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+   412→                              {u.lastLoginAt
+   413→                                ? formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true })
+   414→                                : 'Never signed in'}
+   415→                            </span>
+   416→                          </TableCell>
+   417→                          <TableCell>
+   418→                            <Badge
+   419→                              variant="outline"
+   420→                              className={cn(
+   421→                                'gap-1.5',
+   422→                                u.isActive
+   423→                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300'
+   424→                                  : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300'
+   425→                              )}
+   426→                            >
+   427→                              <span
+   428→                                className={cn('h-1.5 w-1.5 rounded-full', u.isActive ? 'bg-emerald-500' : 'bg-red-500')}
+   429→                                aria-hidden="true"
+   430→                              />
+   431→                              {u.isActive ? 'Active' : 'Inactive'}
+   432→                            </Badge>
+   433→                          </TableCell>
+   434→                          <TableCell className="pr-6 text-right">
+   435→                            {u.isActive ? (
+   436→                              <Tooltip>
+   437→                                <TooltipTrigger asChild>
+   438→                                  <span className={cn('inline-block', isSelf && 'cursor-not-allowed')}>
+   439→                                    <Button
+   440→                                      variant="outline"
+   441→                                      size="sm"
+   442→                                      className="h-9 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/25 dark:hover:bg-red-500/10"
+   443→                                      disabled={isSelf || busy}
+   444→                                      onClick={() => setDeactivateTarget(u)}
+   445→                                    >
+   446→                                      <ShieldOff className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   447→                                      Deactivate
+   448→                                    </Button>
+   449→                                  </span>
+   450→                                </TooltipTrigger>
+   451→                                {isSelf ? <TooltipContent>You cannot deactivate yourself</TooltipContent> : null}
+   452→                              </Tooltip>
+   453→                            ) : (
+   454→                              <Button
+   455→                                variant="outline"
+   456→                                size="sm"
+   457→                                className="h-9 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/25 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+   458→                                disabled={busy}
+   459→                                onClick={() => void patchUser(u, { isActive: true }, 'Account reactivated')}
+   460→                              >
+   461→                                <UserCheck className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   462→                                Reactivate
+   463→                              </Button>
+   464→                            )}
+   465→                          </TableCell>
+   466→                        </TableRow>
+   467→                      )
+   468→                    })}
+   469→                  </TableBody>
+   470→                </Table>
+   471→              </div>
+   472→
+   473→              {/* Mobile cards */}
+   474→              <ul className="divide-y divide-border md:hidden">
+   475→                {filtered.map((u) => {
+   476→                  const isSelf = u.id === viewer?.id
+   477→                  const busy = busyIds.has(u.id)
+   478→                  return (
+   479→                    <li key={u.id} className={cn('space-y-3 p-4', !u.isActive && 'opacity-60')}>
+   480→                      <div className="flex items-center gap-3">
+   481→                        <Avatar className="h-10 w-10 border border-border">
+   482→                          <AvatarFallback
+   483→                            className={cn('text-xs font-semibold text-white', u.isActive ? 'bg-emerald-600' : 'bg-stone-400')}
+   484→                          >
+   485→                            {initialsOf(u.fullName)}
+   486→                          </AvatarFallback>
+   487→                        </Avatar>
+   488→                        <div className="min-w-0 flex-1">
+   489→                          <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+   490→                            {u.fullName}
+   491→                            {isSelf ? <span className="text-[10px] font-normal text-muted-foreground">(you)</span> : null}
+   492→                          </p>
+   493→                          <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+   494→                        </div>
+   495→                        <Badge
+   496→                          variant="outline"
+   497→                          className={cn(
+   498→                            'shrink-0',
+   499→                            u.isActive
+   500→                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300'
+   501→                              : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300'
+   502→                          )}
+   503→                        >
+   504→                          {u.isActive ? 'Active' : 'Inactive'}
+   505→                        </Badge>
+   506→                      </div>
+   507→                      <div className="grid grid-cols-2 gap-2">
+   508→                        <div>
+   509→                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Role</p>
+   510→                          <Select
+   511→                            value={u.role}
+   512→                            disabled={isSelf || busy}
+   513→                            onValueChange={(role) => void patchUser(u, { role: role as UserWithStatsDTO['role'] }, 'Role updated')}
+   514→                          >
+   515→                            <SelectTrigger aria-label={`Role for ${u.fullName}`} className="h-10 text-xs">
+   516→                              <SelectValue />
+   517→                            </SelectTrigger>
+   518→                            <SelectContent>
+   519→                              {ROLES.map((role) => (
+   520→                                <SelectItem key={role} value={role} disabled={role === u.role}>
+   521→                                  {ROLE_LABELS[role]}
+   522→                                </SelectItem>
+   523→                              ))}
+   524→                            </SelectContent>
+   525→                          </Select>
+   526→                        </div>
+   527→                        <div>
+   528→                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Team</p>
+   529→                          <Select
+   530→                            value={u.teamId ?? 'none'}
+   531→                            disabled={busy}
+   532→                            onValueChange={(teamId) =>
+   533→                              void patchUser(u, { teamId: teamId === 'none' ? null : teamId }, 'Team updated')
+   534→                            }
+   535→                          >
+   536→                            <SelectTrigger aria-label={`Team for ${u.fullName}`} className="h-10 text-xs">
+   537→                              <SelectValue />
+   538→                            </SelectTrigger>
+   539→                            <SelectContent>
+   540→                              <SelectItem value="none">No team</SelectItem>
+   541→                              {teams.map((team) => (
+   542→                                <SelectItem key={team.id} value={team.id}>
+   543→                                  {team.name}
+   544→                                </SelectItem>
+   545→                              ))}
+   546→                            </SelectContent>
+   547→                          </Select>
+   548→                        </div>
+   549→                      </div>
+   550→                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+   551→                        <span className="inline-flex items-center gap-1">
+   552→                          <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+   553→                          {u.stats.openTasks} open
+   554→                          {u.stats.overdueTasks > 0 ? (
+   555→                            <span className="font-semibold text-red-600 dark:text-red-300">· {u.stats.overdueTasks} overdue</span>
+   556→                          ) : null}
+   557→                        </span>
+   558→                        <span className="inline-flex items-center gap-1">
+   559→                          <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+   560→                          {u.lastLoginAt ? formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true }) : 'never'}
+   561→                        </span>
+   562→                      </div>
+   563→                      {u.isActive ? (
+   564→                        <Button
+   565→                          variant="outline"
+   566→                          className="h-10 w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/25 dark:hover:bg-red-500/10"
+   567→                          disabled={isSelf || busy}
+   568→                          onClick={() => setDeactivateTarget(u)}
+   569→                        >
+   570→                          <ShieldOff className="mr-1.5 h-4 w-4" aria-hidden="true" />
+   571→                          {isSelf ? 'You cannot deactivate yourself' : 'Deactivate account'}
+   572→                        </Button>
+   573→                      ) : (
+   574→                        <Button
+   575→                          variant="outline"
+   576→                          className="h-10 w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/25 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+   577→                          disabled={busy}
+   578→                          onClick={() => void patchUser(u, { isActive: true }, 'Account reactivated')}
+   579→                        >
+   580→                          <UserCheck className="mr-1.5 h-4 w-4" aria-hidden="true" />
+   581→                          Reactivate account
+   582→                        </Button>
+   583→                      )}
+   584→                    </li>
+   585→                  )
+   586→                })}
+   587→              </ul>
+   588→            </TooltipProvider>
+   589→          )}
+   590→        </CardContent>
+   591→      </Card>
+   592→
+   593→      {/* Deactivate confirmation */}
+   594→      <AlertDialog open={deactivateTarget !== null} onOpenChange={(open) => !open && setDeactivateTarget(null)}>
+   595→        <AlertDialogContent>
+   596→          <AlertDialogHeader>
+   597→            <AlertDialogTitle>Deactivate {deactivateTarget?.fullName}?</AlertDialogTitle>
+   598→            <AlertDialogDescription>
+   599→              They will be signed out immediately and lose access until reactivated. Their tasks and history stay intact —
+   600→              nothing is deleted.
+   601→            </AlertDialogDescription>
+   602→          </AlertDialogHeader>
+   603→          <AlertDialogFooter>
+   604→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   605→            <AlertDialogAction
+   606→              className="bg-red-600 text-white hover:bg-red-700"
+   607→              onClick={() => {
+   608→                if (deactivateTarget) void patchUser(deactivateTarget, { isActive: false }, 'Account deactivated')
+   609→                setDeactivateTarget(null)
+   610→              }}
+   611→            >
+   612→              Deactivate
+   613→            </AlertDialogAction>
+   614→          </AlertDialogFooter>
+   615→        </AlertDialogContent>
+   616→      </AlertDialog>
+   617→    </div>
+   618→  )
+   619→}
+   620→

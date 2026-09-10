@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     }
     if (!user.isActive) throw new ApiError(401, 'Account is deactivated')
 
-    await createSession(user.id)
+    await createSession(user.id, request.headers.get('user-agent'))
     await logActivity(user.id, ACTIVITY_ACTIONS.USER_LOGIN, { email: user.email })
 
     return ok({ user: toPublicUser(user) })

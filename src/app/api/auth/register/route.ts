@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       include: { team: { select: { id: true, name: true } } },
     })
 
-    await createSession(user.id)
+    await createSession(user.id, request.headers.get('user-agent'))
     await logActivity(user.id, ACTIVITY_ACTIONS.USER_REGISTERED, { email: user.email })
 
     return ok({ user: toPublicUser(user) }, 201)

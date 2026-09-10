@@ -46,6 +46,20 @@ const emailField = z.preprocess(
   z.email()
 )
 
+/**
+ * Strong password policy (shared by register, change-password and reset-password):
+ * min 8 chars with uppercase, lowercase, number and special character.
+ * The demo seed password predates this policy — logins are unaffected.
+ */
+export const strongPassword = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be at most 128 characters')
+  .regex(/[A-Z]/, 'Password must include an uppercase letter')
+  .regex(/[a-z]/, 'Password must include a lowercase letter')
+  .regex(/[0-9]/, 'Password must include a number')
+  .regex(/[^A-Za-z0-9]/, 'Password must include a special character (e.g. ! ? #)')
+
 export const registerSchema = z.object({
   email: emailField,
   fullName: z
@@ -53,7 +67,7 @@ export const registerSchema = z.object({
     .trim()
     .min(1, 'Full name is required')
     .max(120, 'Full name must be at most 120 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: strongPassword,
   role: z.enum(ROLES).default('EMPLOYEE'),
   teamId: nullableId,
 })
@@ -65,10 +79,16 @@ export const loginSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z
-    .string()
-    .min(6, 'New password must be at least 6 characters')
-    .max(128, 'New password must be at most 128 characters'),
+  newPassword: strongPassword,
+})
+
+/** POST /api/auth/forgot-password — always answers success (never leaks accounts). */
+export const forgotPasswordSchema = z.object({ email: emailField })
+
+/** POST /api/auth/reset-password — consumes a single-use token. */
+export const resetPasswordSchema = z.object({
+  token: z.string().min(16, 'Reset token is missing or malformed'),
+  newPassword: strongPassword,
 })
 
 /** Self-service profile/workflow updates (PATCH /api/auth/me). */

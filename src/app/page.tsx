@@ -12,6 +12,8 @@ import { AuthLayout } from '@/components/layout/AuthLayout'
 import { HomePage } from '@/components/pages/HomePage'
 import { LoginPage } from '@/components/pages/LoginPage'
 import { RegisterPage } from '@/components/pages/RegisterPage'
+import { ForgotPasswordPage } from '@/components/pages/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/components/pages/ResetPasswordPage'
 import { DashboardPage } from '@/components/pages/DashboardPage'
 import { EventsPage } from '@/components/pages/EventsPage'
 import { EventDetailPage } from '@/components/pages/EventDetailPage'
@@ -125,7 +127,11 @@ export default function Page() {
   }
 
   const isHome = pathname === ROUTES.HOME
-  const isAuthRoute = pathname === ROUTES.LOGIN || pathname === ROUTES.REGISTER
+  const isAuthRoute =
+    pathname === ROUTES.LOGIN ||
+    pathname === ROUTES.REGISTER ||
+    pathname === ROUTES.FORGOT_PASSWORD ||
+    pathname === ROUTES.RESET_PASSWORD
   const isProtectedRoute = PROTECTED_PATHS.includes(pathname) || eventDetailId !== null
 
   let content: ReactNode
@@ -135,14 +141,19 @@ export default function Page() {
     content = <HomePage />
     transitionKey = 'home'
   } else if (isAuthRoute) {
-    const title = pathname === ROUTES.LOGIN ? 'Welcome back' : 'Create your account'
-    const subtitle =
-      pathname === ROUTES.LOGIN
-        ? 'Sign in to keep your events on track.'
-        : 'Join EventFlow and start planning in minutes.'
+    const authMeta: Record<string, { title: string; subtitle: string }> = {
+      [ROUTES.LOGIN]: { title: 'Welcome back', subtitle: 'Sign in to keep your events on track.' },
+      [ROUTES.REGISTER]: { title: 'Create your account', subtitle: 'Join EventFlow and start planning in minutes.' },
+      [ROUTES.FORGOT_PASSWORD]: { title: 'Reset your password', subtitle: "We'll help you get back into your account." },
+      [ROUTES.RESET_PASSWORD]: { title: 'Choose a new password', subtitle: 'Pick something strong — you will use it to sign back in.' },
+    }
+    const meta = authMeta[pathname] ?? authMeta[ROUTES.LOGIN]
     content = (
-      <AuthLayout title={title} subtitle={subtitle}>
-        {pathname === ROUTES.LOGIN ? <LoginPage /> : <RegisterPage />}
+      <AuthLayout title={meta.title} subtitle={meta.subtitle}>
+        {pathname === ROUTES.LOGIN && <LoginPage />}
+        {pathname === ROUTES.REGISTER && <RegisterPage />}
+        {pathname === ROUTES.FORGOT_PASSWORD && <ForgotPasswordPage />}
+        {pathname === ROUTES.RESET_PASSWORD && <ResetPasswordPage />}
       </AuthLayout>
     )
     transitionKey = 'auth'

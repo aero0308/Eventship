@@ -24,10 +24,17 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 /** Create a DB session row and set the httpOnly session cookie. */
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(userId: string, userAgent?: string | null): Promise<string> {
   const token = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
-  await db.session.create({ data: { token, userId, expiresAt } })
+  await db.session.create({
+    data: {
+      token,
+      userId,
+      expiresAt,
+      userAgent: userAgent ? userAgent.slice(0, 300) : null,
+    },
+  })
   const cookieStore = await cookies()
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -56,6 +63,13 @@ export async function getSessionUser() {
       return null
     }
     if (!session.user.isActive) return null
+    // Opportunistic liveness tracking for the profile session manager —
+    // refreshed at most once per minute per session.
+    if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
+      await db.session
+        .update({ where: { id: session.id }, data: { lastSeenAt: new Date() } })
+        .catch(() => undefined)
+    }
     return session.user
   } catch {
     return null

@@ -6,6 +6,7 @@ import type { TeamDTO, UserDTO } from '@/types'
 import { ROLES, ROLE_LABELS, ROUTES } from '@/lib/constants'
 import type { Role } from '@/types'
 import { api, ApiClientError } from '@/lib/api-client'
+import { scorePassword } from '@/lib/password-strength'
 import { useAuthStore } from '@/stores/auth-store'
 import { navigate } from '@/hooks/use-hash-route'
 import { useToast } from '@/hooks/use-toast'
@@ -14,6 +15,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PasswordInput } from '@/components/shared/PasswordInput'
+import { PasswordMatchHint, PasswordStrength } from '@/components/shared/PasswordStrength'
 
 const NO_TEAM = '__none__'
 
@@ -25,11 +28,13 @@ export function RegisterPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [role, setRole] = useState<Role>('EMPLOYEE')
   const [teamId, setTeamId] = useState<string>(NO_TEAM)
   const [teams, setTeams] = useState<TeamDTO[]>([])
   const [teamsLoading, setTeamsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [focusedConfirm, setFocusedConfirm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -61,8 +66,15 @@ export function RegisterPage() {
       setError('Please enter a valid email address.')
       return
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.')
+    // Mirrors the shared strong-password policy enforced server-side.
+    const strength = scorePassword(password)
+    const unmet = strength.checks.filter((c) => !c.met)
+    if (unmet.length > 0) {
+      setError(`Password is too weak — missing: ${unmet.map((c) => c.label.toLowerCase()).join(', ')}.`)
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('The passwords do not match.')
       return
     }
 
@@ -121,17 +133,30 @@ export function RegisterPage() {
 
       <div className="space-y-2">
         <Label htmlFor="register-password">Password</Label>
-        <Input
+        <PasswordInput
           id="register-password"
-          type="password"
           autoComplete="new-password"
-          placeholder="At least 6 characters"
+          placeholder="Min 8 chars with upper, lower, number & symbol"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-11"
           required
-          minLength={6}
+          minLength={8}
         />
+        <PasswordStrength password={password} />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="register-confirm">Confirm password</Label>
+        <PasswordInput
+          id="register-confirm"
+          autoComplete="new-password"
+          placeholder="Re-enter your password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          onFocus={() => setFocusedConfirm(true)}
+          required
+        />
+        <PasswordMatchHint password={password} confirm={confirmPassword} visible={focusedConfirm} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

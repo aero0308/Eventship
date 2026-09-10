@@ -30,6 +30,7 @@ model User {
   strictDependencyGuard Boolean @default(false)
 
   sessions       Session[]
+  resetTokens    PasswordResetToken[]
   managedTeams   Team[]         @relation("ManagedTeams")
   createdEvents  Event[]
   assignedTasks  Task[]         @relation("AssignedTasks")
@@ -187,6 +188,26 @@ model Session {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  // Captured at sign-in (User-Agent header); shown in the profile session manager.
+  userAgent String?
+  // Refreshed opportunistically when a session is resolved and >60s stale.
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============ PASSWORD RESET ============
+
+model PasswordResetToken {
+  id     String @id @default(uuid())
+  token  String @unique
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Single-use: set when the token is consumed by /api/auth/reset-password.
+  usedAt    DateTime?
   expiresAt DateTime
   createdAt DateTime @default(now())
 

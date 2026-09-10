@@ -5,18 +5,25 @@ import { motion } from 'framer-motion'
 import {
   CheckCircle2,
   Clock,
+  Globe,
   History,
   KeyRound,
   Link2,
   Loader2,
   LogIn,
+  LogOut,
+  Monitor,
+  MonitorSmartphone,
   ShieldCheck,
+  Smartphone,
   Users,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import type { ActivityLogDTO, TaskDTO, TeamDTO, UserDTO } from '@/types'
 import { ROLE_BADGE_CLASSES, ROLE_LABELS, ROUTES } from '@/lib/constants'
 import { api, ApiClientError } from '@/lib/api-client'
+import { scorePassword } from '@/lib/password-strength'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
@@ -30,6 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { PasswordStrength } from '@/components/shared/PasswordStrength'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ActivityItem } from '@/components/shared/ActivityFeed'
 
@@ -40,6 +48,50 @@ interface PasswordForm {
 }
 
 const EMPTY_PASSWORD: PasswordForm = { current: '', next: '', confirm: '' }
+
+/** Live session row as returned by GET /api/auth/sessions. */
+interface SessionRow {
+  id: string
+  createdAt: string
+  expiresAt: string
+  lastSeenAt: string
+  userAgent: string | null
+  isCurrent: boolean
+}
+
+/** Map a stored User-Agent to a friendly "browser on OS" label + device icon. */
+function describeDevice(ua: string | null): { label: string; icon: LucideIcon } {
+  if (!ua) return { label: 'Unknown device', icon: Globe }
+  const mobile = /Android|iPhone|iPad|Mobile/i.test(ua)
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : /Firefox\//.test(ua)
+            ? 'Firefox'
+            : 'Browser'
+  const os = /iPhone|iPad/i.test(ua)
+    ? 'iOS'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /Windows/.test(ua)
+        ? 'Windows'
+        : /CrOS/.test(ua)
+          ? 'ChromeOS'
+          : /Mac OS/.test(ua)
+            ? 'macOS'
+            : /Linux/.test(ua)
+              ? 'Linux'
+              : ''
+  return {
+    label: [browser, os ? `on ${os}` : null, mobile ? '(mobile)' : null].filter(Boolean).join(' '),
+    icon: mobile ? Smartphone : Monitor,
+  }
+}
 
 export function ProfilePage() {
   const { toast } = useToast()
@@ -56,6 +108,61 @@ export function ProfilePage() {
 
   const setUser = useAuthStore((s) => s.setUser)
   const [guardSaving, setGuardSaving] = useState(false)
+
+  // ---- session manager -----------------------------------------------------
+  const [sessions, setSessions] = useState<SessionRow[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [busySessionId, setBusySessionId] = useState<string | null>(null)
+  const [revokingOthers, setRevokingOthers] = useState(false)
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const data = await api.get<{ sessions: SessionRow[] }>('/auth/sessions')
+      setSessions(data.sessions)
+    } catch {
+      // Non-fatal — the card renders an explanatory empty state.
+    } finally {
+      setSessionsLoading(false)
+    }
+  }, [])
+
+  const revokeSession = async (row: SessionRow) => {
+    setBusySessionId(row.id)
+    try {
+      const data = await api.del<{ success: boolean; revokedCurrent: boolean }>(`/auth/sessions/${row.id}`)
+      if (data.revokedCurrent) {
+        // We just signed ourselves out — reset the store and bounce to login.
+        setUser(null)
+        navigate(ROUTES.LOGIN)
+        toast({ title: 'Signed out', description: 'This device was signed out of EventFlow.' })
+        return
+      }
+      toast({ title: 'Device signed out', description: 'That session can no longer access your account.' })
+      await loadSessions()
+    } catch (error) {
+      const message = error instanceof ApiClientError ? error.message : 'Failed to sign out the device.'
+      toast({ title: 'Could not sign out the device', description: message, variant: 'destructive' })
+    } finally {
+      setBusySessionId(null)
+    }
+  }
+
+  const revokeOtherSessions = async () => {
+    setRevokingOthers(true)
+    try {
+      const data = await api.post<{ revoked: number }>('/auth/sessions/revoke-others')
+      toast({
+        title: data.revoked > 0 ? `Signed out ${data.revoked} other device${data.revoked === 1 ? '' : 's'}` : 'No other devices',
+        description: data.revoked > 0 ? 'Only this device stays signed in.' : undefined,
+      })
+      await loadSessions()
+    } catch (error) {
+      const message = error instanceof ApiClientError ? error.message : 'Failed to revoke other sessions.'
+      toast({ title: 'Could not revoke sessions', description: message, variant: 'destructive' })
+    } finally {
+      setRevokingOthers(false)
+    }
+  }
 
   const handleGuardToggle = async (enabled: boolean) => {
     if (!user) return
@@ -99,7 +206,8 @@ export function ProfilePage() {
 
   useEffect(() => {
     void loadAll()
-  }, [loadAll])
+    void loadSessions()
+  }, [loadAll, loadSessions])
 
   const taskStats = useMemo(() => {
     const now = Date.now()
@@ -128,8 +236,11 @@ export function ProfilePage() {
       setPwError('Please fill in all three fields.')
       return
     }
-    if (pwForm.next.length < 6) {
-      setPwError('The new password must be at least 6 characters.')
+    // Same strong-password policy as registration and reset (server enforces too).
+    const strength = scorePassword(pwForm.next)
+    const unmet = strength.checks.filter((c) => !c.met)
+    if (unmet.length > 0) {
+      setPwError(`Password is too weak — missing: ${unmet.map((c) => c.label.toLowerCase()).join(', ')}.`)
       return
     }
     if (pwForm.next !== pwForm.confirm) {
@@ -149,6 +260,8 @@ export function ProfilePage() {
         title: 'Password updated',
         description: 'Your password was changed and other sessions were signed out.',
       })
+      // Other sessions were just revoked — refresh the device list.
+      void loadSessions()
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to change the password.'
       setPwError(message)
@@ -280,6 +393,7 @@ export function ProfilePage() {
                     />
                   </div>
                 </div>
+                <PasswordStrength password={pwForm.next} hideWhenEmpty={false} />
                 <div className="flex justify-end">
                   <Button type="submit" disabled={pwSaving} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
                     {pwSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
@@ -431,6 +545,118 @@ export function ProfilePage() {
                   ))}
                 </ul>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Active sessions (device manager) */}
+          <Card className="py-0">
+            <CardContent className="px-6">
+              <div className="flex items-center justify-between gap-2 border-b border-border py-4">
+                <h2 className="text-sm font-semibold text-foreground">Active sessions</h2>
+                {!sessionsLoading && sessions.length > 1 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10"
+                    onClick={() => void revokeOtherSessions()}
+                    disabled={revokingOthers}
+                  >
+                    {revokingOthers ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <MonitorSmartphone className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Sign out others
+                  </Button>
+                ) : null}
+              </div>
+
+              {sessionsLoading ? (
+                <div className="space-y-3 py-5">
+                  <Skeleton className="h-11 w-full rounded-lg" />
+                  <Skeleton className="h-11 w-full rounded-lg" />
+                </div>
+              ) : sessions.length === 0 ? (
+                <div className="py-6">
+                  <EmptyState
+                    icon={MonitorSmartphone}
+                    title="No active sessions"
+                    hint="Sign in on this device to see it listed here."
+                  />
+                </div>
+              ) : (
+                <ul className="max-h-72 divide-y divide-border/60 overflow-y-auto py-2" aria-label="Active sessions">
+                  {sessions.map((row) => {
+                    const device = describeDevice(row.userAgent)
+                    return (
+                      <li
+                        key={row.id}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-lg px-1 py-3 transition-colors',
+                          row.isCurrent
+                            ? 'bg-emerald-50/50 dark:bg-emerald-500/[0.07]'
+                            : 'hover:bg-muted/40'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                            row.isCurrent
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                              : 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300'
+                          )}
+                        >
+                          <device.icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-2 truncate text-sm font-medium text-foreground">
+                            {device.label}
+                            {row.isCurrent ? (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-200 bg-emerald-100/60 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              >
+                                This device
+                              </Badge>
+                            ) : null}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            Last active {formatDistanceToNow(new Date(row.lastSeenAt), { addSuffix: true })} · expires{' '}
+                            {format(new Date(row.expiresAt), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            'h-8 shrink-0 text-xs',
+                            row.isCurrent
+                              ? 'text-muted-foreground'
+                              : 'text-red-600 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 dark:text-red-400'
+                          )}
+                          onClick={() => void revokeSession(row)}
+                          disabled={busySessionId === row.id}
+                          aria-label={
+                            row.isCurrent ? 'Sign out of this device' : `Sign out ${device.label}`
+                          }
+                        >
+                          {busySessionId === row.id ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <LogOut className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                          {row.isCurrent ? 'Sign out' : 'Revoke'}
+                        </Button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {!sessionsLoading && sessions.length > 1 ? (
+                <p className="border-t border-border/60 py-3 text-[11px] text-muted-foreground/70">
+                  {sessions.length} devices are signed into your account. Signing out others keeps this device active.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </div>
