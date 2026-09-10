@@ -4,6 +4,7 @@ import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } fro
 import { updateTeamSchema } from '@/lib/schemas'
 import { canManageTeams, assertAccess } from '@/lib/permissions'
 import {
+  computeTeamStats,
   serializeTeamDetail,
   teamDetailInclude,
   type TeamWithMembers,
@@ -14,13 +15,52 @@ async function fetchTeamDetail(id: string): Promise<TeamWithMembers | null> {
   return team
 }
 
+/** Serialized detail + aggregated task stats, in parallel. */
+async function serializeDetailWithStats(team: TeamWithMembers) {
+  const [stats, serialized] = await Promise.all([
+    computeTeamStats(team.events.map((event) => event.id)),
+    Promise.resolve(serializeTeamDetail(team)),
+  ])
+  return { ...serialized, stats }
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireUser()
     const { id } = await params
     const team = await fetchTeamDetail(id)
     if (!team) throw new ApiError(404, 'Team not found')
-    return ok({ team: serializeTeamDetail(team) })
+    return ok({ team: await serializeDetailWithStats(team) })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+/**
+ * DELETE /api/teams/[id] — event managers only.
+ *
+ * WARNING: Event.teamId is onDelete: Cascade, so deleting a team also deletes
+ * its events (and their tasks). The client confirms with explicit cascade
+ * counts before calling this endpoint.
+ */
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser()
+    assertAccess(canManageTeams(user), 'Only event managers can delete teams')
+    const { id } = await params
+
+    const existing = await fetchTeamDetail(id)
+    if (!existing) throw new ApiError(404, 'Team not found')
+
+    const deleted = await db.team.delete({ where: { id }, select: { id: true, name: true } })
+
+    await logActivity(user.id, ACTIVITY_ACTIONS.TEAM_DELETED, {
+      teamId: deleted.id,
+      name: deleted.name,
+      eventCount: existing.events.length,
+    })
+
+    return ok({ deleted: true, id: deleted.id })
   } catch (error) {
     return handleApiError(error)
   }
@@ -71,7 +111,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const team = await fetchTeamDetail(id)
     if (!team) throw new ApiError(404, 'Team not found')
-    return ok({ team: serializeTeamDetail(team) })
+    return ok({ team: await serializeDetailWithStats(team) })
   } catch (error) {
     return handleApiError(error)
   }

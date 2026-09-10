@@ -1,0 +1,1676 @@
+PHASE 3: Team Management
+📌 Step 3.1: Frontend Team Types & Components
+🤖 Complete Prompt for Step 3.1:
+text
+Now we're building Phase 3 - Team Management. First, let's create the frontend types and reusable components.
+
+**Create these files:**
+
+1. **frontend/src/types/team.ts** - Team types:
+```typescript
+export interface Team {
+    id: string
+    name: string
+    description: string | null
+    manager_id: string | null
+    manager_name?: string
+    member_count: number
+    created_at: string
+    updated_at: string
+}
+
+export interface TeamCreate {
+    name: string
+    description?: string
+    manager_id?: string
+}
+
+export interface TeamUpdate {
+    name?: string
+    description?: string
+    manager_id?: string
+}
+
+export interface TeamMember {
+    id: string
+    email: string
+    full_name: string
+    role: 'EVENT_MANAGER' | 'TEAM_LEADER' | 'EMPLOYEE'
+    is_active: boolean
+    joined_at: string
+}
+
+export interface TeamStats {
+    member_count: number
+    event_count: number
+    total_tasks: number
+    completed_tasks: number
+    completion_rate: number
+}
+
+export interface TeamWithMembers extends Team {
+    members: TeamMember[]
+}
+frontend/src/components/ui/Select.tsx - Reusable select component:
+
+typescript
+import { forwardRef } from 'react'
+
+interface SelectOption {
+    value: string
+    label: string
+}
+
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+    label?: string
+    error?: string
+    options: SelectOption[]
+    placeholder?: string
+}
+
+// Select component with:
+// - Label support
+// - Error message support
+// - Placeholder option
+// - Custom styling with Tailwind
+// - Forward ref for React Hook Form
+frontend/src/components/ui/Textarea.tsx - Reusable textarea:
+
+typescript
+// Textarea component with:
+// - Label support
+// - Error message support
+// - Auto-resize option
+// - Character count
+// - Tailwind styling
+frontend/src/components/ui/Modal.tsx - Reusable modal:
+
+typescript
+// Modal component with:
+// - Title
+// - Content (children)
+// - Footer actions (optional)
+// - Close on overlay click
+// - Close on Escape key
+// - Animations (fade in/out)
+// - Portal rendering
+frontend/src/components/ui/ConfirmDialog.tsx - Confirmation dialog:
+
+typescript
+// Confirm dialog component with:
+// - Title
+// - Message
+// - Confirm button (danger variant)
+// - Cancel button
+// - Loading state
+// - Used for delete confirmations
+frontend/src/components/ui/Badge.tsx - Badge component:
+
+typescript
+// Badge component with:
+// - Variants: default, primary, success, warning, danger
+// - Sizes: sm, md, lg
+// - Used for roles, statuses, counts
+frontend/src/components/ui/EmptyState.tsx - Empty state component:
+
+typescript
+// Empty state component with:
+// - Icon/illustration
+// - Title
+// - Description
+// - Action button (optional)
+// - Used when no data exists
+frontend/src/components/ui/Avatar.tsx - Avatar component:
+
+typescript
+// Avatar component with:
+// - User initials fallback
+// - Sizes: sm, md, lg
+// - Color based on name
+// - Used for team members, assignees
+Requirements:
+
+All components use Tailwind CSS
+
+All components have TypeScript types
+
+All components are accessible (ARIA labels where needed)
+
+All components are responsive
+
+Generate ALL complete files with proper imports and Tailwind styling.
+
+text
+
+---
+
+### 📌 Step 3.2: Team Service & Store
+
+#### 🤖 Complete Prompt for Step 3.2:
+Now create the team API service and state management.
+
+Create these files:
+
+frontend/src/services/teamService.ts - Team API service:
+
+typescript
+import api from './api'
+import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+
+export const teamService = {
+    // Get all teams (with optional filters)
+    getTeams: async (params?: { search?: string; manager_id?: string }) => {
+        const response = await api.get('/teams', { params })
+        return response.data
+    },
+    
+    // Get single team by ID
+    getTeam: async (id: string) => {
+        const response = await api.get(`/teams/${id}`)
+        return response.data
+    },
+    
+    // Create new team
+    createTeam: async (data: TeamCreate) => {
+        const response = await api.post('/teams', data)
+        return response.data
+    },
+    
+    // Update team
+    updateTeam: async (id: string, data: TeamUpdate) => {
+        const response = await api.put(`/teams/${id}`, data)
+        return response.data
+    },
+    
+    // Delete team
+    deleteTeam: async (id: string) => {
+        const response = await api.delete(`/teams/${id}`)
+        return response.data
+    },
+    
+    // Get team members
+    getTeamMembers: async (teamId: string) => {
+        const response = await api.get(`/teams/${teamId}/members`)
+        return response.data
+    },
+    
+    // Add member to team
+    addMember: async (teamId: string, userId: string) => {
+        const response = await api.post(`/teams/${teamId}/members`, { user_id: userId })
+        return response.data
+    },
+    
+    // Remove member from team
+    removeMember: async (teamId: string, userId: string) => {
+        const response = await api.delete(`/teams/${teamId}/members/${userId}`)
+        return response.data
+    },
+    
+    // Get team statistics
+    getTeamStats: async (teamId: string) => {
+        const response = await api.get(`/teams/${teamId}/stats`)
+        return response.data
+    }
+}
+frontend/src/stores/teamStore.ts - Zustand store for teams:
+
+typescript
+import { create } from 'zustand'
+import { teamService } from '../services/teamService'
+import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+
+interface TeamState {
+    // State
+    teams: Team[]
+    currentTeam: Team | null
+    teamMembers: TeamMember[]
+    teamStats: TeamStats | null
+    isLoading: boolean
+    error: string | null
+    
+    // Actions
+    fetchTeams: (params?: any) => Promise<void>
+    fetchTeam: (id: string) => Promise<void>
+    createTeam: (data: TeamCreate) => Promise<Team>
+    updateTeam: (id: string, data: TeamUpdate) => Promise<Team>
+    deleteTeam: (id: string) => Promise<void>
+    fetchTeamMembers: (teamId: string) => Promise<void>
+    addMember: (teamId: string, userId: string) => Promise<void>
+    removeMember: (teamId: string, userId: string) => Promise<void>
+    fetchTeamStats: (teamId: string) => Promise<void>
+    clearError: () => void
+    clearCurrentTeam: () => void
+}
+
+export const useTeamStore = create<TeamState>((set, get) => ({
+    // Initial state
+    teams: [],
+    currentTeam: null,
+    teamMembers: [],
+    teamStats: null,
+    isLoading: false,
+    error: null,
+    
+    // Fetch all teams
+    fetchTeams: async (params) => {
+        set({ isLoading: true, error: null })
+        try {
+            const teams = await teamService.getTeams(params)
+            set({ teams, isLoading: false })
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to fetch teams', 
+                isLoading: false 
+            })
+        }
+    },
+    
+    // Fetch single team
+    fetchTeam: async (id) => {
+        set({ isLoading: true, error: null })
+        try {
+            const team = await teamService.getTeam(id)
+            set({ currentTeam: team, isLoading: false })
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to fetch team', 
+                isLoading: false 
+            })
+        }
+    },
+    
+    // Create team
+    createTeam: async (data) => {
+        set({ isLoading: true, error: null })
+        try {
+            const team = await teamService.createTeam(data)
+            set(state => ({ 
+                teams: [...state.teams, team], 
+                isLoading: false 
+            }))
+            return team
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to create team', 
+                isLoading: false 
+            })
+            throw error
+        }
+    },
+    
+    // Update team
+    updateTeam: async (id, data) => {
+        set({ isLoading: true, error: null })
+        try {
+            const updatedTeam = await teamService.updateTeam(id, data)
+            set(state => ({
+                teams: state.teams.map(t => t.id === id ? updatedTeam : t),
+                currentTeam: state.currentTeam?.id === id ? updatedTeam : state.currentTeam,
+                isLoading: false
+            }))
+            return updatedTeam
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to update team', 
+                isLoading: false 
+            })
+            throw error
+        }
+    },
+    
+    // Delete team
+    deleteTeam: async (id) => {
+        set({ isLoading: true, error: null })
+        try {
+            await teamService.deleteTeam(id)
+            set(state => ({
+                teams: state.teams.filter(t => t.id !== id),
+                currentTeam: state.currentTeam?.id === id ? null : state.currentTeam,
+                isLoading: false
+            }))
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to delete team', 
+                isLoading: false 
+            })
+            throw error
+        }
+    },
+    
+    // Fetch team members
+    fetchTeamMembers: async (teamId) => {
+        set({ isLoading: true, error: null })
+        try {
+            const members = await teamService.getTeamMembers(teamId)
+            set({ teamMembers: members, isLoading: false })
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to fetch team members', 
+                isLoading: false 
+            })
+        }
+    },
+    
+    // Add member to team
+    addMember: async (teamId, userId) => {
+        set({ isLoading: true, error: null })
+        try {
+            await teamService.addMember(teamId, userId)
+            // Refresh members list
+            const members = await teamService.getTeamMembers(teamId)
+            set({ teamMembers: members, isLoading: false })
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to add member', 
+                isLoading: false 
+            })
+            throw error
+        }
+    },
+    
+    // Remove member from team
+    removeMember: async (teamId, userId) => {
+        set({ isLoading: true, error: null })
+        try {
+            await teamService.removeMember(teamId, userId)
+            set(state => ({
+                teamMembers: state.teamMembers.filter(m => m.id !== userId),
+                isLoading: false
+            }))
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to remove member', 
+                isLoading: false 
+            })
+            throw error
+        }
+    },
+    
+    // Fetch team stats
+    fetchTeamStats: async (teamId) => {
+        try {
+            const stats = await teamService.getTeamStats(teamId)
+            set({ teamStats: stats })
+        } catch (error: any) {
+            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+        }
+    },
+    
+    // Clear error
+    clearError: () => set({ error: null }),
+    
+    // Clear current team
+    clearCurrentTeam: () => set({ currentTeam: null, teamMembers: [], teamStats: null })
+}))
+frontend/src/hooks/useTeams.ts - Custom hooks for teams:
+
+typescript
+import { useEffect } from 'react'
+import { useTeamStore } from '../stores/teamStore'
+
+export const useTeams = (params?: any) => {
+    const { teams, isLoading, error, fetchTeams } = useTeamStore()
+    
+    useEffect(() => {
+        fetchTeams(params)
+    }, [])
+    
+    return { teams, isLoading, error, refetch: () => fetchTeams(params) }
+}
+
+export const useTeam = (id: string) => {
+    const { currentTeam, isLoading, error, fetchTeam } = useTeamStore()
+    
+    useEffect(() => {
+        if (id) fetchTeam(id)
+    }, [id])
+    
+    return { team: currentTeam, isLoading, error, refetch: () => fetchTeam(id) }
+}
+
+export const useTeamMembers = (teamId: string) => {
+    const { teamMembers, isLoading, fetchTeamMembers } = useTeamStore()
+    
+    useEffect(() => {
+        if (teamId) fetchTeamMembers(teamId)
+    }, [teamId])
+    
+    return { members: teamMembers, isLoading, refetch: () => fetchTeamMembers(teamId) }
+}
+Requirements:
+
+All services use the axios instance from api.ts
+
+All stores use Zustand with proper TypeScript types
+
+Loading states and error handling everywhere
+
+Optimistic updates where possible
+
+Generate ALL complete files with proper imports.
+
+text
+
+---
+
+### 📌 Step 3.3: Backend Team Models, Schemas & CRUD
+
+#### 🤖 Complete Prompt for Step 3.3:
+Now build the backend team management system with FastAPI.
+
+Create these files:
+
+backend/app/schemas/team.py - Team schemas:
+
+python
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
+from uuid import UUID
+
+class TeamBase(BaseModel):
+    name: str = Field(..., min_length=3, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+
+class TeamCreate(TeamBase):
+    manager_id: Optional[UUID] = None
+
+class TeamUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=3, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    manager_id: Optional[UUID] = None
+
+class TeamResponse(TeamBase):
+    id: UUID
+    manager_id: Optional[UUID]
+    manager_name: Optional[str]
+    member_count: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+class TeamMemberAdd(BaseModel):
+    user_id: UUID
+
+class TeamMemberResponse(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TeamStats(BaseModel):
+    member_count: int
+    event_count: int
+    total_tasks: int
+    completed_tasks: int
+    completion_rate: float
+backend/app/crud/team.py - Team CRUD operations:
+
+python
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import List, Optional
+from uuid import UUID
+from fastapi import HTTPException, status
+
+from app.models.team import Team
+from app.models.user import User
+from app.models.event import Event
+from app.models.task import Task
+from app.schemas.team import TeamCreate, TeamUpdate
+
+def get_team(db: Session, team_id: UUID) -> Optional[Team]:
+    """Get team by ID"""
+    # Query team by ID
+    # Return team or None
+
+def get_teams(
+    db: Session, 
+    skip: int = 0, 
+    limit: int = 100,
+    search: Optional[str] = None,
+    manager_id: Optional[UUID] = None
+) -> List[Team]:
+    """Get all teams with filters"""
+    # Query teams with optional filters
+    # Return list of teams
+
+def get_user_teams(db: Session, user_id: UUID) -> List[Team]:
+    """Get all teams a user belongs to"""
+    # Query teams where user is a member
+    # Return list of teams
+
+def create_team(db: Session, team_data: TeamCreate, created_by: UUID) -> Team:
+    """Create new team"""
+    # Check if team name already exists
+    # Create team
+    # Return team
+
+def update_team(db: Session, team_id: UUID, team_data: TeamUpdate) -> Team:
+    """Update team"""
+    # Get team
+    # Update fields
+    # Return updated team
+
+def delete_team(db: Session, team_id: UUID) -> bool:
+    """Delete team"""
+    # Check if team has events
+    # If has events, raise error
+    # Delete team
+    # Return True
+
+def add_member(db: Session, team_id: UUID, user_id: UUID) -> Team:
+    """Add member to team"""
+    # Check if team exists
+    # Check if user exists
+    # Check if user is already in team
+    # Update user's team_id
+    # Return team
+
+def remove_member(db: Session, team_id: UUID, user_id: UUID) -> bool:
+    """Remove member from team"""
+    # Check if team exists
+    # Check if user is in team
+    # Remove user from team (set team_id to None)
+    # Return True
+
+def get_team_members(db: Session, team_id: UUID) -> List[User]:
+    """Get all members of a team"""
+    # Query users where team_id = team_id
+    # Return list of users
+
+def get_team_stats(db: Session, team_id: UUID) -> dict:
+    """Get team statistics"""
+    # Count members
+    # Count events
+    # Count tasks
+    # Count completed tasks
+    # Calculate completion rate
+    # Return stats dict
+
+def is_user_in_team(db: Session, user_id: UUID, team_id: UUID) -> bool:
+    """Check if user is in team"""
+    # Query user's team_id
+    # Return bool
+backend/app/api/v1/teams.py - Team API endpoints:
+
+python
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from uuid import UUID
+
+from app.api.deps import get_current_active_user, require_roles
+from app.core.database import get_db
+from app.crud import team as team_crud
+from app.models.user import User, UserRole
+from app.schemas.team import (
+    TeamCreate, TeamUpdate, TeamResponse, 
+    TeamMemberAdd, TeamMemberResponse, TeamStats
+)
+
+router = APIRouter()
+
+@router.get("/", response_model=List[TeamResponse])
+async def get_teams(
+    skip: int = 0,
+    limit: int = 100,
+    search: Optional[str] = None,
+    manager_id: Optional[UUID] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get all teams.
+    
+    - **search**: Search by team name
+    - **manager_id**: Filter by manager
+    - **skip**: Pagination offset
+    - **limit**: Number of results
+    """
+    # Get teams
+    # Return list
+
+@router.post("/", response_model=TeamResponse, status_code=201)
+async def create_team(
+    team_data: TeamCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.EVENT_MANAGER, UserRole.TEAM_LEADER]))
+):
+    """
+    Create a new team.
+    
+    Requires: EVENT_MANAGER or TEAM_LEADER role
+    """
+    # Create team
+    # Return team
+
+@router.get("/{team_id}", response_model=TeamResponse)
+async def get_team(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get team by ID"""
+    # Get team
+    # Return team
+
+@router.put("/{team_id}", response_model=TeamResponse)
+async def update_team(
+    team_id: UUID,
+    team_data: TeamUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Update team"""
+    # Check permission (manager or admin)
+    # Update team
+    # Return updated team
+
+@router.delete("/{team_id}", status_code=204)
+async def delete_team(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete team"""
+    # Check permission
+    # Delete team
+    # Return no content
+
+@router.get("/{team_id}/members", response_model=List[TeamMemberResponse])
+async def get_team_members(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all members of a team"""
+    # Get members
+    # Return list
+
+@router.post("/{team_id}/members", response_model=TeamResponse)
+async def add_team_member(
+    team_id: UUID,
+    member_data: TeamMemberAdd,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Add member to team"""
+    # Check permission
+    # Add member
+    # Return team
+
+@router.delete("/{team_id}/members/{user_id}", status_code=204)
+async def remove_team_member(
+    team_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Remove member from team"""
+    # Check permission
+    # Remove member
+    # Return no content
+
+@router.get("/{team_id}/stats", response_model=TeamStats)
+async def get_team_stats(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get team statistics"""
+    # Get stats
+    # Return stats
+Update backend/app/main.py - Include team router:
+
+python
+# Import team router
+from app.api.v1 import teams
+
+# Register router
+app.include_router(
+    teams.router,
+    prefix="/api/v1/teams",
+    tags=["Teams"]
+)
+Requirements:
+
+All endpoints need authentication
+
+Role-based access control for create/update/delete
+
+Proper error handling with HTTP status codes
+
+OpenAPI documentation for all endpoints
+
+Pagination support for list endpoints
+
+Generate ALL complete files with proper imports and error handling.
+
+text
+
+---
+
+### 📌 Step 3.4: Frontend Team Components
+
+#### 🤖 Complete Prompt for Step 3.4:
+Now create the team UI components.
+
+Create these files:
+
+frontend/src/components/teams/TeamCard.tsx - Team card component:
+
+typescript
+import { Link } from 'react-router-dom'
+import { Team } from '../../types/team'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+
+interface TeamCardProps {
+    team: Team
+    onDelete?: (id: string) => void
+}
+
+// Display:
+// - Team name (bold, link to detail)
+// - Description (truncated)
+// - Member count with badge
+// - Manager name
+// - Created date
+// - Action buttons: View, Edit, Delete
+// - Hover effect
+// - Responsive design
+
+export const TeamCard = ({ team, onDelete }: TeamCardProps) => {
+    return (
+        <Card className="hover:shadow-lg transition-shadow">
+            <div className="p-6">
+                {/* Header */}
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h3 className="text-lg font-semibold">
+                            <Link to={`/teams/${team.id}`} className="hover:text-blue-600">
+                                {team.name}
+                            </Link>
+                        </h3>
+                        {team.description && (
+                            <p className="text-gray-600 text-sm mt-1 line-clamp-2">
+                                {team.description}
+                            </p>
+                        )}
+                    </div>
+                    <Badge variant="primary">
+                        {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
+                    </Badge>
+                </div>
+                
+                {/* Manager */}
+                {team.manager_name && (
+                    <p className="text-sm text-gray-500 mt-4">
+                        Manager: <span className="font-medium">{team.manager_name}</span>
+                    </p>
+                )}
+                
+                {/* Actions */}
+                <div className="flex gap-2 mt-4">
+                    <Link to={`/teams/${team.id}`}>
+                        <Button variant="secondary" size="sm">View</Button>
+                    </Link>
+                    <Link to={`/teams/${team.id}/edit`}>
+                        <Button variant="secondary" size="sm">Edit</Button>
+                    </Link>
+                    {onDelete && (
+                        <Button 
+                            variant="danger" 
+                            size="sm" 
+                            onClick={() => onDelete(team.id)}
+                        >
+                            Delete
+                        </Button>
+                    )}
+                </div>
+            </div>
+        </Card>
+    )
+}
+frontend/src/components/teams/TeamList.tsx - Team list component:
+
+typescript
+import { Team } from '../../types/team'
+import { TeamCard } from './TeamCard'
+import { EmptyState } from '../ui/EmptyState'
+import { LoadingSkeleton } from '../ui/LoadingSkeleton'
+
+interface TeamListProps {
+    teams: Team[]
+    isLoading: boolean
+    onDelete?: (id: string) => void
+}
+
+// Display:
+// - Grid of TeamCards (responsive: 1 col mobile, 2 col tablet, 3 col desktop)
+// - Loading skeletons
+// - Empty state with "Create Team" CTA
+// - Error state
+
+export const TeamList = ({ teams, isLoading, onDelete }: TeamListProps) => {
+    if (isLoading) {
+        return <LoadingSkeleton type="card" count={6} />
+    }
+    
+    if (teams.length === 0) {
+        return (
+            <EmptyState
+                title="No teams yet"
+                description="Create your first team to start organizing your events."
+                actionLabel="Create Team"
+                actionLink="/teams/new"
+            />
+        )
+    }
+    
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {teams.map(team => (
+                <TeamCard key={team.id} team={team} onDelete={onDelete} />
+            ))}
+        </div>
+    )
+}
+frontend/src/components/teams/TeamForm.tsx - Team create/edit form:
+
+typescript
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Team, TeamCreate } from '../../types/team'
+import { Input } from '../ui/Input'
+import { Textarea } from '../ui/Textarea'
+import { Button } from '../ui/Button'
+import { Select } from '../ui/Select'
+
+const teamSchema = z.object({
+    name: z.string().min(3, 'Name must be at least 3 characters').max(100),
+    description: z.string().max(500).optional(),
+    manager_id: z.string().optional()
+})
+
+interface TeamFormProps {
+    team?: Team
+    onSubmit: (data: TeamCreate) => Promise<void>
+    isLoading?: boolean
+    users?: any[] // For manager selection
+}
+
+// Form fields:
+// - Name (required)
+// - Description (optional)
+// - Manager (dropdown, optional)
+// - Submit button with loading state
+// - Cancel button
+
+export const TeamForm = ({ team, onSubmit, isLoading, users }: TeamFormProps) => {
+    const { register, handleSubmit, formState: { errors } } = useForm({
+        resolver: zodResolver(teamSchema),
+        defaultValues: team ? {
+            name: team.name,
+            description: team.description || '',
+            manager_id: team.manager_id || ''
+        } : undefined
+    })
+    
+    return (
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <Input
+                label="Team Name"
+                placeholder="e.g., Marketing Team"
+                error={errors.name?.message}
+                {...register('name')}
+            />
+            
+            <Textarea
+                label="Description"
+                placeholder="What is this team responsible for?"
+                error={errors.description?.message}
+                {...register('description')}
+            />
+            
+            {/* Manager select - only if users provided */}
+            
+            <div className="flex gap-4">
+                <Button type="submit" isLoading={isLoading}>
+                    {team ? 'Update Team' : 'Create Team'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => window.history.back()}>
+                    Cancel
+                </Button>
+            </div>
+        </form>
+    )
+}
+frontend/src/components/teams/TeamMembers.tsx - Team members list:
+
+typescript
+import { useState } from 'react'
+import { TeamMember } from '../../types/team'
+import { Avatar } from '../ui/Avatar'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
+import { Select } from '../ui/Select'
+
+interface TeamMembersProps {
+    teamId: string
+    members: TeamMember[]
+    availableUsers: any[] // Users not in team
+    onAddMember: (userId: string) => Promise<void>
+    onRemoveMember: (userId: string) => Promise<void>
+    isLoading?: boolean
+}
+
+// Display:
+// - List of members with avatar, name, email, role
+// - "Add Member" button (opens modal)
+// - Remove button for each member
+// - Modal with user search/select
+// - Empty state
+
+export const TeamMembers = ({ 
+    teamId, 
+    members, 
+    availableUsers,
+    onAddMember, 
+    onRemoveMember,
+    isLoading 
+}: TeamMembersProps) => {
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+    const [selectedUserId, setSelectedUserId] = useState('')
+    
+    const handleAddMember = async () => {
+        if (selectedUserId) {
+            await onAddMember(selectedUserId)
+            setIsAddModalOpen(false)
+            setSelectedUserId('')
+        }
+    }
+    
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Members ({members.length})</h2>
+                <Button size="sm" onClick={() => setIsAddModalOpen(true)}>
+                    Add Member
+                </Button>
+            </div>
+            
+            {members.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No members yet</p>
+            ) : (
+                <div className="space-y-3">
+                    {members.map(member => (
+                        <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <Avatar name={member.full_name} size="md" />
+                                <div>
+                                    <p className="font-medium">{member.full_name}</p>
+                                    <p className="text-sm text-gray-500">{member.email}</p>
+                                </div>
+                                <Badge>{member.role.replace('_', ' ')}</Badge>
+                            </div>
+                            <Button 
+                                variant="danger" 
+                                size="sm"
+                                onClick={() => onRemoveMember(member.id)}
+                                disabled={isLoading}
+                            >
+                                Remove
+                            </Button>
+                        </div>
+                    ))}
+                </div>
+            )}
+            
+            <Modal
+                isOpen={isAddModalOpen}
+                onClose={() => setIsAddModalOpen(false)}
+                title="Add Team Member"
+            >
+                <div className="space-y-4">
+                    <Select
+                        label="Select User"
+                        options={availableUsers.map(u => ({
+                            value: u.id,
+                            label: `${u.full_name} (${u.email})`
+                        }))}
+                        value={selectedUserId}
+                        onChange={(e) => setSelectedUserId(e.target.value)}
+                        placeholder="Choose a user..."
+                    />
+                    <div className="flex gap-2">
+                        <Button onClick={handleAddMember} isLoading={isLoading}>
+                            Add Member
+                        </Button>
+                        <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        </div>
+    )
+}
+frontend/src/components/teams/TeamStats.tsx - Team statistics:
+
+typescript
+import { TeamStats as TeamStatsType } from '../../types/team'
+import { Card } from '../ui/Card'
+
+interface TeamStatsProps {
+    stats: TeamStatsType | null
+    isLoading?: boolean
+}
+
+// Display:
+// - Grid of stat cards:
+//   - Member Count
+//   - Event Count
+//   - Total Tasks
+//   - Completed Tasks
+//   - Completion Rate (percentage with progress bar)
+
+export const TeamStats = ({ stats, isLoading }: TeamStatsProps) => {
+    if (isLoading || !stats) {
+        return <div>Loading...</div>
+    }
+    
+    return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+                <div className="p-4">
+                    <p className="text-sm text-gray-500">Members</p>
+                    <p className="text-2xl font-bold">{stats.member_count}</p>
+                </div>
+            </Card>
+            <Card>
+                <div className="p-4">
+                    <p className="text-sm text-gray-500">Events</p>
+                    <p className="text-2xl font-bold">{stats.event_count}</p>
+                </div>
+            </Card>
+            <Card>
+                <div className="p-4">
+                    <p className="text-sm text-gray-500">Tasks</p>
+                    <p className="text-2xl font-bold">{stats.total_tasks}</p>
+                </div>
+            </Card>
+            <Card>
+                <div className="p-4">
+                    <p className="text-sm text-gray-500">Completion</p>
+                    <p className="text-2xl font-bold">{stats.completion_rate}%</p>
+                </div>
+            </Card>
+        </div>
+    )
+}
+frontend/src/components/teams/TeamSelector.tsx - Team dropdown selector:
+
+typescript
+import { Select } from '../ui/Select'
+import { Team } from '../../types/team'
+
+interface TeamSelectorProps {
+    teams: Team[]
+    value?: string
+    onChange: (value: string) => void
+    label?: string
+    error?: string
+    placeholder?: string
+    disabled?: boolean
+}
+
+// Dropdown for selecting a team
+// Used in event/task creation forms
+
+export const TeamSelector = ({ 
+    teams, 
+    value, 
+    onChange, 
+    label = 'Team',
+    error,
+    placeholder = 'Select a team...',
+    disabled 
+}: TeamSelectorProps) => {
+    return (
+        <Select
+            label={label}
+            error={error}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            disabled={disabled}
+            options={teams.map(team => ({
+                value: team.id,
+                label: team.name
+            }))}
+        />
+    )
+}
+Requirements:
+
+All components use Tailwind CSS
+
+All components have proper TypeScript types
+
+All components handle loading and error states
+
+All components are responsive
+
+All components are accessible
+
+Generate ALL complete files.
+
+text
+
+---
+
+### 📌 Step 3.5: Team Pages
+
+#### 🤖 Complete Prompt for Step 3.5:
+Now create the team pages.
+
+Create these files:
+
+frontend/src/pages/teams/TeamsPage.tsx - Teams list page:
+
+typescript
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useTeams } from '../../hooks/useTeams'
+import { useTeamStore } from '../../stores/teamStore'
+import { TeamList } from '../../components/teams/TeamList'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { PageHeader } from '../../components/layout/PageHeader'
+
+// Features:
+// - Page header with title and "Create Team" button
+// - Search bar to filter teams
+// - TeamList component
+// - Delete confirmation dialog
+// - Toast notifications for actions
+
+export const TeamsPage = () => {
+    const { teams, isLoading, refetch } = useTeams()
+    const { deleteTeam } = useTeamStore()
+    const [search, setSearch] = useState('')
+    const [teamToDelete, setTeamToDelete] = useState<string | null>(null)
+    
+    const filteredTeams = teams.filter(team =>
+        team.name.toLowerCase().includes(search.toLowerCase())
+    )
+    
+    const handleDelete = async () => {
+        if (teamToDelete) {
+            await deleteTeam(teamToDelete)
+            setTeamToDelete(null)
+            refetch()
+        }
+    }
+    
+    return (
+        <div className="space-y-6">
+            <PageHeader
+                title="Teams"
+                description="Manage your teams and their members"
+                action={
+                    <Link to="/teams/new">
+                        <Button>Create Team</Button>
+                    </Link>
+                }
+            />
+            
+            <div className="max-w-md">
+                <Input
+                    placeholder="Search teams..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            </div>
+            
+            <TeamList
+                teams={filteredTeams}
+                isLoading={isLoading}
+                onDelete={setTeamToDelete}
+            />
+            
+            <ConfirmDialog
+                isOpen={!!teamToDelete}
+                title="Delete Team"
+                message="Are you sure you want to delete this team? This action cannot be undone."
+                onConfirm={handleDelete}
+                onCancel={() => setTeamToDelete(null)}
+            />
+        </div>
+    )
+}
+frontend/src/pages/teams/TeamDetailPage.tsx - Team detail page:
+
+typescript
+import { useEffect } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useTeam, useTeamMembers } from '../../hooks/useTeams'
+import { useTeamStore } from '../../stores/teamStore'
+import { TeamStats } from '../../components/teams/TeamStats'
+import { TeamMembers } from '../../components/teams/TeamMembers'
+import { Button } from '../../components/ui/Button'
+import { Card } from '../../components/ui/Card'
+import { Badge } from '../../components/ui/Badge'
+
+// Features:
+// - Team header with name, description, manager
+// - Action buttons: Edit, Delete
+// - TeamStats component
+// - TeamMembers component
+// - Back to teams button
+// - Loading state
+// - 404 handling
+
+export const TeamDetailPage = () => {
+    const { id } = useParams<{ id: string }>()
+    const navigate = useNavigate()
+    const { team, isLoading: teamLoading, refetch } = useTeam(id!)
+    const { members, isLoading: membersLoading, refetch: refetchMembers } = useTeamMembers(id!)
+    const { teamStats, fetchTeamStats, addMember, removeMember, deleteTeam } = useTeamStore()
+    
+    useEffect(() => {
+        if (id) fetchTeamStats(id)
+    }, [id])
+    
+    const handleDelete = async () => {
+        if (confirm('Are you sure you want to delete this team?')) {
+            await deleteTeam(id!)
+            navigate('/teams')
+        }
+    }
+    
+    if (teamLoading) return <div>Loading...</div>
+    if (!team) return <div>Team not found</div>
+    
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex justify-between items-start">
+                <div>
+                    <Link to="/teams" className="text-blue-600 hover:underline text-sm">
+                        ← Back to Teams
+                    </Link>
+                    <h1 className="text-3xl font-bold mt-2">{team.name}</h1>
+                    {team.description && (
+                        <p className="text-gray-600 mt-1">{team.description}</p>
+                    )}
+                    {team.manager_name && (
+                        <p className="text-sm text-gray-500 mt-2">
+                            Manager: {team.manager_name}
+                        </p>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                    <Link to={`/teams/${id}/edit`}>
+                        <Button variant="secondary">Edit</Button>
+                    </Link>
+                    <Button variant="danger" onClick={handleDelete}>Delete</Button>
+                </div>
+            </div>
+            
+            {/* Stats */}
+            <TeamStats stats={teamStats} />
+            
+            {/* Members */}
+            <Card>
+                <div className="p-6">
+                    <TeamMembers
+                        teamId={id!}
+                        members={members}
+                        availableUsers={[]} // Fetch available users
+                        onAddMember={(userId) => addMember(id!, userId).then(refetchMembers)}
+                        onRemoveMember={(userId) => removeMember(id!, userId).then(refetchMembers)}
+                        isLoading={membersLoading}
+                    />
+                </div>
+            </Card>
+        </div>
+    )
+}
+frontend/src/pages/teams/TeamCreatePage.tsx - Create team page:
+
+typescript
+import { useNavigate } from 'react-router-dom'
+import { useTeamStore } from '../../stores/teamStore'
+import { TeamForm } from '../../components/teams/TeamForm'
+import { Card } from '../../components/ui/Card'
+import { PageHeader } from '../../components/layout/PageHeader'
+import toast from 'react-hot-toast'
+
+export const TeamCreatePage = () => {
+    const navigate = useNavigate()
+    const { createTeam, isLoading } = useTeamStore()
+    
+    const handleSubmit = async (data: any) => {
+        try {
+            const team = await createTeam(data)
+            toast.success('Team created successfully!')
+            navigate(`/teams/${team.id}`)
+        } catch (error) {
+            toast.error('Failed to create team')
+        }
+    }
+    
+    return (
+        <div className="max-w-2xl mx-auto space-y-6">
+            <PageHeader
+                title="Create Team"
+                description="Set up a new team for your events"
+            />
+            
+            <Card>
+                <div className="p-6">
+                    <TeamForm onSubmit={handleSubmit} isLoading={isLoading} />
+                </div>
+            </Card>
+        </div>
+    )
+}
+frontend/src/pages/teams/TeamEditPage.tsx - Edit team page:
+
+typescript
+import { useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useTeam } from '../../hooks/useTeams'
+import { useTeamStore } from '../../stores/teamStore'
+import { TeamForm } from '../../components/teams/TeamForm'
+import { Card } from '../../components/ui/Card'
+import { PageHeader } from '../../components/layout/PageHeader'
+import toast from 'react-hot-toast'
+
+export const TeamEditPage = () => {
+    const { id } = useParams<{ id: string }>()
+    const navigate = useNavigate()
+    const { team, isLoading: teamLoading } = useTeam(id!)
+    const { updateTeam, isLoading } = useTeamStore()
+    
+    const handleSubmit = async (data: any) => {
+        try {
+            await updateTeam(id!, data)
+            toast.success('Team updated successfully!')
+            navigate(`/teams/${id}`)
+        } catch (error) {
+            toast.error('Failed to update team')
+        }
+    }
+    
+    if (teamLoading) return <div>Loading...</div>
+    if (!team) return <div>Team not found</div>
+    
+    return (
+        <div className="max-w-2xl mx-auto space-y-6">
+            <PageHeader
+                title="Edit Team"
+                description={`Update ${team.name}`}
+            />
+            
+            <Card>
+                <div className="p-6">
+                    <TeamForm 
+                        team={team} 
+                        onSubmit={handleSubmit} 
+                        isLoading={isLoading} 
+                    />
+                </div>
+            </Card>
+        </div>
+    )
+}
+Update frontend/src/App.tsx - Add team routes:
+
+typescript
+// Add imports
+import { TeamsPage } from './pages/teams/TeamsPage'
+import { TeamDetailPage } from './pages/teams/TeamDetailPage'
+import { TeamCreatePage } from './pages/teams/TeamCreatePage'
+import { TeamEditPage } from './pages/teams/TeamEditPage'
+
+// Add routes inside protected routes
+<Route path="/teams" element={<TeamsPage />} />
+<Route path="/teams/new" element={<TeamCreatePage />} />
+<Route path="/teams/:id" element={<TeamDetailPage />} />
+<Route path="/teams/:id/edit" element={<TeamEditPage />} />
+Create frontend/src/components/layout/PageHeader.tsx - Page header component:
+
+typescript
+interface PageHeaderProps {
+    title: string
+    description?: string
+    action?: React.ReactNode
+}
+
+export const PageHeader = ({ title, description, action }: PageHeaderProps) => {
+    return (
+        <div className="flex justify-between items-start">
+            <div>
+                <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+                {description && (
+                    <p className="text-gray-600 mt-1">{description}</p>
+                )}
+            </div>
+            {action && <div>{action}</div>}
+        </div>
+    )
+}
+Update Sidebar - Add Teams link:
+
+typescript
+// In frontend/src/components/layout/Sidebar.tsx
+// Add navigation item:
+{
+    name: 'Teams',
+    href: '/teams',
+    icon: UsersIcon, // Import from heroicons
+}
+Requirements:
+
+All pages use proper layouts
+
+All pages handle loading and error states
+
+All pages have proper navigation
+
+Toast notifications for all actions
+
+Responsive design
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 🎯 Phase 3 Completion Checklist
+
+### ✅ Frontend
+- [ ] Team types defined
+- [ ] UI components created (Select, Textarea, Modal, ConfirmDialog, Badge, EmptyState, Avatar)
+- [ ] Team service with all API calls
+- [ ] Team store with all actions
+- [ ] Custom hooks (useTeams, useTeam, useTeamMembers)
+- [ ] TeamCard component
+- [ ] TeamList component
+- [ ] TeamForm component
+- [ ] TeamMembers component
+- [ ] TeamStats component
+- [ ] TeamSelector component
+- [ ] TeamsPage (list)
+- [ ] TeamDetailPage
+- [ ] TeamCreatePage
+- [ ] TeamEditPage
+- [ ] Routes added to App.tsx
+- [ ] Sidebar link added
+
+### ✅ Backend
+- [ ] Team schemas (Pydantic)
+- [ ] Team CRUD operations
+- [ ] Team API endpoints
+- [ ] Router registered in main.py
+- [ ] Role-based access control
+- [ ] Error handling
+
+### ✅ Integration
+- [ ] Frontend connects to backend
+- [ ] Create team works
+- [ ] View team list works
+- [ ] View team detail works
+- [ ] Update team works
+- [ ] Delete team works
+- [ ] Add member works
+- [ ] Remove member works
+- [ ] Team stats work
+
+---
+
+## 📋 What You Should Be Able to Test After Phase 3
+
+### 1. 🏠 Teams List Page
+| What to Test | Expected Result |
+|--------------|-----------------|
+| Go to http://localhost:3000/teams | See teams list page |
+| Click "Create Team" button | Navigate to create team form |
+| Search teams | Filter list by name |
+| Click on team card | Navigate to team detail |
+| Empty state (no teams) | See "No teams yet" with CTA |
+
+### 2. ➕ Create Team Page
+| What to Test | Expected Result |
+|--------------|-----------------|
+| Go to http://localhost:3000/teams/new | See team form |
+| Submit empty form | Validation errors |
+| Enter name (min 3 chars) | No error |
+| Enter description | Optional field |
+| Submit form | Loading spinner, then redirect to team detail |
+| See toast notification | "Team created successfully!" |
+
+### 3. 👁️ Team Detail Page
+| What to Test | Expected Result |
+|--------------|-----------------|
+| View team info | Name, description, manager |
+| See team stats | Member count, event count, tasks |
+| See members list | List of team members |
+| Click "Edit" button | Navigate to edit form |
+| Click "Delete" button | Confirmation dialog appears |
+| Confirm delete | Team deleted, redirect to teams list |
+| Cancel delete | Dialog closes, team remains |
+
+### 4. ✏️ Edit Team Page
+| What to Test | Expected Result |
+|--------------|-----------------|
+| Pre-filled form | Current team data |
+| Update name | Submit updates team |
+| Update description | Submit updates team |
+| Click Cancel | Return to team detail |
+| Submit | Toast notification, redirect to detail |
+
+### 5. 👥 Team Members
+| What to Test | Expected Result |
+|--------------|-----------------|
+| See member list | Avatars, names, emails, roles |
+| Click "Add Member" | Modal opens |
+| Select user from dropdown | User selected |
+| Click "Add Member" | Member added to list |
+| Click "Remove" on member | Member removed |
+| Empty state | "No members yet" message |
+
+### 6. 📊 Team Stats
+| What to Test | Expected Result |
+|--------------|-----------------|
+| Member count | Correct number |
+| Event count | Correct number |
+| Task count | Correct number |
+| Completion rate | Percentage displayed |
+
+---
+
+## 🎬 Quick Test Flow (5 Minutes)
+
+### Step 1: Create a Team
+1. Login to your app
+2. Go to **Teams** in sidebar
+3. Click **Create Team**
+4. Fill:
+   - Name: **Marketing Team**
+   - Description: **Handles all marketing activities**
+5. Click **Create Team**
+6. ✅ Redirected to team detail
+
+### Step 2: View Team
+1. See team name, description
+2. See stats (0 members, 0 events, 0 tasks)
+3. See empty members list
+
+### Step 3: Edit Team
+1. Click **Edit**
+2. Change name to **Marketing & PR Team**
+3. Click **Update Team**
+4. ✅ See updated name
+
+### Step 4: Add Members
+1. Click **Add Member**
+2. Select a user (if available)
+3. Click **Add Member**
+4. ✅ See member in list
+
+### Step 5: Delete Team
+1. Click **Delete**
+2. Confirm dialog appears
+3. Click **Confirm**
+4. ✅ Redirected to teams list, team gone
+
+---
+
+## 🚨 Common Issues & Fixes
+
+### Issue 1: 403 Forbidden on Create
+**Cause:** User doesn't have EVENT_MANAGER or TEAM_LEADER role
+**Fix:** Login as a user with proper role, or register as EVENT_MANAGER
+
+### Issue 2: Team not found (404)
+**Cause:** Invalid team ID in URL
+**Fix:** Check the URL, navigate from teams list
+
+### Issue 3: Can't add member
+**Cause:** User already in team or doesn't exist
+**Fix:** Check user list, make sure user exists
+
+### Issue 4: Delete fails
+**Cause:** Team has events assigned
+**Fix:** Delete events first, or implement cascade delete
+
+---
+
+## 🎯 What's Next After Phase 3
+
+Once Phase 3 is verified working, you'll be ready for:
+
+### **Phase 4: Event Management**
+- Create events
+- Assign events to teams
+- Event progress tracking
+- Event dashboard
+
+**Tell me when Phase 3 is verified working, and I'll give you the Phase 4 prompts! 🚀**

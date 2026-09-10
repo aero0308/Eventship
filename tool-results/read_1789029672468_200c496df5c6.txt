@@ -1,0 +1,702 @@
+    54→    54→    54→frontend/src/components/ui/Select.tsx - Reusable select component:
+    55→    55→    55→
+    56→    56→    56→typescript
+    57→    57→    57→import { forwardRef } from 'react'
+    58→    58→    58→
+    59→    59→    59→interface SelectOption {
+    60→    60→    60→    value: string
+    61→    61→    61→    label: string
+    62→    62→    62→}
+    63→    63→    63→
+    64→    64→    64→interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+    65→    65→    65→    label?: string
+    66→    66→    66→    error?: string
+    67→    67→    67→    options: SelectOption[]
+    68→    68→    68→    placeholder?: string
+    69→    69→    69→}
+    70→    70→    70→
+    71→    71→    71→// Select component with:
+    72→    72→    72→// - Label support
+    73→    73→    73→// - Error message support
+    74→    74→    74→// - Placeholder option
+    75→    75→    75→// - Custom styling with Tailwind
+    76→    76→    76→// - Forward ref for React Hook Form
+    77→    77→    77→frontend/src/components/ui/Textarea.tsx - Reusable textarea:
+    78→    78→    78→
+    79→    79→    79→typescript
+    80→    80→    80→// Textarea component with:
+    81→    81→    81→// - Label support
+    82→    82→    82→// - Error message support
+    83→    83→    83→// - Auto-resize option
+    84→    84→    84→// - Character count
+    85→    85→    85→// - Tailwind styling
+    86→    86→    86→frontend/src/components/ui/Modal.tsx - Reusable modal:
+    87→    87→    87→
+    88→    88→    88→typescript
+    89→    89→    89→// Modal component with:
+    90→    90→    90→// - Title
+    91→    91→    91→// - Content (children)
+    92→    92→    92→// - Footer actions (optional)
+    93→    93→    93→// - Close on overlay click
+    94→    94→    94→// - Close on Escape key
+    95→    95→    95→// - Animations (fade in/out)
+    96→    96→    96→// - Portal rendering
+    97→    97→    97→frontend/src/components/ui/ConfirmDialog.tsx - Confirmation dialog:
+    98→    98→    98→
+    99→    99→    99→typescript
+   100→   100→   100→// Confirm dialog component with:
+   101→   101→   101→// - Title
+   102→   102→   102→// - Message
+   103→   103→   103→// - Confirm button (danger variant)
+   104→   104→   104→// - Cancel button
+   105→   105→   105→// - Loading state
+   106→   106→   106→// - Used for delete confirmations
+   107→   107→   107→frontend/src/components/ui/Badge.tsx - Badge component:
+   108→   108→   108→
+   109→   109→   109→typescript
+   110→   110→   110→// Badge component with:
+   111→   111→   111→// - Variants: default, primary, success, warning, danger
+   112→   112→   112→// - Sizes: sm, md, lg
+   113→   113→   113→// - Used for roles, statuses, counts
+   114→   114→   114→frontend/src/components/ui/EmptyState.tsx - Empty state component:
+   115→   115→   115→
+   116→   116→   116→typescript
+   117→   117→   117→// Empty state component with:
+   118→   118→   118→// - Icon/illustration
+   119→   119→   119→// - Title
+   120→   120→   120→// - Description
+   121→   121→   121→// - Action button (optional)
+   122→   122→   122→// - Used when no data exists
+   123→   123→   123→frontend/src/components/ui/Avatar.tsx - Avatar component:
+   124→   124→   124→
+   125→   125→   125→typescript
+   126→   126→   126→// Avatar component with:
+   127→   127→   127→// - User initials fallback
+   128→   128→   128→// - Sizes: sm, md, lg
+   129→   129→   129→// - Color based on name
+   130→   130→   130→// - Used for team members, assignees
+   131→   131→   131→Requirements:
+   132→   132→   132→
+   133→   133→   133→All components use Tailwind CSS
+   134→   134→   134→
+   135→   135→   135→All components have TypeScript types
+   136→   136→   136→
+   137→   137→   137→All components are accessible (ARIA labels where needed)
+   138→   138→   138→
+   139→   139→   139→All components are responsive
+   140→   140→   140→
+   141→   141→   141→Generate ALL complete files with proper imports and Tailwind styling.
+   142→   142→   142→
+   143→   143→   143→text
+   144→   144→   144→
+   145→   145→   145→---
+   146→   146→   146→
+   147→   147→   147→### 📌 Step 3.2: Team Service & Store
+   148→   148→   148→
+   149→   149→   149→#### 🤖 Complete Prompt for Step 3.2:
+   150→   150→   150→Now create the team API service and state management.
+   151→   151→   151→
+   152→   152→   152→Create these files:
+   153→   153→   153→
+   154→   154→   154→frontend/src/services/teamService.ts - Team API service:
+   155→   155→   155→
+   156→   156→   156→typescript
+   157→   157→   157→import api from './api'
+   158→   158→   158→import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+   159→   159→   159→
+   160→   160→   160→export const teamService = {
+   161→   161→   161→    // Get all teams (with optional filters)
+   162→   162→   162→    getTeams: async (params?: { search?: string; manager_id?: string }) => {
+   163→   163→   163→        const response = await api.get('/teams', { params })
+   164→   164→   164→        return response.data
+   165→   165→   165→    },
+   166→   166→   166→    
+   167→   167→   167→    // Get single team by ID
+   168→   168→   168→    getTeam: async (id: string) => {
+   169→   169→   169→        const response = await api.get(`/teams/${id}`)
+   170→   170→   170→        return response.data
+   171→   171→   171→    },
+   172→   172→   172→    
+   173→   173→   173→    // Create new team
+   174→   174→   174→    createTeam: async (data: TeamCreate) => {
+   175→   175→   175→        const response = await api.post('/teams', data)
+   176→   176→   176→        return response.data
+   177→   177→   177→    },
+   178→   178→   178→    
+   179→   179→   179→    // Update team
+   180→   180→   180→    updateTeam: async (id: string, data: TeamUpdate) => {
+   181→   181→   181→        const response = await api.put(`/teams/${id}`, data)
+   182→   182→   182→        return response.data
+   183→   183→   183→    },
+   184→   184→   184→    
+   185→   185→   185→    // Delete team
+   186→   186→   186→    deleteTeam: async (id: string) => {
+   187→   187→   187→        const response = await api.delete(`/teams/${id}`)
+   188→   188→   188→        return response.data
+   189→   189→   189→    },
+   190→   190→   190→    
+   191→   191→   191→    // Get team members
+   192→   192→   192→    getTeamMembers: async (teamId: string) => {
+   193→   193→   193→        const response = await api.get(`/teams/${teamId}/members`)
+   194→   194→   194→        return response.data
+   195→   195→   195→    },
+   196→   196→   196→    
+   197→   197→   197→    // Add member to team
+   198→   198→   198→    addMember: async (teamId: string, userId: string) => {
+   199→   199→   199→        const response = await api.post(`/teams/${teamId}/members`, { user_id: userId })
+   200→   200→   200→        return response.data
+   201→   201→   201→    },
+   202→   202→   202→    
+   203→   203→   203→    // Remove member from team
+   204→   204→   204→    removeMember: async (teamId: string, userId: string) => {
+   205→   205→   205→        const response = await api.delete(`/teams/${teamId}/members/${userId}`)
+   206→   206→   206→        return response.data
+   207→   207→   207→    },
+   208→   208→   208→    
+   209→   209→   209→    // Get team statistics
+   210→   210→   210→    getTeamStats: async (teamId: string) => {
+   211→   211→   211→        const response = await api.get(`/teams/${teamId}/stats`)
+   212→   212→   212→        return response.data
+   213→   213→   213→    }
+   214→   214→   214→}
+   215→   215→   215→frontend/src/stores/teamStore.ts - Zustand store for teams:
+   216→   216→   216→
+   217→   217→   217→typescript
+   218→   218→   218→import { create } from 'zustand'
+   219→   219→   219→import { teamService } from '../services/teamService'
+   220→   220→   220→import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+   221→   221→   221→
+   222→   222→   222→interface TeamState {
+   223→   223→   223→    // State
+   224→   224→   224→    teams: Team[]
+   225→   225→   225→    currentTeam: Team | null
+   226→   226→   226→    teamMembers: TeamMember[]
+   227→   227→   227→    teamStats: TeamStats | null
+   228→   228→   228→    isLoading: boolean
+   229→   229→   229→    error: string | null
+   230→   230→   230→    
+   231→   231→   231→    // Actions
+   232→   232→   232→    fetchTeams: (params?: any) => Promise<void>
+   233→   233→   233→    fetchTeam: (id: string) => Promise<void>
+   234→   234→   234→    createTeam: (data: TeamCreate) => Promise<Team>
+   235→   235→   235→    updateTeam: (id: string, data: TeamUpdate) => Promise<Team>
+   236→   236→   236→    deleteTeam: (id: string) => Promise<void>
+   237→   237→   237→    fetchTeamMembers: (teamId: string) => Promise<void>
+   238→   238→   238→    addMember: (teamId: string, userId: string) => Promise<void>
+   239→   239→   239→    removeMember: (teamId: string, userId: string) => Promise<void>
+   240→   240→   240→    fetchTeamStats: (teamId: string) => Promise<void>
+   241→   241→   241→    clearError: () => void
+   242→   242→   242→    clearCurrentTeam: () => void
+   243→   243→   243→}
+   244→   244→   244→
+   245→   245→   245→export const useTeamStore = create<TeamState>((set, get) => ({
+   246→   246→   246→    // Initial state
+   247→   247→   247→    teams: [],
+   248→   248→   248→    currentTeam: null,
+   249→   249→   249→    teamMembers: [],
+   250→   250→   250→    teamStats: null,
+   251→   251→   251→    isLoading: false,
+   252→   252→   252→    error: null,
+   253→   253→   253→    
+   254→   254→   254→    // Fetch all teams
+   255→   255→   255→    fetchTeams: async (params) => {
+   256→   256→   256→        set({ isLoading: true, error: null })
+   257→   257→   257→        try {
+   258→   258→   258→            const teams = await teamService.getTeams(params)
+   259→   259→   259→            set({ teams, isLoading: false })
+   260→   260→   260→        } catch (error: any) {
+   261→   261→   261→            set({ 
+   262→   262→   262→                error: error.response?.data?.detail || 'Failed to fetch teams', 
+   263→   263→   263→                isLoading: false 
+   264→   264→   264→            })
+   265→   265→   265→        }
+   266→   266→   266→    },
+   267→   267→   267→    
+   268→   268→   268→    // Fetch single team
+   269→   269→   269→    fetchTeam: async (id) => {
+   270→   270→   270→        set({ isLoading: true, error: null })
+   271→   271→   271→        try {
+   272→   272→   272→            const team = await teamService.getTeam(id)
+   273→   273→   273→            set({ currentTeam: team, isLoading: false })
+   274→   274→   274→        } catch (error: any) {
+   275→   275→   275→            set({ 
+   276→   276→   276→                error: error.response?.data?.detail || 'Failed to fetch team', 
+   277→   277→   277→                isLoading: false 
+   278→   278→   278→            })
+   279→   279→   279→        }
+   280→   280→   280→    },
+   281→   281→   281→    
+   282→   282→   282→    // Create team
+   283→   283→   283→    createTeam: async (data) => {
+   284→   284→   284→        set({ isLoading: true, error: null })
+   285→   285→   285→        try {
+   286→   286→   286→            const team = await teamService.createTeam(data)
+   287→   287→   287→            set(state => ({ 
+   288→   288→   288→                teams: [...state.teams, team], 
+   289→   289→   289→                isLoading: false 
+   290→   290→   290→            }))
+   291→   291→   291→            return team
+   292→   292→   292→        } catch (error: any) {
+   293→   293→   293→            set({ 
+   294→   294→   294→                error: error.response?.data?.detail || 'Failed to create team', 
+   295→   295→   295→                isLoading: false 
+   296→   296→   296→            })
+   297→   297→   297→            throw error
+   298→   298→   298→        }
+   299→   299→   299→    },
+   300→   300→   300→    
+   301→   301→   301→    // Update team
+   302→   302→   302→    updateTeam: async (id, data) => {
+   303→   303→   303→        set({ isLoading: true, error: null })
+   304→   304→   304→        try {
+   305→   305→   305→            const updatedTeam = await teamService.updateTeam(id, data)
+   306→   306→   306→            set(state => ({
+   307→   307→   307→                teams: state.teams.map(t => t.id === id ? updatedTeam : t),
+   308→   308→   308→                currentTeam: state.currentTeam?.id === id ? updatedTeam : state.currentTeam,
+   309→   309→   309→                isLoading: false
+   310→   310→   310→            }))
+   311→   311→   311→            return updatedTeam
+   312→   312→   312→        } catch (error: any) {
+   313→   313→   313→            set({ 
+   314→   314→   314→                error: error.response?.data?.detail || 'Failed to update team', 
+   315→   315→   315→                isLoading: false 
+   316→   316→   316→            })
+   317→   317→   317→            throw error
+   318→   318→   318→        }
+   319→   319→   319→    },
+   320→   320→   320→    
+   321→   321→   321→    // Delete team
+   322→   322→   322→    deleteTeam: async (id) => {
+   323→   323→   323→        set({ isLoading: true, error: null })
+   324→   324→   324→        try {
+   325→   325→   325→            await teamService.deleteTeam(id)
+   326→   326→   326→            set(state => ({
+   327→   327→   327→                teams: state.teams.filter(t => t.id !== id),
+   328→   328→   328→                currentTeam: state.currentTeam?.id === id ? null : state.currentTeam,
+   329→   329→   329→                isLoading: false
+   330→   330→   330→            }))
+   331→   331→   331→        } catch (error: any) {
+   332→   332→   332→            set({ 
+   333→   333→   333→                error: error.response?.data?.detail || 'Failed to delete team', 
+   334→   334→   334→                isLoading: false 
+   335→   335→   335→            })
+   336→   336→   336→            throw error
+   337→   337→   337→        }
+   338→   338→   338→    },
+   339→   339→   339→    
+   340→   340→   340→    // Fetch team members
+   341→   341→   341→    fetchTeamMembers: async (teamId) => {
+   342→   342→   342→        set({ isLoading: true, error: null })
+   343→   343→   343→        try {
+   344→   344→   344→            const members = await teamService.getTeamMembers(teamId)
+   345→   345→   345→            set({ teamMembers: members, isLoading: false })
+   346→   346→   346→        } catch (error: any) {
+   347→   347→   347→            set({ 
+   348→   348→   348→                error: error.response?.data?.detail || 'Failed to fetch team members', 
+   349→   349→   349→                isLoading: false 
+   350→   350→   350→            })
+   351→   351→   351→        }
+   352→   352→   352→    },
+   353→   353→   353→    
+   354→   354→   354→    // Add member to team
+   355→   355→   355→    addMember: async (teamId, userId) => {
+   356→   356→   356→        set({ isLoading: true, error: null })
+   357→   357→   357→        try {
+   358→   358→   358→            await teamService.addMember(teamId, userId)
+   359→   359→   359→            // Refresh members list
+   360→   360→   360→            const members = await teamService.getTeamMembers(teamId)
+   361→   361→   361→            set({ teamMembers: members, isLoading: false })
+   362→   362→   362→        } catch (error: any) {
+   363→   363→   363→            set({ 
+   364→   364→   364→                error: error.response?.data?.detail || 'Failed to add member', 
+   365→   365→   365→                isLoading: false 
+   366→   366→   366→            })
+   367→   367→   367→            throw error
+   368→   368→   368→        }
+   369→   369→   369→    },
+   370→   370→   370→    
+   371→   371→   371→    // Remove member from team
+   372→   372→   372→    removeMember: async (teamId, userId) => {
+   373→   373→   373→        set({ isLoading: true, error: null })
+   374→   374→   374→        try {
+   375→   375→   375→            await teamService.removeMember(teamId, userId)
+   376→   376→   376→            set(state => ({
+   377→   377→   377→                teamMembers: state.teamMembers.filter(m => m.id !== userId),
+   378→   378→   378→                isLoading: false
+   379→   379→   379→            }))
+   380→   380→   380→        } catch (error: any) {
+   381→   381→   381→            set({ 
+   382→   382→   382→                error: error.response?.data?.detail || 'Failed to remove member', 
+   383→   383→   383→                isLoading: false 
+   384→   384→   384→            })
+   385→   385→   385→            throw error
+   386→   386→   386→        }
+   387→   387→   387→    },
+   388→   388→   388→    
+   389→   389→   389→    // Fetch team stats
+   390→   390→   390→    fetchTeamStats: async (teamId) => {
+   391→   391→   391→        try {
+   392→   392→   392→            const stats = await teamService.getTeamStats(teamId)
+   393→   393→   393→            set({ teamStats: stats })
+   394→   394→   394→        } catch (error: any) {
+   395→   395→   395→            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+   396→   396→   396→        }
+   397→   397→   397→    },
+   398→   398→   398→    
+   399→   399→   399→    // Clear error
+   400→   400→   400→    clearError: () => set({ error: null }),
+   401→   401→   401→    
+   402→   402→   402→    // Clear current team
+   403→   403→   403→    clearCurrentTeam: () => set({ currentTeam: null, teamMembers: [], teamStats: null })
+   404→   404→   404→}))
+   405→   405→   405→frontend/src/hooks/useTeams.ts - Custom hooks for teams:
+   406→   406→   406→
+   407→   407→   407→typescript
+   408→   408→   408→import { useEffect } from 'react'
+   409→   409→   409→import { useTeamStore } from '../stores/teamStore'
+   410→   410→   410→
+   411→   411→   411→export const useTeams = (params?: any) => {
+   412→   412→   412→    const { teams, isLoading, error, fetchTeams } = useTeamStore()
+   413→   413→   413→    
+   414→   414→   414→    useEffect(() => {
+   415→   415→   415→        fetchTeams(params)
+   416→   416→   416→    }, [])
+   417→   417→   417→    
+   418→   418→   418→    return { teams, isLoading, error, refetch: () => fetchTeams(params) }
+   419→   419→   419→}
+   420→   420→   420→
+   421→   421→   421→export const useTeam = (id: string) => {
+   422→   422→   422→    const { currentTeam, isLoading, error, fetchTeam } = useTeamStore()
+   423→   423→   423→    
+   424→   424→   424→    useEffect(() => {
+   425→   425→   425→        if (id) fetchTeam(id)
+   426→   426→   426→    }, [id])
+   427→   427→   427→    
+   428→   428→   428→    return { team: currentTeam, isLoading, error, refetch: () => fetchTeam(id) }
+   429→   429→   429→}
+   430→   430→   430→
+   431→   431→   431→export const useTeamMembers = (teamId: string) => {
+   432→   432→   432→    const { teamMembers, isLoading, fetchTeamMembers } = useTeamStore()
+   433→   433→   433→    
+   434→   434→   434→    useEffect(() => {
+   435→   435→   435→        if (teamId) fetchTeamMembers(teamId)
+   436→   436→   436→    }, [teamId])
+   437→   437→   437→    
+   438→   438→   438→    return { members: teamMembers, isLoading, refetch: () => fetchTeamMembers(teamId) }
+   439→   439→   439→}
+   440→   440→   440→Requirements:
+   441→   441→   441→
+   442→   442→   442→All services use the axios instance from api.ts
+   443→   443→   443→
+   444→   444→   444→All stores use Zustand with proper TypeScript types
+   445→   445→   445→
+   446→   446→   446→Loading states and error handling everywhere
+   447→   447→   447→
+   448→   448→   448→Optimistic updates where possible
+   449→   449→   449→
+   450→   450→   450→Generate ALL complete files with proper imports.
+   451→   451→   451→
+   452→   452→   452→text
+   453→   453→   453→
+   454→   454→   454→---
+   455→   455→   455→
+   456→   456→   456→### 📌 Step 3.3: Backend Team Models, Schemas & CRUD
+   457→   457→   457→
+   458→   458→   458→#### 🤖 Complete Prompt for Step 3.3:
+   459→   459→   459→Now build the backend team management system with FastAPI.
+   460→   460→   460→
+   461→   461→   461→Create these files:
+   462→   462→   462→
+   463→   463→   463→backend/app/schemas/team.py - Team schemas:
+   464→   464→   464→
+   465→   465→   465→python
+   466→   466→   466→from pydantic import BaseModel, Field
+   467→   467→   467→from typing import Optional, List
+   468→   468→   468→from datetime import datetime
+   469→   469→   469→from uuid import UUID
+   470→   470→   470→
+   471→   471→   471→class TeamBase(BaseModel):
+   472→   472→   472→    name: str = Field(..., min_length=3, max_length=100)
+   473→   473→   473→    description: Optional[str] = Field(None, max_length=500)
+   474→   474→   474→
+   475→   475→   475→class TeamCreate(TeamBase):
+   476→   476→   476→    manager_id: Optional[UUID] = None
+   477→   477→   477→
+   478→   478→   478→class TeamUpdate(BaseModel):
+   479→   479→   479→    name: Optional[str] = Field(None, min_length=3, max_length=100)
+   480→   480→   480→    description: Optional[str] = Field(None, max_length=500)
+   481→   481→   481→    manager_id: Optional[UUID] = None
+   482→   482→   482→
+   483→   483→   483→class TeamResponse(TeamBase):
+   484→   484→   484→    id: UUID
+   485→   485→   485→    manager_id: Optional[UUID]
+   486→   486→   486→    manager_name: Optional[str]
+   487→   487→   487→    member_count: int
+   488→   488→   488→    created_at: datetime
+   489→   489→   489→    updated_at: Optional[datetime]
+   490→   490→   490→
+   491→   491→   491→    class Config:
+   492→   492→   492→        from_attributes = True
+   493→   493→   493→
+   494→   494→   494→class TeamMemberAdd(BaseModel):
+   495→   495→   495→    user_id: UUID
+   496→   496→   496→
+   497→   497→   497→class TeamMemberResponse(BaseModel):
+   498→   498→   498→    id: UUID
+   499→   499→   499→    email: str
+   500→   500→   500→    full_name: str
+   501→   501→   501→    role: str
+   502→   502→   502→    is_active: bool
+   503→   503→   503→    joined_at: datetime
+   504→   504→   504→
+   505→   505→   505→    class Config:
+   506→   506→   506→        from_attributes = True
+   507→   507→   507→
+   508→   508→   508→class TeamStats(BaseModel):
+   509→   509→   509→    member_count: int
+   510→   510→   510→    event_count: int
+   511→   511→   511→    total_tasks: int
+   512→   512→   512→    completed_tasks: int
+   513→   513→   513→    completion_rate: float
+   514→   514→   514→backend/app/crud/team.py - Team CRUD operations:
+   515→   515→   515→
+   516→   516→   516→python
+   517→   517→   517→from sqlalchemy.orm import Session
+   518→   518→   518→from sqlalchemy import func
+   519→   519→   519→from typing import List, Optional
+   520→   520→   520→from uuid import UUID
+   521→   521→   521→from fastapi import HTTPException, status
+   522→   522→   522→
+   523→   523→   523→from app.models.team import Team
+   524→   524→   524→from app.models.user import User
+   525→   525→   525→from app.models.event import Event
+   526→   526→   526→from app.models.task import Task
+   527→   527→   527→from app.schemas.team import TeamCreate, TeamUpdate
+   528→   528→   528→
+   529→   529→   529→def get_team(db: Session, team_id: UUID) -> Optional[Team]:
+   530→   530→   530→    """Get team by ID"""
+   531→   531→   531→    # Query team by ID
+   532→   532→   532→    # Return team or None
+   533→   533→   533→
+   534→   534→   534→def get_teams(
+   535→   535→   535→    db: Session, 
+   536→   536→   536→    skip: int = 0, 
+   537→   537→   537→    limit: int = 100,
+   538→   538→   538→    search: Optional[str] = None,
+   539→   539→   539→    manager_id: Optional[UUID] = None
+   540→   540→   540→) -> List[Team]:
+   541→   541→   541→    """Get all teams with filters"""
+   542→   542→   542→    # Query teams with optional filters
+   543→   543→   543→    # Return list of teams
+   544→   544→   544→
+   545→   545→   545→def get_user_teams(db: Session, user_id: UUID) -> List[Team]:
+   546→   546→   546→    """Get all teams a user belongs to"""
+   547→   547→   547→    # Query teams where user is a member
+   548→   548→   548→    # Return list of teams
+   549→   549→   549→
+   550→   550→   550→def create_team(db: Session, team_data: TeamCreate, created_by: UUID) -> Team:
+   551→   551→   551→    """Create new team"""
+   552→   552→   552→    # Check if team name already exists
+   553→   553→   553→    # Create team
+   554→   554→   554→    # Return team
+   555→   555→   555→
+   556→   556→   556→def update_team(db: Session, team_id: UUID, team_data: TeamUpdate) -> Team:
+   557→   557→   557→    """Update team"""
+   558→   558→   558→    # Get team
+   559→   559→   559→    # Update fields
+   560→   560→   560→    # Return updated team
+   561→   561→   561→
+   562→   562→   562→def delete_team(db: Session, team_id: UUID) -> bool:
+   563→   563→   563→    """Delete team"""
+   564→   564→   564→    # Check if team has events
+   565→   565→   565→    # If has events, raise error
+   566→   566→   566→    # Delete team
+   567→   567→   567→    # Return True
+   568→   568→   568→
+   569→   569→   569→def add_member(db: Session, team_id: UUID, user_id: UUID) -> Team:
+   570→   570→   570→    """Add member to team"""
+   571→   571→   571→    # Check if team exists
+   572→   572→   572→    # Check if user exists
+   573→   573→   573→    # Check if user is already in team
+   574→   574→   574→    # Update user's team_id
+   575→   575→   575→    # Return team
+   576→   576→   576→
+   577→   577→   577→def remove_member(db: Session, team_id: UUID, user_id: UUID) -> bool:
+   578→   578→   578→    """Remove member from team"""
+   579→   579→   579→    # Check if team exists
+   580→   580→   580→    # Check if user is in team
+   581→   581→   581→    # Remove user from team (set team_id to None)
+   582→   582→   582→    # Return True
+   583→   583→   583→
+   584→   584→   584→def get_team_members(db: Session, team_id: UUID) -> List[User]:
+   585→   585→   585→    """Get all members of a team"""
+   586→   586→   586→    # Query users where team_id = team_id
+   587→   587→   587→    # Return list of users
+   588→   588→   588→
+   589→   589→   589→def get_team_stats(db: Session, team_id: UUID) -> dict:
+   590→   590→   590→    """Get team statistics"""
+   591→   591→   591→    # Count members
+   592→   592→   592→    # Count events
+   593→   593→   593→    # Count tasks
+   594→   594→   594→    # Count completed tasks
+   595→   595→   595→    # Calculate completion rate
+   596→   596→   596→    # Return stats dict
+   597→   597→   597→
+   598→   598→   598→def is_user_in_team(db: Session, user_id: UUID, team_id: UUID) -> bool:
+   599→   599→   599→    """Check if user is in team"""
+   600→   600→   600→    # Query user's team_id
+   601→   601→   601→    # Return bool
+   602→   602→   602→backend/app/api/v1/teams.py - Team API endpoints:
+   603→   603→   603→
+   604→   604→   604→python
+   605→   605→   605→from fastapi import APIRouter, Depends, HTTPException, status, Query
+   606→   606→   606→from sqlalchemy.orm import Session
+   607→   607→   607→from typing import List, Optional
+   608→   608→   608→from uuid import UUID
+   609→   609→   609→
+   610→   610→   610→from app.api.deps import get_current_active_user, require_roles
+   611→   611→   611→from app.core.database import get_db
+   612→   612→   612→from app.crud import team as team_crud
+   613→   613→   613→from app.models.user import User, UserRole
+   614→   614→   614→from app.schemas.team import (
+   615→   615→   615→    TeamCreate, TeamUpdate, TeamResponse, 
+   616→   616→   616→    TeamMemberAdd, TeamMemberResponse, TeamStats
+   617→   617→   617→)
+   618→   618→   618→
+   619→   619→   619→router = APIRouter()
+   620→   620→   620→
+   621→   621→   621→@router.get("/", response_model=List[TeamResponse])
+   622→   622→   622→async def get_teams(
+   623→   623→   623→    skip: int = 0,
+   624→   624→   624→    limit: int = 100,
+   625→   625→   625→    search: Optional[str] = None,
+   626→   626→   626→    manager_id: Optional[UUID] = None,
+   627→   627→   627→    db: Session = Depends(get_db),
+   628→   628→   628→    current_user: User = Depends(get_current_active_user)
+   629→   629→   629→):
+   630→   630→   630→    """
+   631→   631→   631→    Get all teams.
+   632→   632→   632→    
+   633→   633→   633→    - **search**: Search by team name
+   634→   634→   634→    - **manager_id**: Filter by manager
+   635→   635→   635→    - **skip**: Pagination offset
+   636→   636→   636→    - **limit**: Number of results
+   637→   637→   637→    """
+   638→   638→   638→    # Get teams
+   639→   639→   639→    # Return list
+   640→   640→   640→
+   641→   641→   641→@router.post("/", response_model=TeamResponse, status_code=201)
+   642→   642→   642→async def create_team(
+   643→   643→   643→    team_data: TeamCreate,
+   644→   644→   644→    db: Session = Depends(get_db),
+   645→   645→   645→    current_user: User = Depends(require_roles([UserRole.EVENT_MANAGER, UserRole.TEAM_LEADER]))
+   646→   646→   646→):
+   647→   647→   647→    """
+   648→   648→   648→    Create a new team.
+   649→   649→   649→    
+   650→   650→   650→    Requires: EVENT_MANAGER or TEAM_LEADER role
+   651→   651→   651→    """
+   652→   652→   652→    # Create team
+   653→   653→   653→    # Return team
+   654→   654→   654→
+   655→   655→   655→@router.get("/{team_id}", response_model=TeamResponse)
+   656→   656→   656→async def get_team(
+   657→   657→   657→    team_id: UUID,
+   658→   658→   658→    db: Session = Depends(get_db),
+   659→   659→   659→    current_user: User = Depends(get_current_active_user)
+   660→   660→   660→):
+   661→   661→   661→    """Get team by ID"""
+   662→   662→   662→    # Get team
+   663→   663→   663→    # Return team
+   664→   664→   664→
+   665→   665→   665→@router.put("/{team_id}", response_model=TeamResponse)
+   666→   666→   666→async def update_team(
+   667→   667→   667→    team_id: UUID,
+   668→   668→   668→    team_data: TeamUpdate,
+   669→   669→   669→    db: Session = Depends(get_db),
+   670→   670→   670→    current_user: User = Depends(get_current_active_user)
+   671→   671→   671→):
+   672→   672→   672→    """Update team"""
+   673→   673→   673→    # Check permission (manager or admin)
+   674→   674→   674→    # Update team
+   675→   675→   675→    # Return updated team
+   676→   676→   676→
+   677→   677→   677→@router.delete("/{team_id}", status_code=204)
+   678→   678→   678→async def delete_team(
+   679→   679→   679→    team_id: UUID,
+   680→   680→   680→    db: Session = Depends(get_db),
+   681→   681→   681→    current_user: User = Depends(get_current_active_user)
+   682→   682→   682→):
+   683→   683→   683→    """Delete team"""
+   684→   684→   684→    # Check permission
+   685→   685→   685→    # Delete team
+   686→   686→   686→    # Return no content
+   687→   687→   687→
+   688→   688→   688→@router.get("/{team_id}/members", response_model=List[TeamMemberResponse])
+   689→   689→   689→async def get_team_members(
+   690→   690→   690→    team_id: UUID,
+   691→   691→   691→    db: Session = Depends(get_db),
+   692→   692→   692→    current_user: User = Depends(get_current_active_user)
+   693→   693→   693→):
+   694→   694→   694→    """Get all members of a team"""
+   695→   695→   695→    # Get members
+   696→   696→   696→    # Return list
+   697→   697→   697→
+   698→   698→   698→@router.post("/{team_id}/members", response_model=TeamResponse)
+   699→   699→   699→async def add_team_member(
+   700→   700→   700→    team_id: UUID,
+   701→   701→   701→    member_data: TeamMemberAdd,
+   702→   702→   702→    db: Session = Depends(get_db),
+   703→   703→   703→    current_user: User = Depends(get_current_active_user)
+   704→   704→   704→):
+   705→   705→   705→    """Add member to team"""
+   706→   706→   706→    # Check permission
+   707→   707→   707→    # Add member
+   708→   708→   708→    # Return team
+   709→   709→   709→
+   710→   710→   710→@router.delete("/{team_id}/members/{user_id}", status_code=204)
+   711→   711→   711→async def remove_team_member(
+   712→   712→   712→    team_id: UUID,
+   713→   713→   713→    user_id: UUID,
+   714→   714→   714→    db: Session = Depends(get_db),
+   715→   715→   715→    current_user: User = Depends(get_current_active_user)
+   716→   716→   716→):
+   717→   717→   717→    """Remove member from team"""
+   718→   718→   718→    # Check permission
+   719→   719→   719→    # Remove member
+   720→   720→   720→    # Return no content
+   721→   721→   721→
+   722→   722→   722→@router.get("/{team_id}/stats", response_model=TeamStats)
+   723→   723→   723→async def get_team_stats(
+   724→   724→   724→    team_id: UUID,
+   725→   725→   725→    db: Session = Depends(get_db),
+   726→   726→   726→    current_user: User = Depends(get_current_active_user)
+   727→   727→   727→):
+   728→   728→   728→    """Get team statistics"""
+   729→   729→   729→    # Get stats
+   730→   730→   730→    # Return stats
+   731→   731→   731→Update backend/app/main.py - Include team router:
+   732→   732→   732→
+   733→   733→   733→python
+   734→   734→   734→# Import team router
+   735→   735→   735→from app.api.v1 import teams
+   736→   736→   736→
+   737→   737→   737→# Register router
+   738→   738→   738→app.include_router(
+   739→   739→   739→    teams.router,
+   740→   740→   740→    prefix="/api/v1/teams",
+   741→   741→   741→    tags=["Teams"]
+   742→   742→   742→)
+   743→   743→   743→Requirements:
+   744→   744→   744→
+   745→   745→   745→All endpoints need authentication
+   746→   746→   746→
+   747→   747→   747→Role-based access control for create/update/delete
+   748→   748→   748→
+   749→   749→   749→Proper error handling with HTTP status codes
+   750→   750→   750→
+   751→   751→   751→OpenAPI documentation for all endpoints
+   752→   752→   752→
+   753→   753→   753→Pagination support for list endpoints
+
+[showing lines 54-753 of 1676; use offset=754 with limit to continue reading]

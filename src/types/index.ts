@@ -49,8 +49,21 @@ export interface TeamDTO {
   events?: EventDTO[]
   memberCount?: number
   eventCount?: number
+  /** Aggregated task health across the team's events (detail responses only). */
+  stats?: TeamStatsDTO
   createdAt: string
   updatedAt: string
+}
+
+/** Task rollup for a team (Phase 3 TeamStats). */
+export interface TeamStatsDTO {
+  totalTasks: number
+  completedTasks: number
+  inProgressTasks: number
+  blockedTasks: number
+  overdueTasks: number
+  /** 0–100, rounded. */
+  completionRate: number
 }
 
 export interface EventDTO {

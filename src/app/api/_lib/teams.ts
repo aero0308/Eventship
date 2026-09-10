@@ -3,6 +3,7 @@
  * Only imported by server route handlers.
  */
 import type { Prisma } from '@prisma/client'
+import { db } from '@/lib/db'
 
 // ============ list shape ============
 
@@ -77,5 +78,66 @@ export function serializeTeamDetail(team: TeamWithMembers) {
       startDate: event.startDate.toISOString(),
       endDate: event.endDate.toISOString(),
     })),
+  }
+}
+
+// ============ task stats (Phase 3 TeamStats) ============
+
+export interface TeamTaskStats {
+  totalTasks: number
+  completedTasks: number
+  inProgressTasks: number
+  blockedTasks: number
+  overdueTasks: number
+  completionRate: number
+}
+
+const EMPTY_TASK_STATS: TeamTaskStats = {
+  totalTasks: 0,
+  completedTasks: 0,
+  inProgressTasks: 0,
+  blockedTasks: 0,
+  overdueTasks: 0,
+  completionRate: 0,
+}
+
+/**
+ * Aggregate task health across the given events (tasks always belong to an
+ * event, and events belong to a team). One groupBy + one overdue count —
+ * cheap enough to ride on every detail response.
+ */
+export async function computeTeamStats(eventIds: string[]): Promise<TeamTaskStats> {
+  if (eventIds.length === 0) return EMPTY_TASK_STATS
+
+  const now = new Date()
+  const [byStatus, overdue] = await Promise.all([
+    db.task.groupBy({
+      by: ['status'],
+      where: { eventId: { in: eventIds } },
+      _count: { _all: true },
+    }),
+    db.task.count({
+      where: { eventId: { in: eventIds }, status: { not: 'COMPLETED' }, dueDate: { lt: now } },
+    }),
+  ])
+
+  let total = 0
+  let completed = 0
+  let inProgress = 0
+  let blocked = 0
+  for (const row of byStatus) {
+    total += row._count._all
+    if (row.status === 'COMPLETED') completed = row._count._all
+    else if (row.status === 'IN_PROGRESS') inProgress = row._count._all
+    else if (row.status === 'BLOCKED') blocked = row._count._all
+  }
+
+  return {
+    totalTasks: total,
+    completedTasks: completed,
+    inProgressTasks: inProgress,
+    blockedTasks: blocked,
+    overdueTasks: overdue,
+    completionRate: total === 0 ? 0 : Math.round((completed / total) * 100),
   }
 }

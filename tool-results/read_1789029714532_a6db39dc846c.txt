@@ -1,0 +1,707 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  CalendarDays,
+     7→  CalendarRange,
+     8→  Loader2,
+     9→  Pencil,
+    10→  Plus,
+    11→  Save,
+    12→  Trash2,
+    13→  Users,
+    14→  UsersRound,
+    15→} from 'lucide-react'
+    16→import { format } from 'date-fns'
+    17→import type { EventDTO, TeamDTO, UserDTO } from '@/types'
+    18→import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, ROLE_BADGE_CLASSES, ROLE_LABELS } from '@/lib/constants'
+    19→import { api, ApiClientError } from '@/lib/api-client'
+    20→import { useToast } from '@/hooks/use-toast'
+    21→import { cn } from '@/lib/utils'
+    22→import {
+    23→  AlertDialog,
+    24→  AlertDialogAction,
+    25→  AlertDialogCancel,
+    26→  AlertDialogContent,
+    27→  AlertDialogDescription,
+    28→  AlertDialogFooter,
+    29→  AlertDialogHeader,
+    30→  AlertDialogTitle,
+    31→} from '@/components/ui/alert-dialog'
+    32→import { Alert, AlertDescription } from '@/components/ui/alert'
+    33→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    34→import { Badge } from '@/components/ui/badge'
+    35→import { Button } from '@/components/ui/button'
+    36→import { Card, CardContent } from '@/components/ui/card'
+    37→import { Checkbox } from '@/components/ui/checkbox'
+    38→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    39→import { Input } from '@/components/ui/input'
+    40→import { Label } from '@/components/ui/label'
+    41→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    42→import { Separator } from '@/components/ui/separator'
+    43→import { Skeleton } from '@/components/ui/skeleton'
+    44→import { Textarea } from '@/components/ui/textarea'
+    45→import { EmptyState } from '@/components/shared/EmptyState'
+    46→import { PageHeader } from '@/components/shared/PageHeader'
+    47→import { StatusBadge } from '@/components/shared/StatusBadge'
+    48→import { initialsOf } from '@/components/layout/Layout'
+    49→
+    50→/** Team detail with members + events included (GET /api/teams/[id]). */
+    51→type TeamDetail = TeamDTO
+    52→
+    53→const NO_MANAGER = '__none__'
+    54→
+    55→interface TeamFormState {
+    56→  name: string
+    57→  description: string
+    58→  managerId: string
+    59→  memberIds: string[]
+    60→}
+    61→
+    62→export function TeamsPage() {
+    63→  const { toast } = useToast()
+    64→
+    65→  const [teams, setTeams] = useState<TeamDTO[]>([])
+    66→  const [users, setUsers] = useState<UserDTO[]>([])
+    67→  const [loading, setLoading] = useState(true)
+    68→
+    69→  // Create dialog
+    70→  const [createOpen, setCreateOpen] = useState(false)
+    71→  const [form, setForm] = useState<TeamFormState>({ name: '', description: '', managerId: NO_MANAGER, memberIds: [] })
+    72→  const [formError, setFormError] = useState<string | null>(null)
+    73→  const [saving, setSaving] = useState(false)
+    74→
+    75→  // Detail dialog
+    76→  const [detailId, setDetailId] = useState<string | null>(null)
+    77→  const [detail, setDetail] = useState<TeamDetail | null>(null)
+    78→  const [detailLoading, setDetailLoading] = useState(false)
+    79→  const [editing, setEditing] = useState(false)
+    80→  const [editForm, setEditForm] = useState<TeamFormState>({ name: '', description: '', managerId: NO_MANAGER, memberIds: [] })
+    81→  const [editSaving, setEditSaving] = useState(false)
+    82→
+    83→  // Delete confirm
+    84→  const [deleteOpen, setDeleteOpen] = useState(false)
+    85→  const [deleting, setDeleting] = useState(false)
+    86→
+    87→  const loadData = useCallback(async () => {
+    88→    setLoading(true)
+    89→    try {
+    90→      const [teamsData, usersData] = await Promise.all([
+    91→        api.get<{ teams: TeamDTO[] }>('/teams'),
+    92→        api.get<{ users: UserDTO[] }>('/users'),
+    93→      ])
+    94→      setTeams(teamsData.teams)
+    95→      setUsers(usersData.users)
+    96→    } catch (error) {
+    97→      const message = error instanceof ApiClientError ? error.message : 'Failed to load teams.'
+    98→      toast({ title: 'Could not load teams', description: message, variant: 'destructive' })
+    99→    } finally {
+   100→      setLoading(false)
+   101→    }
+   102→  }, [toast])
+   103→
+   104→  useEffect(() => {
+   105→    void loadData()
+   106→  }, [loadData])
+   107→
+   108→  const userById = useMemo(() => {
+   109→    const map = new Map<string, UserDTO>()
+   110→    users.forEach((user) => map.set(user.id, user))
+   111→    return map
+   112→  }, [users])
+   113→
+   114→  // ============ Create ============
+   115→  const openCreate = () => {
+   116→    setForm({ name: '', description: '', managerId: NO_MANAGER, memberIds: [] })
+   117→    setFormError(null)
+   118→    setCreateOpen(true)
+   119→  }
+   120→
+   121→  const toggleMember = (userId: string) => {
+   122→    setForm((f) => ({
+   123→      ...f,
+   124→      memberIds: f.memberIds.includes(userId) ? f.memberIds.filter((id) => id !== userId) : [...f.memberIds, userId],
+   125→    }))
+   126→  }
+   127→
+   128→  const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
+   129→    e.preventDefault()
+   130→    setFormError(null)
+   131→    if (!form.name.trim()) {
+   132→      setFormError('Please give the team a name.')
+   133→      return
+   134→    }
+   135→    setSaving(true)
+   136→    try {
+   137→      const data = await api.post<{ team: TeamDTO }>('/teams', {
+   138→        name: form.name.trim(),
+   139→        description: form.description.trim() || undefined,
+   140→        managerId: form.managerId === NO_MANAGER ? null : form.managerId,
+   141→        memberIds: form.memberIds,
+   142→      })
+   143→      setCreateOpen(false)
+   144→      toast({ title: 'Team created', description: `“${data.team.name}” is ready for members and events.` })
+   145→      void loadData()
+   146→    } catch (error) {
+   147→      const message = error instanceof ApiClientError ? error.message : 'Failed to create the team.'
+   148→      setFormError(message)
+   149→    } finally {
+   150→      setSaving(false)
+   151→    }
+   152→  }
+   153→
+   154→  // ============ Detail ============
+   155→  useEffect(() => {
+   156→    if (!detailId) {
+   157→      setDetail(null)
+   158→      setEditing(false)
+   159→      return
+   160→    }
+   161→    let cancelled = false
+   162→    setDetailLoading(true)
+   163→    api
+   164→      .get<{ team: TeamDetail }>(`/teams/${detailId}`)
+   165→      .then((data) => {
+   166→        if (cancelled) return
+   167→        setDetail(data.team)
+   168→        setEditForm({
+   169→          name: data.team.name,
+   170→          description: data.team.description ?? '',
+   171→          managerId: data.team.managerId ?? NO_MANAGER,
+   172→          memberIds: (data.team.members ?? []).map((m) => m.id),
+   173→        })
+   174→      })
+   175→      .catch((error) => {
+   176→        if (!cancelled) {
+   177→          const message = error instanceof ApiClientError ? error.message : 'Failed to load the team.'
+   178→          toast({ title: 'Could not open team', description: message, variant: 'destructive' })
+   179→          setDetailId(null)
+   180→        }
+   181→      })
+   182→      .finally(() => {
+   183→        if (!cancelled) setDetailLoading(false)
+   184→      })
+   185→    return () => {
+   186→      cancelled = true
+   187→    }
+   188→  }, [detailId, toast])
+   189→
+   190→  const startEdit = () => {
+   191→    if (!detail) return
+   192→    setEditForm({
+   193→      name: detail.name,
+   194→      description: detail.description ?? '',
+   195→      managerId: detail.managerId ?? NO_MANAGER,
+   196→      memberIds: (detail.members ?? []).map((m) => m.id),
+   197→    })
+   198→    setEditing(true)
+   199→  }
+   200→
+   201→  const handleEditSave = async () => {
+   202→    if (!detail || !editing) return
+   203→    if (!editForm.name.trim()) {
+   204→      toast({ title: 'Name required', description: 'The team name cannot be empty.', variant: 'destructive' })
+   205→      return
+   206→    }
+   207→    setEditSaving(true)
+   208→    try {
+   209→      const data = await api.patch<{ team: TeamDTO }>(`/teams/${detail.id}`, {
+   210→        name: editForm.name.trim(),
+   211→        description: editForm.description.trim() || null,
+   212→        managerId: editForm.managerId === NO_MANAGER ? null : editForm.managerId,
+   213→        memberIds: editForm.memberIds,
+   214→      })
+   215→      setTeams((list) => list.map((team) => (team.id === data.team.id ? { ...team, ...data.team } : team)))
+   216→      setDetail((prev) => (prev ? { ...prev, ...data.team } : prev))
+   217→      setEditing(false)
+   218→      toast({ title: 'Team updated', description: `“${data.team.name}” was saved.` })
+   219→    } catch (error) {
+   220→      const message = error instanceof ApiClientError ? error.message : 'Failed to save the team.'
+   221→      toast({ title: 'Save failed', description: message, variant: 'destructive' })
+   222→    } finally {
+   223→      setEditSaving(false)
+   224→    }
+   225→  }
+   226→
+   227→  const handleDelete = async () => {
+   228→    if (!detail) return
+   229→    setDeleting(true)
+   230→    try {
+   231→      await api.del(`/teams/${detail.id}`)
+   232→      setTeams((list) => list.filter((team) => team.id !== detail.id))
+   233→      setDetailId(null)
+   234→      setDeleteOpen(false)
+   235→      toast({ title: 'Team deleted', description: `“${detail.name}” has been removed.` })
+   236→    } catch (error) {
+   237→      const message = error instanceof ApiClientError ? error.message : 'Failed to delete the team.'
+   238→      toast({ title: 'Delete failed', description: message, variant: 'destructive' })
+   239→    } finally {
+   240→      setDeleting(false)
+   241→    }
+   242→  }
+   243→
+   244→  const memberStack = (team: TeamDTO) => {
+   245→    const members = team.members ?? []
+   246→    if (members.length === 0) return null
+   247→    const visible = members.slice(0, 5)
+   248→    const rest = members.length - visible.length
+   249→    return (
+   250→      <div className="flex items-center">
+   251→        <div className="flex -space-x-2">
+   252→          {visible.map((member) => (
+   253→            <Avatar key={member.id} className="h-7 w-7 ring-2 ring-card">
+   254→              <AvatarFallback className="bg-teal-600 text-[9px] font-semibold text-white">
+   255→                {initialsOf(member.fullName)}
+   256→              </AvatarFallback>
+   257→            </Avatar>
+   258→          ))}
+   259→        </div>
+   260→        {rest > 0 ? <span className="ml-2 text-[11px] font-medium text-muted-foreground">+{rest} more</span> : null}
+   261→      </div>
+   262→    )
+   263→  }
+   264→
+   265→  return (
+   266→    <div>
+   267→      <PageHeader
+   268→        title="Teams"
+   269→        subtitle="Organize people into teams, assign leaders and connect events."
+   270→        actions={
+   271→          <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   272→            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+   273→            New Team
+   274→          </Button>
+   275→        }
+   276→      />
+   277→
+   278→      {loading ? (
+   279→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+   280→          {Array.from({ length: 6 }).map((_, i) => (
+   281→            <Skeleton key={i} className="h-64 rounded-xl" />
+   282→          ))}
+   283→        </div>
+   284→      ) : teams.length === 0 ? (
+   285→        <EmptyState
+   286→          icon={UsersRound}
+   287→          title="No teams yet"
+   288→          hint="Create your first team to start coordinating people and events."
+   289→          action={
+   290→            <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   291→              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+   292→              New Team
+   293→            </Button>
+   294→          }
+   295→        />
+   296→      ) : (
+   297→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+   298→          {teams.map((team, index) => {
+   299→            const manager = team.manager ?? null
+   300→            const events = team.events ?? []
+   301→            return (
+   302→              <motion.div
+   303→                key={team.id}
+   304→                initial={{ opacity: 0, y: 14 }}
+   305→                animate={{ opacity: 1, y: 0 }}
+   306→                transition={{ duration: 0.3, delay: Math.min(index * 0.05, 0.3), ease: 'easeOut' }}
+   307→              >
+   308→                <Card
+   309→                  className="h-full cursor-pointer gap-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
+   310→                  onClick={() => setDetailId(team.id)}
+   311→                  role="button"
+   312→                  tabIndex={0}
+   313→                  onKeyDown={(e) => {
+   314→                    if (e.key === 'Enter' || e.key === ' ') {
+   315→                      e.preventDefault()
+   316→                      setDetailId(team.id)
+   317→                    }
+   318→                  }}
+   319→                  aria-label={`Open details for ${team.name}`}
+   320→                >
+   321→                  <CardContent className="flex h-full flex-col px-4">
+   322→                    <div className="flex items-start gap-3">
+   323→                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+   324→                        <UsersRound className="h-5 w-5" aria-hidden="true" />
+   325→                      </span>
+   326→                      <div className="min-w-0 flex-1">
+   327→                        <h3 className="truncate text-base font-semibold text-foreground">{team.name}</h3>
+   328→                        <p className="line-clamp-2 min-h-8 text-sm text-muted-foreground">
+   329→                          {team.description ?? 'No description'}
+   330→                        </p>
+   331→                      </div>
+   332→                    </div>
+   333→
+   334→                    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+   335→                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
+   336→                        <Users className="h-3.5 w-3.5" aria-hidden="true" />
+   337→                        {team.memberCount ?? 0} members
+   338→                      </span>
+   339→                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
+   340→                        <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+   341→                        {team.eventCount ?? 0} events
+   342→                      </span>
+   343→                    </div>
+   344→
+   345→                    <Separator className="my-3" />
+   346→
+   347→                    {manager ? (
+   348→                      <div className="flex items-center gap-2">
+   349→                        <Avatar className="h-7 w-7">
+   350→                          <AvatarFallback className="bg-emerald-600 text-[10px] font-semibold text-white">
+   351→                            {initialsOf(manager.fullName)}
+   352→                          </AvatarFallback>
+   353→                        </Avatar>
+   354→                        <span className="truncate text-xs text-muted-foreground">
+   355→                          <span className="font-semibold text-foreground">{manager.fullName}</span> · manager
+   356→                        </span>
+   357→                        <Badge variant="outline" className={cn('ml-auto shrink-0 text-[10px]', ROLE_BADGE_CLASSES.TEAM_LEADER)}>
+   358→                          Team Leader
+   359→                        </Badge>
+   360→                      </div>
+   361→                    ) : (
+   362→                      <p className="text-xs italic text-muted-foreground/70">No manager assigned</p>
+   363→                    )}
+   364→
+   365→                    <div className="mt-3">{memberStack(team)}</div>
+   366→
+   367→                    {events.length > 0 ? (
+   368→                      <ul className="mt-3 space-y-1.5">
+   369→                        {events.slice(0, 3).map((event: EventDTO) => (
+   370→                          <li key={event.id} className="flex items-center justify-between gap-2 text-xs">
+   371→                            <span className="inline-flex min-w-0 items-center gap-1.5 text-muted-foreground">
+   372→                              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+   373→                              <span className="truncate">{event.name}</span>
+   374→                            </span>
+   375→                            <StatusBadge
+   376→                              label={EVENT_STATUS_LABELS[event.status] ?? event.status}
+   377→                              className={cn('shrink-0 text-[10px]', EVENT_STATUS_CLASSES[event.status])}
+   378→                            />
+   379→                          </li>
+   380→                        ))}
+   381→                        {events.length > 3 ? (
+   382→                          <li className="text-[11px] text-muted-foreground/70">+{events.length - 3} more events</li>
+   383→                        ) : null}
+   384→                      </ul>
+   385→                    ) : null}
+   386→                  </CardContent>
+   387→                </Card>
+   388→              </motion.div>
+   389→            )
+   390→          })}
+   391→        </div>
+   392→      )}
+   393→
+   394→      {/* ============ Create dialog ============ */}
+   395→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   396→        <DialogContent className="sm:max-w-lg">
+   397→          <DialogHeader>
+   398→            <DialogTitle>Create a team</DialogTitle>
+   399→            <DialogDescription>Name the team, pick a leader and add members.</DialogDescription>
+   400→          </DialogHeader>
+   401→          <form onSubmit={handleCreate} className="space-y-4" noValidate>
+   402→            {formError ? (
+   403→              <Alert variant="destructive" role="alert">
+   404→                <AlertDescription>{formError}</AlertDescription>
+   405→              </Alert>
+   406→            ) : null}
+   407→
+   408→            <div className="space-y-2">
+   409→              <Label htmlFor="team-name">Name</Label>
+   410→              <Input
+   411→                id="team-name"
+   412→                value={form.name}
+   413→                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+   414→                placeholder="Operations"
+   415→                className="h-11"
+   416→                required
+   417→              />
+   418→            </div>
+   419→
+   420→            <div className="space-y-2">
+   421→              <Label htmlFor="team-description">Description</Label>
+   422→              <Textarea
+   423→                id="team-description"
+   424→                value={form.description}
+   425→                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+   426→                placeholder="What is this team responsible for?"
+   427→                rows={2}
+   428→              />
+   429→            </div>
+   430→
+   431→            <div className="space-y-2">
+   432→              <Label htmlFor="team-manager">Manager</Label>
+   433→              <Select value={form.managerId} onValueChange={(value) => setForm((f) => ({ ...f, managerId: value }))}>
+   434→                <SelectTrigger id="team-manager" className="h-11 w-full" aria-label="Manager">
+   435→                  <SelectValue placeholder="Choose a manager" />
+   436→                </SelectTrigger>
+   437→                <SelectContent>
+   438→                  <SelectItem value={NO_MANAGER}>No manager</SelectItem>
+   439→                  {users.map((user) => (
+   440→                    <SelectItem key={user.id} value={user.id}>
+   441→                      {user.fullName} ({ROLE_LABELS[user.role] ?? user.role})
+   442→                    </SelectItem>
+   443→                  ))}
+   444→                </SelectContent>
+   445→              </Select>
+   446→            </div>
+   447→
+   448→            <div className="space-y-2">
+   449→              <Label>Members</Label>
+   450→              <div className="scrollbar-thin max-h-44 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+   451→                {users.length === 0 ? (
+   452→                  <p className="px-2 py-3 text-center text-sm text-muted-foreground/70">No users available yet.</p>
+   453→                ) : (
+   454→                  users.map((user) => (
+   455→                    <label
+   456→                      key={user.id}
+   457→                      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-accent/50"
+   458→                    >
+   459→                      <Checkbox
+   460→                        checked={form.memberIds.includes(user.id)}
+   461→                        onCheckedChange={() => toggleMember(user.id)}
+   462→                        aria-label={`Add ${user.fullName} as member`}
+   463→                      />
+   464→                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{user.fullName}</span>
+   465→                      <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[user.role])}>
+   466→                        {ROLE_LABELS[user.role] ?? user.role}
+   467→                      </Badge>
+   468→                    </label>
+   469→                  ))
+   470→                )}
+   471→              </div>
+   472→              <p className="text-xs text-muted-foreground/70">{form.memberIds.length} member(s) selected</p>
+   473→            </div>
+   474→
+   475→            <DialogFooter className="gap-2 pt-2">
+   476→              <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>
+   477→                Cancel
+   478→              </Button>
+   479→              <Button type="submit" className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" disabled={saving}>
+   480→                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="mr-2 h-4 w-4" aria-hidden="true" />}
+   481→                {saving ? 'Creating…' : 'Create team'}
+   482→              </Button>
+   483→            </DialogFooter>
+   484→          </form>
+   485→        </DialogContent>
+   486→      </Dialog>
+   487→
+   488→      {/* ============ Detail dialog ============ */}
+   489→      <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
+   490→        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+   491→          {detailLoading || !detail ? (
+   492→            <>
+   493→              <DialogHeader>
+   494→                <DialogTitle className="text-lg">Team details</DialogTitle>
+   495→                <DialogDescription>Loading team information…</DialogDescription>
+   496→              </DialogHeader>
+   497→              <div className="space-y-4 py-2">
+   498→                <Skeleton className="h-7 w-1/2" />
+   499→                <Skeleton className="h-20 w-full" />
+   500→                <Skeleton className="h-32 w-full" />
+   501→              </div>
+   502→            </>
+   503→          ) : (
+   504→            <>
+   505→              <DialogHeader>
+   506→                <div className="flex items-center gap-3">
+   507→                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+   508→                    <UsersRound className="h-5 w-5" aria-hidden="true" />
+   509→                  </span>
+   510→                  <div className="min-w-0">
+   511→                    <DialogTitle className="text-lg">{detail.name}</DialogTitle>
+   512→                    <DialogDescription>
+   513→                      {detail.memberCount ?? detail.members?.length ?? 0} members · {detail.eventCount ?? detail.events?.length ?? 0} events
+   514→                    </DialogDescription>
+   515→                  </div>
+   516→                </div>
+   517→              </DialogHeader>
+   518→
+   519→              {!editing ? (
+   520→                <div className="space-y-4">
+   521→                  {detail.description ? (
+   522→                    <p className="text-sm leading-relaxed text-muted-foreground">{detail.description}</p>
+   523→                  ) : null}
+   524→
+   525→                  {/* Members */}
+   526→                  <section aria-label="Team members">
+   527→                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Members</p>
+   528→                    <ul className="scrollbar-thin max-h-52 space-y-2 overflow-y-auto pr-1">
+   529→                      {(detail.members ?? []).length === 0 ? (
+   530→                        <li className="text-sm text-muted-foreground/70">No members yet.</li>
+   531→                      ) : (
+   532→                        (detail.members ?? []).map((member) => (
+   533→                          <li key={member.id} className="flex items-center gap-2.5">
+   534→                            <Avatar className="h-8 w-8">
+   535→                              <AvatarFallback className="bg-teal-600 text-[10px] font-semibold text-white">
+   536→                                {initialsOf(member.fullName)}
+   537→                              </AvatarFallback>
+   538→                            </Avatar>
+   539→                            <div className="min-w-0 flex-1">
+   540→                              <p className="truncate text-sm font-medium text-foreground">{member.fullName}</p>
+   541→                              <p className="truncate text-xs text-muted-foreground/70">{member.email}</p>
+   542→                            </div>
+   543→                            <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[member.role ?? ''])}>
+   544→                              {ROLE_LABELS[member.role ?? ''] ?? member.role ?? 'Member'}
+   545→                            </Badge>
+   546→                            {detail.managerId === member.id ? (
+   547→                              <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+   548→                                Manager
+   549→                              </Badge>
+   550→                            ) : null}
+   551→                          </li>
+   552→                        ))
+   553→                      )}
+   554→                    </ul>
+   555→                  </section>
+   556→
+   557→                  {/* Events */}
+   558→                  <section aria-label="Team events">
+   559→                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
+   560→                    <ul className="space-y-1.5">
+   561→                      {(detail.events ?? []).length === 0 ? (
+   562→                        <li className="text-sm text-muted-foreground/70">No events assigned to this team.</li>
+   563→                      ) : (
+   564→                        (detail.events ?? []).map((event) => (
+   565→                          <li key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+   566→                            <span className="min-w-0">
+   567→                              <span className="block truncate text-sm font-medium text-foreground">{event.name}</span>
+   568→                              <span className="text-xs text-muted-foreground/70">
+   569→                                {format(new Date(event.startDate), 'MMM d')} – {format(new Date(event.endDate), 'MMM d, yyyy')}
+   570→                              </span>
+   571→                            </span>
+   572→                            <StatusBadge
+   573→                              label={EVENT_STATUS_LABELS[event.status] ?? event.status}
+   574→                              className={cn('shrink-0 text-[10px]', EVENT_STATUS_CLASSES[event.status])}
+   575→                            />
+   576→                          </li>
+   577→                        ))
+   578→                      )}
+   579→                    </ul>
+   580→                  </section>
+   581→                </div>
+   582→              ) : (
+   583→                /* Edit mode */
+   584→                <div className="space-y-4">
+   585→                  <div className="space-y-2">
+   586→                    <Label htmlFor="edit-team-name">Name</Label>
+   587→                    <Input
+   588→                      id="edit-team-name"
+   589→                      value={editForm.name}
+   590→                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+   591→                      className="h-10"
+   592→                    />
+   593→                  </div>
+   594→                  <div className="space-y-2">
+   595→                    <Label htmlFor="edit-team-description">Description</Label>
+   596→                    <Textarea
+   597→                      id="edit-team-description"
+   598→                      value={editForm.description}
+   599→                      onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+   600→                      rows={2}
+   601→                    />
+   602→                  </div>
+   603→                  <div className="space-y-2">
+   604→                    <Label htmlFor="edit-team-manager">Manager</Label>
+   605→                    <Select value={editForm.managerId} onValueChange={(value) => setEditForm((f) => ({ ...f, managerId: value }))}>
+   606→                      <SelectTrigger id="edit-team-manager" className="h-10 w-full" aria-label="Manager">
+   607→                        <SelectValue />
+   608→                      </SelectTrigger>
+   609→                      <SelectContent>
+   610→                        <SelectItem value={NO_MANAGER}>No manager</SelectItem>
+   611→                        {users.map((user) => (
+   612→                          <SelectItem key={user.id} value={user.id}>
+   613→                            {user.fullName} ({ROLE_LABELS[user.role] ?? user.role})
+   614→                          </SelectItem>
+   615→                        ))}
+   616→                      </SelectContent>
+   617→                    </Select>
+   618→                  </div>
+   619→                  <div className="space-y-2">
+   620→                    <Label>Members</Label>
+   621→                    <div className="scrollbar-thin max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+   622→                      {users.map((user) => (
+   623→                        <label key={user.id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-accent/50">
+   624→                          <Checkbox
+   625→                            checked={editForm.memberIds.includes(user.id)}
+   626→                            onCheckedChange={() =>
+   627→                              setEditForm((f) => ({
+   628→                                ...f,
+   629→                                memberIds: f.memberIds.includes(user.id)
+   630→                                  ? f.memberIds.filter((id) => id !== user.id)
+   631→                                  : [...f.memberIds, user.id],
+   632→                              }))
+   633→                            }
+   634→                            aria-label={`Toggle ${user.fullName}`}
+   635→                          />
+   636→                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">{user.fullName}</span>
+   637→                          <Badge variant="outline" className={cn('shrink-0 text-[10px]', ROLE_BADGE_CLASSES[user.role])}>
+   638→                            {ROLE_LABELS[user.role] ?? user.role}
+   639→                          </Badge>
+   640→                        </label>
+   641→                      ))}
+   642→                    </div>
+   643→                  </div>
+   644→                </div>
+   645→              )}
+   646→
+   647→              <DialogFooter className="gap-2 border-t border-border/60 pt-3 sm:justify-between">
+   648→                <Button
+   649→                  variant="outline"
+   650→                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
+   651→                  onClick={() => setDeleteOpen(true)}
+   652→                >
+   653→                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+   654→                  Delete
+   655→                </Button>
+   656→                {editing ? (
+   657→                  <div className="flex gap-2">
+   658→                    <Button variant="ghost" className="min-h-11" onClick={() => setEditing(false)}>
+   659→                      Cancel
+   660→                    </Button>
+   661→                    <Button onClick={() => void handleEditSave()} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" disabled={editSaving}>
+   662→                      {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
+   663→                      {editSaving ? 'Saving…' : 'Save changes'}
+   664→                    </Button>
+   665→                  </div>
+   666→                ) : (
+   667→                  <Button onClick={startEdit} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   668→                    <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+   669→                    Edit team
+   670→                  </Button>
+   671→                )}
+   672→              </DialogFooter>
+   673→            </>
+   674→          )}
+   675→        </DialogContent>
+   676→      </Dialog>
+   677→
+   678→      {/* ============ Delete confirm ============ */}
+   679→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   680→        <AlertDialogContent>
+   681→          <AlertDialogHeader>
+   682→            <AlertDialogTitle>Delete this team?</AlertDialogTitle>
+   683→            <AlertDialogDescription>
+   684→              “{detail?.name}” will be permanently removed. Members stay in the workspace but lose their team
+   685→              affiliation. This action cannot be undone.
+   686→            </AlertDialogDescription>
+   687→          </AlertDialogHeader>
+   688→          <AlertDialogFooter>
+   689→            <AlertDialogCancel className="min-h-11">Cancel</AlertDialogCancel>
+   690→            <AlertDialogAction
+   691→              onClick={(e) => {
+   692→                e.preventDefault()
+   693→                void handleDelete()
+   694→              }}
+   695→              className="min-h-11 bg-red-600 text-white hover:bg-red-700"
+   696→              disabled={deleting}
+   697→            >
+   698→              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
+   699→              {deleting ? 'Deleting…' : 'Delete team'}
+   700→            </AlertDialogAction>
+   701→          </AlertDialogFooter>
+   702→        </AlertDialogContent>
+   703→      </AlertDialog>
+   704→    </div>
+   705→  )
+   706→}
+   707→

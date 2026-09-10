@@ -1,0 +1,1676 @@
+     1→     1→PHASE 3: Team Management
+     2→     2→📌 Step 3.1: Frontend Team Types & Components
+     3→     3→🤖 Complete Prompt for Step 3.1:
+     4→     4→text
+     5→     5→Now we're building Phase 3 - Team Management. First, let's create the frontend types and reusable components.
+     6→     6→
+     7→     7→**Create these files:**
+     8→     8→
+     9→     9→1. **frontend/src/types/team.ts** - Team types:
+    10→    10→```typescript
+    11→    11→export interface Team {
+    12→    12→    id: string
+    13→    13→    name: string
+    14→    14→    description: string | null
+    15→    15→    manager_id: string | null
+    16→    16→    manager_name?: string
+    17→    17→    member_count: number
+    18→    18→    created_at: string
+    19→    19→    updated_at: string
+    20→    20→}
+    21→    21→
+    22→    22→export interface TeamCreate {
+    23→    23→    name: string
+    24→    24→    description?: string
+    25→    25→    manager_id?: string
+    26→    26→}
+    27→    27→
+    28→    28→export interface TeamUpdate {
+    29→    29→    name?: string
+    30→    30→    description?: string
+    31→    31→    manager_id?: string
+    32→    32→}
+    33→    33→
+    34→    34→export interface TeamMember {
+    35→    35→    id: string
+    36→    36→    email: string
+    37→    37→    full_name: string
+    38→    38→    role: 'EVENT_MANAGER' | 'TEAM_LEADER' | 'EMPLOYEE'
+    39→    39→    is_active: boolean
+    40→    40→    joined_at: string
+    41→    41→}
+    42→    42→
+    43→    43→export interface TeamStats {
+    44→    44→    member_count: number
+    45→    45→    event_count: number
+    46→    46→    total_tasks: number
+    47→    47→    completed_tasks: number
+    48→    48→    completion_rate: number
+    49→    49→}
+    50→    50→
+    51→    51→export interface TeamWithMembers extends Team {
+    52→    52→    members: TeamMember[]
+    53→    53→}
+    54→    54→frontend/src/components/ui/Select.tsx - Reusable select component:
+    55→    55→
+    56→    56→typescript
+    57→    57→import { forwardRef } from 'react'
+    58→    58→
+    59→    59→interface SelectOption {
+    60→    60→    value: string
+    61→    61→    label: string
+    62→    62→}
+    63→    63→
+    64→    64→interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+    65→    65→    label?: string
+    66→    66→    error?: string
+    67→    67→    options: SelectOption[]
+    68→    68→    placeholder?: string
+    69→    69→}
+    70→    70→
+    71→    71→// Select component with:
+    72→    72→// - Label support
+    73→    73→// - Error message support
+    74→    74→// - Placeholder option
+    75→    75→// - Custom styling with Tailwind
+    76→    76→// - Forward ref for React Hook Form
+    77→    77→frontend/src/components/ui/Textarea.tsx - Reusable textarea:
+    78→    78→
+    79→    79→typescript
+    80→    80→// Textarea component with:
+    81→    81→// - Label support
+    82→    82→// - Error message support
+    83→    83→// - Auto-resize option
+    84→    84→// - Character count
+    85→    85→// - Tailwind styling
+    86→    86→frontend/src/components/ui/Modal.tsx - Reusable modal:
+    87→    87→
+    88→    88→typescript
+    89→    89→// Modal component with:
+    90→    90→// - Title
+    91→    91→// - Content (children)
+    92→    92→// - Footer actions (optional)
+    93→    93→// - Close on overlay click
+    94→    94→// - Close on Escape key
+    95→    95→// - Animations (fade in/out)
+    96→    96→// - Portal rendering
+    97→    97→frontend/src/components/ui/ConfirmDialog.tsx - Confirmation dialog:
+    98→    98→
+    99→    99→typescript
+   100→   100→// Confirm dialog component with:
+   101→   101→// - Title
+   102→   102→// - Message
+   103→   103→// - Confirm button (danger variant)
+   104→   104→// - Cancel button
+   105→   105→// - Loading state
+   106→   106→// - Used for delete confirmations
+   107→   107→frontend/src/components/ui/Badge.tsx - Badge component:
+   108→   108→
+   109→   109→typescript
+   110→   110→// Badge component with:
+   111→   111→// - Variants: default, primary, success, warning, danger
+   112→   112→// - Sizes: sm, md, lg
+   113→   113→// - Used for roles, statuses, counts
+   114→   114→frontend/src/components/ui/EmptyState.tsx - Empty state component:
+   115→   115→
+   116→   116→typescript
+   117→   117→// Empty state component with:
+   118→   118→// - Icon/illustration
+   119→   119→// - Title
+   120→   120→// - Description
+   121→   121→// - Action button (optional)
+   122→   122→// - Used when no data exists
+   123→   123→frontend/src/components/ui/Avatar.tsx - Avatar component:
+   124→   124→
+   125→   125→typescript
+   126→   126→// Avatar component with:
+   127→   127→// - User initials fallback
+   128→   128→// - Sizes: sm, md, lg
+   129→   129→// - Color based on name
+   130→   130→// - Used for team members, assignees
+   131→   131→Requirements:
+   132→   132→
+   133→   133→All components use Tailwind CSS
+   134→   134→
+   135→   135→All components have TypeScript types
+   136→   136→
+   137→   137→All components are accessible (ARIA labels where needed)
+   138→   138→
+   139→   139→All components are responsive
+   140→   140→
+   141→   141→Generate ALL complete files with proper imports and Tailwind styling.
+   142→   142→
+   143→   143→text
+   144→   144→
+   145→   145→---
+   146→   146→
+   147→   147→### 📌 Step 3.2: Team Service & Store
+   148→   148→
+   149→   149→#### 🤖 Complete Prompt for Step 3.2:
+   150→   150→Now create the team API service and state management.
+   151→   151→
+   152→   152→Create these files:
+   153→   153→
+   154→   154→frontend/src/services/teamService.ts - Team API service:
+   155→   155→
+   156→   156→typescript
+   157→   157→import api from './api'
+   158→   158→import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+   159→   159→
+   160→   160→export const teamService = {
+   161→   161→    // Get all teams (with optional filters)
+   162→   162→    getTeams: async (params?: { search?: string; manager_id?: string }) => {
+   163→   163→        const response = await api.get('/teams', { params })
+   164→   164→        return response.data
+   165→   165→    },
+   166→   166→    
+   167→   167→    // Get single team by ID
+   168→   168→    getTeam: async (id: string) => {
+   169→   169→        const response = await api.get(`/teams/${id}`)
+   170→   170→        return response.data
+   171→   171→    },
+   172→   172→    
+   173→   173→    // Create new team
+   174→   174→    createTeam: async (data: TeamCreate) => {
+   175→   175→        const response = await api.post('/teams', data)
+   176→   176→        return response.data
+   177→   177→    },
+   178→   178→    
+   179→   179→    // Update team
+   180→   180→    updateTeam: async (id: string, data: TeamUpdate) => {
+   181→   181→        const response = await api.put(`/teams/${id}`, data)
+   182→   182→        return response.data
+   183→   183→    },
+   184→   184→    
+   185→   185→    // Delete team
+   186→   186→    deleteTeam: async (id: string) => {
+   187→   187→        const response = await api.delete(`/teams/${id}`)
+   188→   188→        return response.data
+   189→   189→    },
+   190→   190→    
+   191→   191→    // Get team members
+   192→   192→    getTeamMembers: async (teamId: string) => {
+   193→   193→        const response = await api.get(`/teams/${teamId}/members`)
+   194→   194→        return response.data
+   195→   195→    },
+   196→   196→    
+   197→   197→    // Add member to team
+   198→   198→    addMember: async (teamId: string, userId: string) => {
+   199→   199→        const response = await api.post(`/teams/${teamId}/members`, { user_id: userId })
+   200→   200→        return response.data
+   201→   201→    },
+   202→   202→    
+   203→   203→    // Remove member from team
+   204→   204→    removeMember: async (teamId: string, userId: string) => {
+   205→   205→        const response = await api.delete(`/teams/${teamId}/members/${userId}`)
+   206→   206→        return response.data
+   207→   207→    },
+   208→   208→    
+   209→   209→    // Get team statistics
+   210→   210→    getTeamStats: async (teamId: string) => {
+   211→   211→        const response = await api.get(`/teams/${teamId}/stats`)
+   212→   212→        return response.data
+   213→   213→    }
+   214→   214→}
+   215→   215→frontend/src/stores/teamStore.ts - Zustand store for teams:
+   216→   216→
+   217→   217→typescript
+   218→   218→import { create } from 'zustand'
+   219→   219→import { teamService } from '../services/teamService'
+   220→   220→import { Team, TeamCreate, TeamUpdate, TeamMember, TeamStats } from '../types/team'
+   221→   221→
+   222→   222→interface TeamState {
+   223→   223→    // State
+   224→   224→    teams: Team[]
+   225→   225→    currentTeam: Team | null
+   226→   226→    teamMembers: TeamMember[]
+   227→   227→    teamStats: TeamStats | null
+   228→   228→    isLoading: boolean
+   229→   229→    error: string | null
+   230→   230→    
+   231→   231→    // Actions
+   232→   232→    fetchTeams: (params?: any) => Promise<void>
+   233→   233→    fetchTeam: (id: string) => Promise<void>
+   234→   234→    createTeam: (data: TeamCreate) => Promise<Team>
+   235→   235→    updateTeam: (id: string, data: TeamUpdate) => Promise<Team>
+   236→   236→    deleteTeam: (id: string) => Promise<void>
+   237→   237→    fetchTeamMembers: (teamId: string) => Promise<void>
+   238→   238→    addMember: (teamId: string, userId: string) => Promise<void>
+   239→   239→    removeMember: (teamId: string, userId: string) => Promise<void>
+   240→   240→    fetchTeamStats: (teamId: string) => Promise<void>
+   241→   241→    clearError: () => void
+   242→   242→    clearCurrentTeam: () => void
+   243→   243→}
+   244→   244→
+   245→   245→export const useTeamStore = create<TeamState>((set, get) => ({
+   246→   246→    // Initial state
+   247→   247→    teams: [],
+   248→   248→    currentTeam: null,
+   249→   249→    teamMembers: [],
+   250→   250→    teamStats: null,
+   251→   251→    isLoading: false,
+   252→   252→    error: null,
+   253→   253→    
+   254→   254→    // Fetch all teams
+   255→   255→    fetchTeams: async (params) => {
+   256→   256→        set({ isLoading: true, error: null })
+   257→   257→        try {
+   258→   258→            const teams = await teamService.getTeams(params)
+   259→   259→            set({ teams, isLoading: false })
+   260→   260→        } catch (error: any) {
+   261→   261→            set({ 
+   262→   262→                error: error.response?.data?.detail || 'Failed to fetch teams', 
+   263→   263→                isLoading: false 
+   264→   264→            })
+   265→   265→        }
+   266→   266→    },
+   267→   267→    
+   268→   268→    // Fetch single team
+   269→   269→    fetchTeam: async (id) => {
+   270→   270→        set({ isLoading: true, error: null })
+   271→   271→        try {
+   272→   272→            const team = await teamService.getTeam(id)
+   273→   273→            set({ currentTeam: team, isLoading: false })
+   274→   274→        } catch (error: any) {
+   275→   275→            set({ 
+   276→   276→                error: error.response?.data?.detail || 'Failed to fetch team', 
+   277→   277→                isLoading: false 
+   278→   278→            })
+   279→   279→        }
+   280→   280→    },
+   281→   281→    
+   282→   282→    // Create team
+   283→   283→    createTeam: async (data) => {
+   284→   284→        set({ isLoading: true, error: null })
+   285→   285→        try {
+   286→   286→            const team = await teamService.createTeam(data)
+   287→   287→            set(state => ({ 
+   288→   288→                teams: [...state.teams, team], 
+   289→   289→                isLoading: false 
+   290→   290→            }))
+   291→   291→            return team
+   292→   292→        } catch (error: any) {
+   293→   293→            set({ 
+   294→   294→                error: error.response?.data?.detail || 'Failed to create team', 
+   295→   295→                isLoading: false 
+   296→   296→            })
+   297→   297→            throw error
+   298→   298→        }
+   299→   299→    },
+   300→   300→    
+   301→   301→    // Update team
+   302→   302→    updateTeam: async (id, data) => {
+   303→   303→        set({ isLoading: true, error: null })
+   304→   304→        try {
+   305→   305→            const updatedTeam = await teamService.updateTeam(id, data)
+   306→   306→            set(state => ({
+   307→   307→                teams: state.teams.map(t => t.id === id ? updatedTeam : t),
+   308→   308→                currentTeam: state.currentTeam?.id === id ? updatedTeam : state.currentTeam,
+   309→   309→                isLoading: false
+   310→   310→            }))
+   311→   311→            return updatedTeam
+   312→   312→        } catch (error: any) {
+   313→   313→            set({ 
+   314→   314→                error: error.response?.data?.detail || 'Failed to update team', 
+   315→   315→                isLoading: false 
+   316→   316→            })
+   317→   317→            throw error
+   318→   318→        }
+   319→   319→    },
+   320→   320→    
+   321→   321→    // Delete team
+   322→   322→    deleteTeam: async (id) => {
+   323→   323→        set({ isLoading: true, error: null })
+   324→   324→        try {
+   325→   325→            await teamService.deleteTeam(id)
+   326→   326→            set(state => ({
+   327→   327→                teams: state.teams.filter(t => t.id !== id),
+   328→   328→                currentTeam: state.currentTeam?.id === id ? null : state.currentTeam,
+   329→   329→                isLoading: false
+   330→   330→            }))
+   331→   331→        } catch (error: any) {
+   332→   332→            set({ 
+   333→   333→                error: error.response?.data?.detail || 'Failed to delete team', 
+   334→   334→                isLoading: false 
+   335→   335→            })
+   336→   336→            throw error
+   337→   337→        }
+   338→   338→    },
+   339→   339→    
+   340→   340→    // Fetch team members
+   341→   341→    fetchTeamMembers: async (teamId) => {
+   342→   342→        set({ isLoading: true, error: null })
+   343→   343→        try {
+   344→   344→            const members = await teamService.getTeamMembers(teamId)
+   345→   345→            set({ teamMembers: members, isLoading: false })
+   346→   346→        } catch (error: any) {
+   347→   347→            set({ 
+   348→   348→                error: error.response?.data?.detail || 'Failed to fetch team members', 
+   349→   349→                isLoading: false 
+   350→   350→            })
+   351→   351→        }
+   352→   352→    },
+   353→   353→    
+   354→   354→    // Add member to team
+   355→   355→    addMember: async (teamId, userId) => {
+   356→   356→        set({ isLoading: true, error: null })
+   357→   357→        try {
+   358→   358→            await teamService.addMember(teamId, userId)
+   359→   359→            // Refresh members list
+   360→   360→            const members = await teamService.getTeamMembers(teamId)
+   361→   361→            set({ teamMembers: members, isLoading: false })
+   362→   362→        } catch (error: any) {
+   363→   363→            set({ 
+   364→   364→                error: error.response?.data?.detail || 'Failed to add member', 
+   365→   365→                isLoading: false 
+   366→   366→            })
+   367→   367→            throw error
+   368→   368→        }
+   369→   369→    },
+   370→   370→    
+   371→   371→    // Remove member from team
+   372→   372→    removeMember: async (teamId, userId) => {
+   373→   373→        set({ isLoading: true, error: null })
+   374→   374→        try {
+   375→   375→            await teamService.removeMember(teamId, userId)
+   376→   376→            set(state => ({
+   377→   377→                teamMembers: state.teamMembers.filter(m => m.id !== userId),
+   378→   378→                isLoading: false
+   379→   379→            }))
+   380→   380→        } catch (error: any) {
+   381→   381→            set({ 
+   382→   382→                error: error.response?.data?.detail || 'Failed to remove member', 
+   383→   383→                isLoading: false 
+   384→   384→            })
+   385→   385→            throw error
+   386→   386→        }
+   387→   387→    },
+   388→   388→    
+   389→   389→    // Fetch team stats
+   390→   390→    fetchTeamStats: async (teamId) => {
+   391→   391→        try {
+   392→   392→            const stats = await teamService.getTeamStats(teamId)
+   393→   393→            set({ teamStats: stats })
+   394→   394→        } catch (error: any) {
+   395→   395→            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+   396→   396→        }
+   397→   397→    },
+   398→   398→    
+   399→   399→    // Clear error
+   400→   400→    clearError: () => set({ error: null }),
+   401→   401→    
+   402→   402→    // Clear current team
+   403→   403→    clearCurrentTeam: () => set({ currentTeam: null, teamMembers: [], teamStats: null })
+   404→   404→}))
+   405→   405→frontend/src/hooks/useTeams.ts - Custom hooks for teams:
+   406→   406→
+   407→   407→typescript
+   408→   408→import { useEffect } from 'react'
+   409→   409→import { useTeamStore } from '../stores/teamStore'
+   410→   410→
+   411→   411→export const useTeams = (params?: any) => {
+   412→   412→    const { teams, isLoading, error, fetchTeams } = useTeamStore()
+   413→   413→    
+   414→   414→    useEffect(() => {
+   415→   415→        fetchTeams(params)
+   416→   416→    }, [])
+   417→   417→    
+   418→   418→    return { teams, isLoading, error, refetch: () => fetchTeams(params) }
+   419→   419→}
+   420→   420→
+   421→   421→export const useTeam = (id: string) => {
+   422→   422→    const { currentTeam, isLoading, error, fetchTeam } = useTeamStore()
+   423→   423→    
+   424→   424→    useEffect(() => {
+   425→   425→        if (id) fetchTeam(id)
+   426→   426→    }, [id])
+   427→   427→    
+   428→   428→    return { team: currentTeam, isLoading, error, refetch: () => fetchTeam(id) }
+   429→   429→}
+   430→   430→
+   431→   431→export const useTeamMembers = (teamId: string) => {
+   432→   432→    const { teamMembers, isLoading, fetchTeamMembers } = useTeamStore()
+   433→   433→    
+   434→   434→    useEffect(() => {
+   435→   435→        if (teamId) fetchTeamMembers(teamId)
+   436→   436→    }, [teamId])
+   437→   437→    
+   438→   438→    return { members: teamMembers, isLoading, refetch: () => fetchTeamMembers(teamId) }
+   439→   439→}
+   440→   440→Requirements:
+   441→   441→
+   442→   442→All services use the axios instance from api.ts
+   443→   443→
+   444→   444→All stores use Zustand with proper TypeScript types
+   445→   445→
+   446→   446→Loading states and error handling everywhere
+   447→   447→
+   448→   448→Optimistic updates where possible
+   449→   449→
+   450→   450→Generate ALL complete files with proper imports.
+   451→   451→
+   452→   452→text
+   453→   453→
+   454→   454→---
+   455→   455→
+   456→   456→### 📌 Step 3.3: Backend Team Models, Schemas & CRUD
+   457→   457→
+   458→   458→#### 🤖 Complete Prompt for Step 3.3:
+   459→   459→Now build the backend team management system with FastAPI.
+   460→   460→
+   461→   461→Create these files:
+   462→   462→
+   463→   463→backend/app/schemas/team.py - Team schemas:
+   464→   464→
+   465→   465→python
+   466→   466→from pydantic import BaseModel, Field
+   467→   467→from typing import Optional, List
+   468→   468→from datetime import datetime
+   469→   469→from uuid import UUID
+   470→   470→
+   471→   471→class TeamBase(BaseModel):
+   472→   472→    name: str = Field(..., min_length=3, max_length=100)
+   473→   473→    description: Optional[str] = Field(None, max_length=500)
+   474→   474→
+   475→   475→class TeamCreate(TeamBase):
+   476→   476→    manager_id: Optional[UUID] = None
+   477→   477→
+   478→   478→class TeamUpdate(BaseModel):
+   479→   479→    name: Optional[str] = Field(None, min_length=3, max_length=100)
+   480→   480→    description: Optional[str] = Field(None, max_length=500)
+   481→   481→    manager_id: Optional[UUID] = None
+   482→   482→
+   483→   483→class TeamResponse(TeamBase):
+   484→   484→    id: UUID
+   485→   485→    manager_id: Optional[UUID]
+   486→   486→    manager_name: Optional[str]
+   487→   487→    member_count: int
+   488→   488→    created_at: datetime
+   489→   489→    updated_at: Optional[datetime]
+   490→   490→
+   491→   491→    class Config:
+   492→   492→        from_attributes = True
+   493→   493→
+   494→   494→class TeamMemberAdd(BaseModel):
+   495→   495→    user_id: UUID
+   496→   496→
+   497→   497→class TeamMemberResponse(BaseModel):
+   498→   498→    id: UUID
+   499→   499→    email: str
+   500→   500→    full_name: str
+   501→   501→    role: str
+   502→   502→    is_active: bool
+   503→   503→    joined_at: datetime
+   504→   504→
+   505→   505→    class Config:
+   506→   506→        from_attributes = True
+   507→   507→
+   508→   508→class TeamStats(BaseModel):
+   509→   509→    member_count: int
+   510→   510→    event_count: int
+   511→   511→    total_tasks: int
+   512→   512→    completed_tasks: int
+   513→   513→    completion_rate: float
+   514→   514→backend/app/crud/team.py - Team CRUD operations:
+   515→   515→
+   516→   516→python
+   517→   517→from sqlalchemy.orm import Session
+   518→   518→from sqlalchemy import func
+   519→   519→from typing import List, Optional
+   520→   520→from uuid import UUID
+   521→   521→from fastapi import HTTPException, status
+   522→   522→
+   523→   523→from app.models.team import Team
+   524→   524→from app.models.user import User
+   525→   525→from app.models.event import Event
+   526→   526→from app.models.task import Task
+   527→   527→from app.schemas.team import TeamCreate, TeamUpdate
+   528→   528→
+   529→   529→def get_team(db: Session, team_id: UUID) -> Optional[Team]:
+   530→   530→    """Get team by ID"""
+   531→   531→    # Query team by ID
+   532→   532→    # Return team or None
+   533→   533→
+   534→   534→def get_teams(
+   535→   535→    db: Session, 
+   536→   536→    skip: int = 0, 
+   537→   537→    limit: int = 100,
+   538→   538→    search: Optional[str] = None,
+   539→   539→    manager_id: Optional[UUID] = None
+   540→   540→) -> List[Team]:
+   541→   541→    """Get all teams with filters"""
+   542→   542→    # Query teams with optional filters
+   543→   543→    # Return list of teams
+   544→   544→
+   545→   545→def get_user_teams(db: Session, user_id: UUID) -> List[Team]:
+   546→   546→    """Get all teams a user belongs to"""
+   547→   547→    # Query teams where user is a member
+   548→   548→    # Return list of teams
+   549→   549→
+   550→   550→def create_team(db: Session, team_data: TeamCreate, created_by: UUID) -> Team:
+   551→   551→    """Create new team"""
+   552→   552→    # Check if team name already exists
+   553→   553→    # Create team
+   554→   554→    # Return team
+   555→   555→
+   556→   556→def update_team(db: Session, team_id: UUID, team_data: TeamUpdate) -> Team:
+   557→   557→    """Update team"""
+   558→   558→    # Get team
+   559→   559→    # Update fields
+   560→   560→    # Return updated team
+   561→   561→
+   562→   562→def delete_team(db: Session, team_id: UUID) -> bool:
+   563→   563→    """Delete team"""
+   564→   564→    # Check if team has events
+   565→   565→    # If has events, raise error
+   566→   566→    # Delete team
+   567→   567→    # Return True
+   568→   568→
+   569→   569→def add_member(db: Session, team_id: UUID, user_id: UUID) -> Team:
+   570→   570→    """Add member to team"""
+   571→   571→    # Check if team exists
+   572→   572→    # Check if user exists
+   573→   573→    # Check if user is already in team
+   574→   574→    # Update user's team_id
+   575→   575→    # Return team
+   576→   576→
+   577→   577→def remove_member(db: Session, team_id: UUID, user_id: UUID) -> bool:
+   578→   578→    """Remove member from team"""
+   579→   579→    # Check if team exists
+   580→   580→    # Check if user is in team
+   581→   581→    # Remove user from team (set team_id to None)
+   582→   582→    # Return True
+   583→   583→
+   584→   584→def get_team_members(db: Session, team_id: UUID) -> List[User]:
+   585→   585→    """Get all members of a team"""
+   586→   586→    # Query users where team_id = team_id
+   587→   587→    # Return list of users
+   588→   588→
+   589→   589→def get_team_stats(db: Session, team_id: UUID) -> dict:
+   590→   590→    """Get team statistics"""
+   591→   591→    # Count members
+   592→   592→    # Count events
+   593→   593→    # Count tasks
+   594→   594→    # Count completed tasks
+   595→   595→    # Calculate completion rate
+   596→   596→    # Return stats dict
+   597→   597→
+   598→   598→def is_user_in_team(db: Session, user_id: UUID, team_id: UUID) -> bool:
+   599→   599→    """Check if user is in team"""
+   600→   600→    # Query user's team_id
+   601→   601→    # Return bool
+   602→   602→backend/app/api/v1/teams.py - Team API endpoints:
+   603→   603→
+   604→   604→python
+   605→   605→from fastapi import APIRouter, Depends, HTTPException, status, Query
+   606→   606→from sqlalchemy.orm import Session
+   607→   607→from typing import List, Optional
+   608→   608→from uuid import UUID
+   609→   609→
+   610→   610→from app.api.deps import get_current_active_user, require_roles
+   611→   611→from app.core.database import get_db
+   612→   612→from app.crud import team as team_crud
+   613→   613→from app.models.user import User, UserRole
+   614→   614→from app.schemas.team import (
+   615→   615→    TeamCreate, TeamUpdate, TeamResponse, 
+   616→   616→    TeamMemberAdd, TeamMemberResponse, TeamStats
+   617→   617→)
+   618→   618→
+   619→   619→router = APIRouter()
+   620→   620→
+   621→   621→@router.get("/", response_model=List[TeamResponse])
+   622→   622→async def get_teams(
+   623→   623→    skip: int = 0,
+   624→   624→    limit: int = 100,
+   625→   625→    search: Optional[str] = None,
+   626→   626→    manager_id: Optional[UUID] = None,
+   627→   627→    db: Session = Depends(get_db),
+   628→   628→    current_user: User = Depends(get_current_active_user)
+   629→   629→):
+   630→   630→    """
+   631→   631→    Get all teams.
+   632→   632→    
+   633→   633→    - **search**: Search by team name
+   634→   634→    - **manager_id**: Filter by manager
+   635→   635→    - **skip**: Pagination offset
+   636→   636→    - **limit**: Number of results
+   637→   637→    """
+   638→   638→    # Get teams
+   639→   639→    # Return list
+   640→   640→
+   641→   641→@router.post("/", response_model=TeamResponse, status_code=201)
+   642→   642→async def create_team(
+   643→   643→    team_data: TeamCreate,
+   644→   644→    db: Session = Depends(get_db),
+   645→   645→    current_user: User = Depends(require_roles([UserRole.EVENT_MANAGER, UserRole.TEAM_LEADER]))
+   646→   646→):
+   647→   647→    """
+   648→   648→    Create a new team.
+   649→   649→    
+   650→   650→    Requires: EVENT_MANAGER or TEAM_LEADER role
+   651→   651→    """
+   652→   652→    # Create team
+   653→   653→    # Return team
+   654→   654→
+   655→   655→@router.get("/{team_id}", response_model=TeamResponse)
+   656→   656→async def get_team(
+   657→   657→    team_id: UUID,
+   658→   658→    db: Session = Depends(get_db),
+   659→   659→    current_user: User = Depends(get_current_active_user)
+   660→   660→):
+   661→   661→    """Get team by ID"""
+   662→   662→    # Get team
+   663→   663→    # Return team
+   664→   664→
+   665→   665→@router.put("/{team_id}", response_model=TeamResponse)
+   666→   666→async def update_team(
+   667→   667→    team_id: UUID,
+   668→   668→    team_data: TeamUpdate,
+   669→   669→    db: Session = Depends(get_db),
+   670→   670→    current_user: User = Depends(get_current_active_user)
+   671→   671→):
+   672→   672→    """Update team"""
+   673→   673→    # Check permission (manager or admin)
+   674→   674→    # Update team
+   675→   675→    # Return updated team
+   676→   676→
+   677→   677→@router.delete("/{team_id}", status_code=204)
+   678→   678→async def delete_team(
+   679→   679→    team_id: UUID,
+   680→   680→    db: Session = Depends(get_db),
+   681→   681→    current_user: User = Depends(get_current_active_user)
+   682→   682→):
+   683→   683→    """Delete team"""
+   684→   684→    # Check permission
+   685→   685→    # Delete team
+   686→   686→    # Return no content
+   687→   687→
+   688→   688→@router.get("/{team_id}/members", response_model=List[TeamMemberResponse])
+   689→   689→async def get_team_members(
+   690→   690→    team_id: UUID,
+   691→   691→    db: Session = Depends(get_db),
+   692→   692→    current_user: User = Depends(get_current_active_user)
+   693→   693→):
+   694→   694→    """Get all members of a team"""
+   695→   695→    # Get members
+   696→   696→    # Return list
+   697→   697→
+   698→   698→@router.post("/{team_id}/members", response_model=TeamResponse)
+   699→   699→async def add_team_member(
+   700→   700→    team_id: UUID,
+   701→   701→    member_data: TeamMemberAdd,
+   702→   702→    db: Session = Depends(get_db),
+   703→   703→    current_user: User = Depends(get_current_active_user)
+   704→   704→):
+   705→   705→    """Add member to team"""
+   706→   706→    # Check permission
+   707→   707→    # Add member
+   708→   708→    # Return team
+   709→   709→
+   710→   710→@router.delete("/{team_id}/members/{user_id}", status_code=204)
+   711→   711→async def remove_team_member(
+   712→   712→    team_id: UUID,
+   713→   713→    user_id: UUID,
+   714→   714→    db: Session = Depends(get_db),
+   715→   715→    current_user: User = Depends(get_current_active_user)
+   716→   716→):
+   717→   717→    """Remove member from team"""
+   718→   718→    # Check permission
+   719→   719→    # Remove member
+   720→   720→    # Return no content
+   721→   721→
+   722→   722→@router.get("/{team_id}/stats", response_model=TeamStats)
+   723→   723→async def get_team_stats(
+   724→   724→    team_id: UUID,
+   725→   725→    db: Session = Depends(get_db),
+   726→   726→    current_user: User = Depends(get_current_active_user)
+   727→   727→):
+   728→   728→    """Get team statistics"""
+   729→   729→    # Get stats
+   730→   730→    # Return stats
+   731→   731→Update backend/app/main.py - Include team router:
+   732→   732→
+   733→   733→python
+   734→   734→# Import team router
+   735→   735→from app.api.v1 import teams
+   736→   736→
+   737→   737→# Register router
+   738→   738→app.include_router(
+   739→   739→    teams.router,
+   740→   740→    prefix="/api/v1/teams",
+   741→   741→    tags=["Teams"]
+   742→   742→)
+   743→   743→Requirements:
+   744→   744→
+   745→   745→All endpoints need authentication
+   746→   746→
+   747→   747→Role-based access control for create/update/delete
+   748→   748→
+   749→   749→Proper error handling with HTTP status codes
+   750→   750→
+   751→   751→OpenAPI documentation for all endpoints
+   752→   752→
+   753→   753→Pagination support for list endpoints
+   754→   754→
+   755→   755→Generate ALL complete files with proper imports and error handling.
+   756→   756→
+   757→   757→text
+   758→   758→
+   759→   759→---
+   760→   760→
+   761→   761→### 📌 Step 3.4: Frontend Team Components
+   762→   762→
+   763→   763→#### 🤖 Complete Prompt for Step 3.4:
+   764→   764→Now create the team UI components.
+   765→   765→
+   766→   766→Create these files:
+   767→   767→
+   768→   768→frontend/src/components/teams/TeamCard.tsx - Team card component:
+   769→   769→
+   770→   770→typescript
+   771→   771→import { Link } from 'react-router-dom'
+   772→   772→import { Team } from '../../types/team'
+   773→   773→import { Card } from '../ui/Card'
+   774→   774→import { Badge } from '../ui/Badge'
+   775→   775→import { Button } from '../ui/Button'
+   776→   776→
+   777→   777→interface TeamCardProps {
+   778→   778→    team: Team
+   779→   779→    onDelete?: (id: string) => void
+   780→   780→}
+   781→   781→
+   782→   782→// Display:
+   783→   783→// - Team name (bold, link to detail)
+   784→   784→// - Description (truncated)
+   785→   785→// - Member count with badge
+   786→   786→// - Manager name
+   787→   787→// - Created date
+   788→   788→// - Action buttons: View, Edit, Delete
+   789→   789→// - Hover effect
+   790→   790→// - Responsive design
+   791→   791→
+   792→   792→export const TeamCard = ({ team, onDelete }: TeamCardProps) => {
+   793→   793→    return (
+   794→   794→        <Card className="hover:shadow-lg transition-shadow">
+   795→   795→            <div className="p-6">
+   796→   796→                {/* Header */}
+   797→   797→                <div className="flex justify-between items-start">
+   798→   798→                    <div>
+   799→   799→                        <h3 className="text-lg font-semibold">
+   800→   800→                            <Link to={`/teams/${team.id}`} className="hover:text-blue-600">
+   801→   801→                                {team.name}
+   802→   802→                            </Link>
+   803→   803→                        </h3>
+   804→   804→                        {team.description && (
+   805→   805→                            <p className="text-gray-600 text-sm mt-1 line-clamp-2">
+   806→   806→                                {team.description}
+   807→   807→                            </p>
+   808→   808→                        )}
+   809→   809→                    </div>
+   810→   810→                    <Badge variant="primary">
+   811→   811→                        {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
+   812→   812→                    </Badge>
+   813→   813→                </div>
+   814→   814→                
+   815→   815→                {/* Manager */}
+   816→   816→                {team.manager_name && (
+   817→   817→                    <p className="text-sm text-gray-500 mt-4">
+   818→   818→                        Manager: <span className="font-medium">{team.manager_name}</span>
+   819→   819→                    </p>
+   820→   820→                )}
+   821→   821→                
+   822→   822→                {/* Actions */}
+   823→   823→                <div className="flex gap-2 mt-4">
+   824→   824→                    <Link to={`/teams/${team.id}`}>
+   825→   825→                        <Button variant="secondary" size="sm">View</Button>
+   826→   826→                    </Link>
+   827→   827→                    <Link to={`/teams/${team.id}/edit`}>
+   828→   828→                        <Button variant="secondary" size="sm">Edit</Button>
+   829→   829→                    </Link>
+   830→   830→                    {onDelete && (
+   831→   831→                        <Button 
+   832→   832→                            variant="danger" 
+   833→   833→                            size="sm" 
+   834→   834→                            onClick={() => onDelete(team.id)}
+   835→   835→                        >
+   836→   836→                            Delete
+   837→   837→                        </Button>
+   838→   838→                    )}
+   839→   839→                </div>
+   840→   840→            </div>
+   841→   841→        </Card>
+   842→   842→    )
+   843→   843→}
+   844→   844→frontend/src/components/teams/TeamList.tsx - Team list component:
+   845→   845→
+   846→   846→typescript
+   847→   847→import { Team } from '../../types/team'
+   848→   848→import { TeamCard } from './TeamCard'
+   849→   849→import { EmptyState } from '../ui/EmptyState'
+   850→   850→import { LoadingSkeleton } from '../ui/LoadingSkeleton'
+   851→   851→
+   852→   852→interface TeamListProps {
+   853→   853→    teams: Team[]
+   854→   854→    isLoading: boolean
+   855→   855→    onDelete?: (id: string) => void
+   856→   856→}
+   857→   857→
+   858→   858→// Display:
+   859→   859→// - Grid of TeamCards (responsive: 1 col mobile, 2 col tablet, 3 col desktop)
+   860→   860→// - Loading skeletons
+   861→   861→// - Empty state with "Create Team" CTA
+   862→   862→// - Error state
+   863→   863→
+   864→   864→export const TeamList = ({ teams, isLoading, onDelete }: TeamListProps) => {
+   865→   865→    if (isLoading) {
+   866→   866→        return <LoadingSkeleton type="card" count={6} />
+   867→   867→    }
+   868→   868→    
+   869→   869→    if (teams.length === 0) {
+   870→   870→        return (
+   871→   871→            <EmptyState
+   872→   872→                title="No teams yet"
+   873→   873→                description="Create your first team to start organizing your events."
+   874→   874→                actionLabel="Create Team"
+   875→   875→                actionLink="/teams/new"
+   876→   876→            />
+   877→   877→        )
+   878→   878→    }
+   879→   879→    
+   880→   880→    return (
+   881→   881→        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+   882→   882→            {teams.map(team => (
+   883→   883→                <TeamCard key={team.id} team={team} onDelete={onDelete} />
+   884→   884→            ))}
+   885→   885→        </div>
+   886→   886→    )
+   887→   887→}
+   888→   888→frontend/src/components/teams/TeamForm.tsx - Team create/edit form:
+   889→   889→
+   890→   890→typescript
+   891→   891→import { useForm } from 'react-hook-form'
+   892→   892→import { zodResolver } from '@hookform/resolvers/zod'
+   893→   893→import { z } from 'zod'
+   894→   894→import { Team, TeamCreate } from '../../types/team'
+   895→   895→import { Input } from '../ui/Input'
+   896→   896→import { Textarea } from '../ui/Textarea'
+   897→   897→import { Button } from '../ui/Button'
+   898→   898→import { Select } from '../ui/Select'
+   899→   899→
+   900→   900→const teamSchema = z.object({
+   901→   901→    name: z.string().min(3, 'Name must be at least 3 characters').max(100),
+   902→   902→    description: z.string().max(500).optional(),
+   903→   903→    manager_id: z.string().optional()
+   904→   904→})
+   905→   905→
+   906→   906→interface TeamFormProps {
+   907→   907→    team?: Team
+   908→   908→    onSubmit: (data: TeamCreate) => Promise<void>
+   909→   909→    isLoading?: boolean
+   910→   910→    users?: any[] // For manager selection
+   911→   911→}
+   912→   912→
+   913→   913→// Form fields:
+   914→   914→// - Name (required)
+   915→   915→// - Description (optional)
+   916→   916→// - Manager (dropdown, optional)
+   917→   917→// - Submit button with loading state
+   918→   918→// - Cancel button
+   919→   919→
+   920→   920→export const TeamForm = ({ team, onSubmit, isLoading, users }: TeamFormProps) => {
+   921→   921→    const { register, handleSubmit, formState: { errors } } = useForm({
+   922→   922→        resolver: zodResolver(teamSchema),
+   923→   923→        defaultValues: team ? {
+   924→   924→            name: team.name,
+   925→   925→            description: team.description || '',
+   926→   926→            manager_id: team.manager_id || ''
+   927→   927→        } : undefined
+   928→   928→    })
+   929→   929→    
+   930→   930→    return (
+   931→   931→        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+   932→   932→            <Input
+   933→   933→                label="Team Name"
+   934→   934→                placeholder="e.g., Marketing Team"
+   935→   935→                error={errors.name?.message}
+   936→   936→                {...register('name')}
+   937→   937→            />
+   938→   938→            
+   939→   939→            <Textarea
+   940→   940→                label="Description"
+   941→   941→                placeholder="What is this team responsible for?"
+   942→   942→                error={errors.description?.message}
+   943→   943→                {...register('description')}
+   944→   944→            />
+   945→   945→            
+   946→   946→            {/* Manager select - only if users provided */}
+   947→   947→            
+   948→   948→            <div className="flex gap-4">
+   949→   949→                <Button type="submit" isLoading={isLoading}>
+   950→   950→                    {team ? 'Update Team' : 'Create Team'}
+   951→   951→                </Button>
+   952→   952→                <Button type="button" variant="secondary" onClick={() => window.history.back()}>
+   953→   953→                    Cancel
+   954→   954→                </Button>
+   955→   955→            </div>
+   956→   956→        </form>
+   957→   957→    )
+   958→   958→}
+   959→   959→frontend/src/components/teams/TeamMembers.tsx - Team members list:
+   960→   960→
+   961→   961→typescript
+   962→   962→import { useState } from 'react'
+   963→   963→import { TeamMember } from '../../types/team'
+   964→   964→import { Avatar } from '../ui/Avatar'
+   965→   965→import { Badge } from '../ui/Badge'
+   966→   966→import { Button } from '../ui/Button'
+   967→   967→import { Modal } from '../ui/Modal'
+   968→   968→import { Select } from '../ui/Select'
+   969→   969→
+   970→   970→interface TeamMembersProps {
+   971→   971→    teamId: string
+   972→   972→    members: TeamMember[]
+   973→   973→    availableUsers: any[] // Users not in team
+   974→   974→    onAddMember: (userId: string) => Promise<void>
+   975→   975→    onRemoveMember: (userId: string) => Promise<void>
+   976→   976→    isLoading?: boolean
+   977→   977→}
+   978→   978→
+   979→   979→// Display:
+   980→   980→// - List of members with avatar, name, email, role
+   981→   981→// - "Add Member" button (opens modal)
+   982→   982→// - Remove button for each member
+   983→   983→// - Modal with user search/select
+   984→   984→// - Empty state
+   985→   985→
+   986→   986→export const TeamMembers = ({ 
+   987→   987→    teamId, 
+   988→   988→    members, 
+   989→   989→    availableUsers,
+   990→   990→    onAddMember, 
+   991→   991→    onRemoveMember,
+   992→   992→    isLoading 
+   993→   993→}: TeamMembersProps) => {
+   994→   994→    const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+   995→   995→    const [selectedUserId, setSelectedUserId] = useState('')
+   996→   996→    
+   997→   997→    const handleAddMember = async () => {
+   998→   998→        if (selectedUserId) {
+   999→   999→            await onAddMember(selectedUserId)
+  1000→  1000→            setIsAddModalOpen(false)
+  1001→  1001→            setSelectedUserId('')
+  1002→  1002→        }
+  1003→  1003→    }
+  1004→  1004→    
+  1005→  1005→    return (
+  1006→  1006→        <div>
+  1007→  1007→            <div className="flex justify-between items-center mb-4">
+  1008→  1008→                <h2 className="text-lg font-semibold">Members ({members.length})</h2>
+  1009→  1009→                <Button size="sm" onClick={() => setIsAddModalOpen(true)}>
+  1010→  1010→                    Add Member
+  1011→  1011→                </Button>
+  1012→  1012→            </div>
+  1013→  1013→            
+  1014→  1014→            {members.length === 0 ? (
+  1015→  1015→                <p className="text-gray-500 text-center py-8">No members yet</p>
+  1016→  1016→            ) : (
+  1017→  1017→                <div className="space-y-3">
+  1018→  1018→                    {members.map(member => (
+  1019→  1019→                        <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+  1020→  1020→                            <div className="flex items-center gap-3">
+  1021→  1021→                                <Avatar name={member.full_name} size="md" />
+  1022→  1022→                                <div>
+  1023→  1023→                                    <p className="font-medium">{member.full_name}</p>
+  1024→  1024→                                    <p className="text-sm text-gray-500">{member.email}</p>
+  1025→  1025→                                </div>
+  1026→  1026→                                <Badge>{member.role.replace('_', ' ')}</Badge>
+  1027→  1027→                            </div>
+  1028→  1028→                            <Button 
+  1029→  1029→                                variant="danger" 
+  1030→  1030→                                size="sm"
+  1031→  1031→                                onClick={() => onRemoveMember(member.id)}
+  1032→  1032→                                disabled={isLoading}
+  1033→  1033→                            >
+  1034→  1034→                                Remove
+  1035→  1035→                            </Button>
+  1036→  1036→                        </div>
+  1037→  1037→                    ))}
+  1038→  1038→                </div>
+  1039→  1039→            )}
+  1040→  1040→            
+  1041→  1041→            <Modal
+  1042→  1042→                isOpen={isAddModalOpen}
+  1043→  1043→                onClose={() => setIsAddModalOpen(false)}
+  1044→  1044→                title="Add Team Member"
+  1045→  1045→            >
+  1046→  1046→                <div className="space-y-4">
+  1047→  1047→                    <Select
+  1048→  1048→                        label="Select User"
+  1049→  1049→                        options={availableUsers.map(u => ({
+  1050→  1050→                            value: u.id,
+  1051→  1051→                            label: `${u.full_name} (${u.email})`
+  1052→  1052→                        }))}
+  1053→  1053→                        value={selectedUserId}
+  1054→  1054→                        onChange={(e) => setSelectedUserId(e.target.value)}
+  1055→  1055→                        placeholder="Choose a user..."
+  1056→  1056→                    />
+  1057→  1057→                    <div className="flex gap-2">
+  1058→  1058→                        <Button onClick={handleAddMember} isLoading={isLoading}>
+  1059→  1059→                            Add Member
+  1060→  1060→                        </Button>
+  1061→  1061→                        <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>
+  1062→  1062→                            Cancel
+  1063→  1063→                        </Button>
+  1064→  1064→                    </div>
+  1065→  1065→                </div>
+  1066→  1066→            </Modal>
+  1067→  1067→        </div>
+  1068→  1068→    )
+  1069→  1069→}
+  1070→  1070→frontend/src/components/teams/TeamStats.tsx - Team statistics:
+  1071→  1071→
+  1072→  1072→typescript
+  1073→  1073→import { TeamStats as TeamStatsType } from '../../types/team'
+  1074→  1074→import { Card } from '../ui/Card'
+  1075→  1075→
+  1076→  1076→interface TeamStatsProps {
+  1077→  1077→    stats: TeamStatsType | null
+  1078→  1078→    isLoading?: boolean
+  1079→  1079→}
+  1080→  1080→
+  1081→  1081→// Display:
+  1082→  1082→// - Grid of stat cards:
+  1083→  1083→//   - Member Count
+  1084→  1084→//   - Event Count
+  1085→  1085→//   - Total Tasks
+  1086→  1086→//   - Completed Tasks
+  1087→  1087→//   - Completion Rate (percentage with progress bar)
+  1088→  1088→
+  1089→  1089→export const TeamStats = ({ stats, isLoading }: TeamStatsProps) => {
+  1090→  1090→    if (isLoading || !stats) {
+  1091→  1091→        return <div>Loading...</div>
+  1092→  1092→    }
+  1093→  1093→    
+  1094→  1094→    return (
+  1095→  1095→        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  1096→  1096→            <Card>
+  1097→  1097→                <div className="p-4">
+  1098→  1098→                    <p className="text-sm text-gray-500">Members</p>
+  1099→  1099→                    <p className="text-2xl font-bold">{stats.member_count}</p>
+  1100→  1100→                </div>
+  1101→  1101→            </Card>
+  1102→  1102→            <Card>
+  1103→  1103→                <div className="p-4">
+  1104→  1104→                    <p className="text-sm text-gray-500">Events</p>
+  1105→  1105→                    <p className="text-2xl font-bold">{stats.event_count}</p>
+  1106→  1106→                </div>
+  1107→  1107→            </Card>
+  1108→  1108→            <Card>
+  1109→  1109→                <div className="p-4">
+  1110→  1110→                    <p className="text-sm text-gray-500">Tasks</p>
+  1111→  1111→                    <p className="text-2xl font-bold">{stats.total_tasks}</p>
+  1112→  1112→                </div>
+  1113→  1113→            </Card>
+  1114→  1114→            <Card>
+  1115→  1115→                <div className="p-4">
+  1116→  1116→                    <p className="text-sm text-gray-500">Completion</p>
+  1117→  1117→                    <p className="text-2xl font-bold">{stats.completion_rate}%</p>
+  1118→  1118→                </div>
+  1119→  1119→            </Card>
+  1120→  1120→        </div>
+  1121→  1121→    )
+  1122→  1122→}
+  1123→  1123→frontend/src/components/teams/TeamSelector.tsx - Team dropdown selector:
+  1124→  1124→
+  1125→  1125→typescript
+  1126→  1126→import { Select } from '../ui/Select'
+  1127→  1127→import { Team } from '../../types/team'
+  1128→  1128→
+  1129→  1129→interface TeamSelectorProps {
+  1130→  1130→    teams: Team[]
+  1131→  1131→    value?: string
+  1132→  1132→    onChange: (value: string) => void
+  1133→  1133→    label?: string
+  1134→  1134→    error?: string
+  1135→  1135→    placeholder?: string
+  1136→  1136→    disabled?: boolean
+  1137→  1137→}
+  1138→  1138→
+  1139→  1139→// Dropdown for selecting a team
+  1140→  1140→// Used in event/task creation forms
+  1141→  1141→
+  1142→  1142→export const TeamSelector = ({ 
+  1143→  1143→    teams, 
+  1144→  1144→    value, 
+  1145→  1145→    onChange, 
+  1146→  1146→    label = 'Team',
+  1147→  1147→    error,
+  1148→  1148→    placeholder = 'Select a team...',
+  1149→  1149→    disabled 
+  1150→  1150→}: TeamSelectorProps) => {
+  1151→  1151→    return (
+  1152→  1152→        <Select
+  1153→  1153→            label={label}
+  1154→  1154→            error={error}
+  1155→  1155→            value={value}
+  1156→  1156→            onChange={(e) => onChange(e.target.value)}
+  1157→  1157→            placeholder={placeholder}
+  1158→  1158→            disabled={disabled}
+  1159→  1159→            options={teams.map(team => ({
+  1160→  1160→                value: team.id,
+  1161→  1161→                label: team.name
+  1162→  1162→            }))}
+  1163→  1163→        />
+  1164→  1164→    )
+  1165→  1165→}
+  1166→  1166→Requirements:
+  1167→  1167→
+  1168→  1168→All components use Tailwind CSS
+  1169→  1169→
+  1170→  1170→All components have proper TypeScript types
+  1171→  1171→
+  1172→  1172→All components handle loading and error states
+  1173→  1173→
+  1174→  1174→All components are responsive
+  1175→  1175→
+  1176→  1176→All components are accessible
+  1177→  1177→
+  1178→  1178→Generate ALL complete files.
+  1179→  1179→
+  1180→  1180→text
+  1181→  1181→
+  1182→  1182→---
+  1183→  1183→
+  1184→  1184→### 📌 Step 3.5: Team Pages
+  1185→  1185→
+  1186→  1186→#### 🤖 Complete Prompt for Step 3.5:
+  1187→  1187→Now create the team pages.
+  1188→  1188→
+  1189→  1189→Create these files:
+  1190→  1190→
+  1191→  1191→frontend/src/pages/teams/TeamsPage.tsx - Teams list page:
+  1192→  1192→
+  1193→  1193→typescript
+  1194→  1194→import { useState } from 'react'
+  1195→  1195→import { Link } from 'react-router-dom'
+  1196→  1196→import { useTeams } from '../../hooks/useTeams'
+  1197→  1197→import { useTeamStore } from '../../stores/teamStore'
+  1198→  1198→import { TeamList } from '../../components/teams/TeamList'
+  1199→  1199→import { Button } from '../../components/ui/Button'
+  1200→  1200→import { Input } from '../../components/ui/Input'
+  1201→  1201→import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+  1202→  1202→import { PageHeader } from '../../components/layout/PageHeader'
+  1203→  1203→
+  1204→  1204→// Features:
+  1205→  1205→// - Page header with title and "Create Team" button
+  1206→  1206→// - Search bar to filter teams
+  1207→  1207→// - TeamList component
+  1208→  1208→// - Delete confirmation dialog
+  1209→  1209→// - Toast notifications for actions
+  1210→  1210→
+  1211→  1211→export const TeamsPage = () => {
+  1212→  1212→    const { teams, isLoading, refetch } = useTeams()
+  1213→  1213→    const { deleteTeam } = useTeamStore()
+  1214→  1214→    const [search, setSearch] = useState('')
+  1215→  1215→    const [teamToDelete, setTeamToDelete] = useState<string | null>(null)
+  1216→  1216→    
+  1217→  1217→    const filteredTeams = teams.filter(team =>
+  1218→  1218→        team.name.toLowerCase().includes(search.toLowerCase())
+  1219→  1219→    )
+  1220→  1220→    
+  1221→  1221→    const handleDelete = async () => {
+  1222→  1222→        if (teamToDelete) {
+  1223→  1223→            await deleteTeam(teamToDelete)
+  1224→  1224→            setTeamToDelete(null)
+  1225→  1225→            refetch()
+  1226→  1226→        }
+  1227→  1227→    }
+  1228→  1228→    
+  1229→  1229→    return (
+  1230→  1230→        <div className="space-y-6">
+  1231→  1231→            <PageHeader
+  1232→  1232→                title="Teams"
+  1233→  1233→                description="Manage your teams and their members"
+  1234→  1234→                action={
+  1235→  1235→                    <Link to="/teams/new">
+  1236→  1236→                        <Button>Create Team</Button>
+  1237→  1237→                    </Link>
+  1238→  1238→                }
+  1239→  1239→            />
+  1240→  1240→            
+  1241→  1241→            <div className="max-w-md">
+  1242→  1242→                <Input
+  1243→  1243→                    placeholder="Search teams..."
+  1244→  1244→                    value={search}
+  1245→  1245→                    onChange={(e) => setSearch(e.target.value)}
+  1246→  1246→                />
+  1247→  1247→            </div>
+  1248→  1248→            
+  1249→  1249→            <TeamList
+  1250→  1250→                teams={filteredTeams}
+  1251→  1251→                isLoading={isLoading}
+  1252→  1252→                onDelete={setTeamToDelete}
+  1253→  1253→            />
+  1254→  1254→            
+  1255→  1255→            <ConfirmDialog
+  1256→  1256→                isOpen={!!teamToDelete}
+  1257→  1257→                title="Delete Team"
+  1258→  1258→                message="Are you sure you want to delete this team? This action cannot be undone."
+  1259→  1259→                onConfirm={handleDelete}
+  1260→  1260→                onCancel={() => setTeamToDelete(null)}
+  1261→  1261→            />
+  1262→  1262→        </div>
+  1263→  1263→    )
+  1264→  1264→}
+  1265→  1265→frontend/src/pages/teams/TeamDetailPage.tsx - Team detail page:
+  1266→  1266→
+  1267→  1267→typescript
+  1268→  1268→import { useEffect } from 'react'
+  1269→  1269→import { useParams, Link, useNavigate } from 'react-router-dom'
+  1270→  1270→import { useTeam, useTeamMembers } from '../../hooks/useTeams'
+  1271→  1271→import { useTeamStore } from '../../stores/teamStore'
+  1272→  1272→import { TeamStats } from '../../components/teams/TeamStats'
+  1273→  1273→import { TeamMembers } from '../../components/teams/TeamMembers'
+  1274→  1274→import { Button } from '../../components/ui/Button'
+  1275→  1275→import { Card } from '../../components/ui/Card'
+  1276→  1276→import { Badge } from '../../components/ui/Badge'
+  1277→  1277→
+  1278→  1278→// Features:
+  1279→  1279→// - Team header with name, description, manager
+  1280→  1280→// - Action buttons: Edit, Delete
+  1281→  1281→// - TeamStats component
+  1282→  1282→// - TeamMembers component
+  1283→  1283→// - Back to teams button
+  1284→  1284→// - Loading state
+  1285→  1285→// - 404 handling
+  1286→  1286→
+  1287→  1287→export const TeamDetailPage = () => {
+  1288→  1288→    const { id } = useParams<{ id: string }>()
+  1289→  1289→    const navigate = useNavigate()
+  1290→  1290→    const { team, isLoading: teamLoading, refetch } = useTeam(id!)
+  1291→  1291→    const { members, isLoading: membersLoading, refetch: refetchMembers } = useTeamMembers(id!)
+  1292→  1292→    const { teamStats, fetchTeamStats, addMember, removeMember, deleteTeam } = useTeamStore()
+  1293→  1293→    
+  1294→  1294→    useEffect(() => {
+  1295→  1295→        if (id) fetchTeamStats(id)
+  1296→  1296→    }, [id])
+  1297→  1297→    
+  1298→  1298→    const handleDelete = async () => {
+  1299→  1299→        if (confirm('Are you sure you want to delete this team?')) {
+  1300→  1300→            await deleteTeam(id!)
+  1301→  1301→            navigate('/teams')
+  1302→  1302→        }
+  1303→  1303→    }
+  1304→  1304→    
+  1305→  1305→    if (teamLoading) return <div>Loading...</div>
+  1306→  1306→    if (!team) return <div>Team not found</div>
+  1307→  1307→    
+  1308→  1308→    return (
+  1309→  1309→        <div className="space-y-6">
+  1310→  1310→            {/* Header */}
+  1311→  1311→            <div className="flex justify-between items-start">
+  1312→  1312→                <div>
+  1313→  1313→                    <Link to="/teams" className="text-blue-600 hover:underline text-sm">
+  1314→  1314→                        ← Back to Teams
+  1315→  1315→                    </Link>
+  1316→  1316→                    <h1 className="text-3xl font-bold mt-2">{team.name}</h1>
+  1317→  1317→                    {team.description && (
+  1318→  1318→                        <p className="text-gray-600 mt-1">{team.description}</p>
+  1319→  1319→                    )}
+  1320→  1320→                    {team.manager_name && (
+  1321→  1321→                        <p className="text-sm text-gray-500 mt-2">
+  1322→  1322→                            Manager: {team.manager_name}
+  1323→  1323→                        </p>
+  1324→  1324→                    )}
+  1325→  1325→                </div>
+  1326→  1326→                <div className="flex gap-2">
+  1327→  1327→                    <Link to={`/teams/${id}/edit`}>
+  1328→  1328→                        <Button variant="secondary">Edit</Button>
+  1329→  1329→                    </Link>
+  1330→  1330→                    <Button variant="danger" onClick={handleDelete}>Delete</Button>
+  1331→  1331→                </div>
+  1332→  1332→            </div>
+  1333→  1333→            
+  1334→  1334→            {/* Stats */}
+  1335→  1335→            <TeamStats stats={teamStats} />
+  1336→  1336→            
+  1337→  1337→            {/* Members */}
+  1338→  1338→            <Card>
+  1339→  1339→                <div className="p-6">
+  1340→  1340→                    <TeamMembers
+  1341→  1341→                        teamId={id!}
+  1342→  1342→                        members={members}
+  1343→  1343→                        availableUsers={[]} // Fetch available users
+  1344→  1344→                        onAddMember={(userId) => addMember(id!, userId).then(refetchMembers)}
+  1345→  1345→                        onRemoveMember={(userId) => removeMember(id!, userId).then(refetchMembers)}
+  1346→  1346→                        isLoading={membersLoading}
+  1347→  1347→                    />
+  1348→  1348→                </div>
+  1349→  1349→            </Card>
+  1350→  1350→        </div>
+  1351→  1351→    )
+  1352→  1352→}
+  1353→  1353→frontend/src/pages/teams/TeamCreatePage.tsx - Create team page:
+  1354→  1354→
+  1355→  1355→typescript
+  1356→  1356→import { useNavigate } from 'react-router-dom'
+  1357→  1357→import { useTeamStore } from '../../stores/teamStore'
+  1358→  1358→import { TeamForm } from '../../components/teams/TeamForm'
+  1359→  1359→import { Card } from '../../components/ui/Card'
+  1360→  1360→import { PageHeader } from '../../components/layout/PageHeader'
+  1361→  1361→import toast from 'react-hot-toast'
+  1362→  1362→
+  1363→  1363→export const TeamCreatePage = () => {
+  1364→  1364→    const navigate = useNavigate()
+  1365→  1365→    const { createTeam, isLoading } = useTeamStore()
+  1366→  1366→    
+  1367→  1367→    const handleSubmit = async (data: any) => {
+  1368→  1368→        try {
+  1369→  1369→            const team = await createTeam(data)
+  1370→  1370→            toast.success('Team created successfully!')
+  1371→  1371→            navigate(`/teams/${team.id}`)
+  1372→  1372→        } catch (error) {
+  1373→  1373→            toast.error('Failed to create team')
+  1374→  1374→        }
+  1375→  1375→    }
+  1376→  1376→    
+  1377→  1377→    return (
+  1378→  1378→        <div className="max-w-2xl mx-auto space-y-6">
+  1379→  1379→            <PageHeader
+  1380→  1380→                title="Create Team"
+  1381→  1381→                description="Set up a new team for your events"
+  1382→  1382→            />
+  1383→  1383→            
+  1384→  1384→            <Card>
+  1385→  1385→                <div className="p-6">
+  1386→  1386→                    <TeamForm onSubmit={handleSubmit} isLoading={isLoading} />
+  1387→  1387→                </div>
+  1388→  1388→            </Card>
+  1389→  1389→        </div>
+  1390→  1390→    )
+  1391→  1391→}
+  1392→  1392→frontend/src/pages/teams/TeamEditPage.tsx - Edit team page:
+  1393→  1393→
+  1394→  1394→typescript
+  1395→  1395→import { useEffect } from 'react'
+  1396→  1396→import { useParams, useNavigate } from 'react-router-dom'
+  1397→  1397→import { useTeam } from '../../hooks/useTeams'
+  1398→  1398→import { useTeamStore } from '../../stores/teamStore'
+  1399→  1399→import { TeamForm } from '../../components/teams/TeamForm'
+  1400→  1400→import { Card } from '../../components/ui/Card'
+  1401→  1401→import { PageHeader } from '../../components/layout/PageHeader'
+  1402→  1402→import toast from 'react-hot-toast'
+  1403→  1403→
+  1404→  1404→export const TeamEditPage = () => {
+  1405→  1405→    const { id } = useParams<{ id: string }>()
+  1406→  1406→    const navigate = useNavigate()
+  1407→  1407→    const { team, isLoading: teamLoading } = useTeam(id!)
+  1408→  1408→    const { updateTeam, isLoading } = useTeamStore()
+  1409→  1409→    
+  1410→  1410→    const handleSubmit = async (data: any) => {
+  1411→  1411→        try {
+  1412→  1412→            await updateTeam(id!, data)
+  1413→  1413→            toast.success('Team updated successfully!')
+  1414→  1414→            navigate(`/teams/${id}`)
+  1415→  1415→        } catch (error) {
+  1416→  1416→            toast.error('Failed to update team')
+  1417→  1417→        }
+  1418→  1418→    }
+  1419→  1419→    
+  1420→  1420→    if (teamLoading) return <div>Loading...</div>
+  1421→  1421→    if (!team) return <div>Team not found</div>
+  1422→  1422→    
+  1423→  1423→    return (
+  1424→  1424→        <div className="max-w-2xl mx-auto space-y-6">
+  1425→  1425→            <PageHeader
+  1426→  1426→                title="Edit Team"
+  1427→  1427→                description={`Update ${team.name}`}
+  1428→  1428→            />
+  1429→  1429→            
+  1430→  1430→            <Card>
+  1431→  1431→                <div className="p-6">
+  1432→  1432→                    <TeamForm 
+  1433→  1433→                        team={team} 
+  1434→  1434→                        onSubmit={handleSubmit} 
+  1435→  1435→                        isLoading={isLoading} 
+  1436→  1436→                    />
+  1437→  1437→                </div>
+  1438→  1438→            </Card>
+  1439→  1439→        </div>
+  1440→  1440→    )
+  1441→  1441→}
+  1442→  1442→Update frontend/src/App.tsx - Add team routes:
+  1443→  1443→
+  1444→  1444→typescript
+  1445→  1445→// Add imports
+  1446→  1446→import { TeamsPage } from './pages/teams/TeamsPage'
+  1447→  1447→import { TeamDetailPage } from './pages/teams/TeamDetailPage'
+  1448→  1448→import { TeamCreatePage } from './pages/teams/TeamCreatePage'
+  1449→  1449→import { TeamEditPage } from './pages/teams/TeamEditPage'
+  1450→  1450→
+  1451→  1451→// Add routes inside protected routes
+  1452→  1452→<Route path="/teams" element={<TeamsPage />} />
+  1453→  1453→<Route path="/teams/new" element={<TeamCreatePage />} />
+  1454→  1454→<Route path="/teams/:id" element={<TeamDetailPage />} />
+  1455→  1455→<Route path="/teams/:id/edit" element={<TeamEditPage />} />
+  1456→  1456→Create frontend/src/components/layout/PageHeader.tsx - Page header component:
+  1457→  1457→
+  1458→  1458→typescript
+  1459→  1459→interface PageHeaderProps {
+  1460→  1460→    title: string
+  1461→  1461→    description?: string
+  1462→  1462→    action?: React.ReactNode
+  1463→  1463→}
+  1464→  1464→
+  1465→  1465→export const PageHeader = ({ title, description, action }: PageHeaderProps) => {
+  1466→  1466→    return (
+  1467→  1467→        <div className="flex justify-between items-start">
+  1468→  1468→            <div>
+  1469→  1469→                <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+  1470→  1470→                {description && (
+  1471→  1471→                    <p className="text-gray-600 mt-1">{description}</p>
+  1472→  1472→                )}
+  1473→  1473→            </div>
+  1474→  1474→            {action && <div>{action}</div>}
+  1475→  1475→        </div>
+  1476→  1476→    )
+  1477→  1477→}
+  1478→  1478→Update Sidebar - Add Teams link:
+  1479→  1479→
+  1480→  1480→typescript
+  1481→  1481→// In frontend/src/components/layout/Sidebar.tsx
+  1482→  1482→// Add navigation item:
+  1483→  1483→{
+  1484→  1484→    name: 'Teams',
+  1485→  1485→    href: '/teams',
+  1486→  1486→    icon: UsersIcon, // Import from heroicons
+  1487→  1487→}
+  1488→  1488→Requirements:
+  1489→  1489→
+  1490→  1490→All pages use proper layouts
+  1491→  1491→
+  1492→  1492→All pages handle loading and error states
+  1493→  1493→
+  1494→  1494→All pages have proper navigation
+  1495→  1495→
+  1496→  1496→Toast notifications for all actions
+  1497→  1497→
+  1498→  1498→Responsive design
+  1499→  1499→
+  1500→  1500→Generate ALL complete files.
+  1501→  1501→
+  1502→  1502→text
+  1503→  1503→
+  1504→  1504→---
+  1505→  1505→
+  1506→  1506→## 🎯 Phase 3 Completion Checklist
+  1507→  1507→
+  1508→  1508→### ✅ Frontend
+  1509→  1509→- [ ] Team types defined
+  1510→  1510→- [ ] UI components created (Select, Textarea, Modal, ConfirmDialog, Badge, EmptyState, Avatar)
+  1511→  1511→- [ ] Team service with all API calls
+  1512→  1512→- [ ] Team store with all actions
+  1513→  1513→- [ ] Custom hooks (useTeams, useTeam, useTeamMembers)
+  1514→  1514→- [ ] TeamCard component
+  1515→  1515→- [ ] TeamList component
+  1516→  1516→- [ ] TeamForm component
+  1517→  1517→- [ ] TeamMembers component
+  1518→  1518→- [ ] TeamStats component
+  1519→  1519→- [ ] TeamSelector component
+  1520→  1520→- [ ] TeamsPage (list)
+  1521→  1521→- [ ] TeamDetailPage
+  1522→  1522→- [ ] TeamCreatePage
+  1523→  1523→- [ ] TeamEditPage
+  1524→  1524→- [ ] Routes added to App.tsx
+  1525→  1525→- [ ] Sidebar link added
+  1526→  1526→
+  1527→  1527→### ✅ Backend
+  1528→  1528→- [ ] Team schemas (Pydantic)
+  1529→  1529→- [ ] Team CRUD operations
+  1530→  1530→- [ ] Team API endpoints
+  1531→  1531→- [ ] Router registered in main.py
+  1532→  1532→- [ ] Role-based access control
+  1533→  1533→- [ ] Error handling
+  1534→  1534→
+  1535→  1535→### ✅ Integration
+  1536→  1536→- [ ] Frontend connects to backend
+  1537→  1537→- [ ] Create team works
+  1538→  1538→- [ ] View team list works
+  1539→  1539→- [ ] View team detail works
+  1540→  1540→- [ ] Update team works
+  1541→  1541→- [ ] Delete team works
+  1542→  1542→- [ ] Add member works
+  1543→  1543→- [ ] Remove member works
+  1544→  1544→- [ ] Team stats work
+  1545→  1545→
+  1546→  1546→---
+  1547→  1547→
+  1548→  1548→## 📋 What You Should Be Able to Test After Phase 3
+  1549→  1549→
+  1550→  1550→### 1. 🏠 Teams List Page
+  1551→  1551→| What to Test | Expected Result |
+  1552→  1552→|--------------|-----------------|
+  1553→  1553→| Go to http://localhost:3000/teams | See teams list page |
+  1554→  1554→| Click "Create Team" button | Navigate to create team form |
+  1555→  1555→| Search teams | Filter list by name |
+  1556→  1556→| Click on team card | Navigate to team detail |
+  1557→  1557→| Empty state (no teams) | See "No teams yet" with CTA |
+  1558→  1558→
+  1559→  1559→### 2. ➕ Create Team Page
+  1560→  1560→| What to Test | Expected Result |
+  1561→  1561→|--------------|-----------------|
+  1562→  1562→| Go to http://localhost:3000/teams/new | See team form |
+  1563→  1563→| Submit empty form | Validation errors |
+  1564→  1564→| Enter name (min 3 chars) | No error |
+  1565→  1565→| Enter description | Optional field |
+  1566→  1566→| Submit form | Loading spinner, then redirect to team detail |
+  1567→  1567→| See toast notification | "Team created successfully!" |
+  1568→  1568→
+  1569→  1569→### 3. 👁️ Team Detail Page
+  1570→  1570→| What to Test | Expected Result |
+  1571→  1571→|--------------|-----------------|
+  1572→  1572→| View team info | Name, description, manager |
+  1573→  1573→| See team stats | Member count, event count, tasks |
+  1574→  1574→| See members list | List of team members |
+  1575→  1575→| Click "Edit" button | Navigate to edit form |
+  1576→  1576→| Click "Delete" button | Confirmation dialog appears |
+  1577→  1577→| Confirm delete | Team deleted, redirect to teams list |
+  1578→  1578→| Cancel delete | Dialog closes, team remains |
+  1579→  1579→
+  1580→  1580→### 4. ✏️ Edit Team Page
+  1581→  1581→| What to Test | Expected Result |
+  1582→  1582→|--------------|-----------------|
+  1583→  1583→| Pre-filled form | Current team data |
+  1584→  1584→| Update name | Submit updates team |
+  1585→  1585→| Update description | Submit updates team |
+  1586→  1586→| Click Cancel | Return to team detail |
+  1587→  1587→| Submit | Toast notification, redirect to detail |
+  1588→  1588→
+  1589→  1589→### 5. 👥 Team Members
+  1590→  1590→| What to Test | Expected Result |
+  1591→  1591→|--------------|-----------------|
+  1592→  1592→| See member list | Avatars, names, emails, roles |
+  1593→  1593→| Click "Add Member" | Modal opens |
+  1594→  1594→| Select user from dropdown | User selected |
+  1595→  1595→| Click "Add Member" | Member added to list |
+  1596→  1596→| Click "Remove" on member | Member removed |
+  1597→  1597→| Empty state | "No members yet" message |
+  1598→  1598→
+  1599→  1599→### 6. 📊 Team Stats
+  1600→  1600→| What to Test | Expected Result |
+  1601→  1601→|--------------|-----------------|
+  1602→  1602→| Member count | Correct number |
+  1603→  1603→| Event count | Correct number |
+  1604→  1604→| Task count | Correct number |
+  1605→  1605→| Completion rate | Percentage displayed |
+  1606→  1606→
+  1607→  1607→---
+  1608→  1608→
+  1609→  1609→## 🎬 Quick Test Flow (5 Minutes)
+  1610→  1610→
+  1611→  1611→### Step 1: Create a Team
+  1612→  1612→1. Login to your app
+  1613→  1613→2. Go to **Teams** in sidebar
+  1614→  1614→3. Click **Create Team**
+  1615→  1615→4. Fill:
+  1616→  1616→   - Name: **Marketing Team**
+  1617→  1617→   - Description: **Handles all marketing activities**
+  1618→  1618→5. Click **Create Team**
+  1619→  1619→6. ✅ Redirected to team detail
+  1620→  1620→
+  1621→  1621→### Step 2: View Team
+  1622→  1622→1. See team name, description
+  1623→  1623→2. See stats (0 members, 0 events, 0 tasks)
+  1624→  1624→3. See empty members list
+  1625→  1625→
+  1626→  1626→### Step 3: Edit Team
+  1627→  1627→1. Click **Edit**
+  1628→  1628→2. Change name to **Marketing & PR Team**
+  1629→  1629→3. Click **Update Team**
+  1630→  1630→4. ✅ See updated name
+  1631→  1631→
+  1632→  1632→### Step 4: Add Members
+  1633→  1633→1. Click **Add Member**
+  1634→  1634→2. Select a user (if available)
+  1635→  1635→3. Click **Add Member**
+  1636→  1636→4. ✅ See member in list
+  1637→  1637→
+  1638→  1638→### Step 5: Delete Team
+  1639→  1639→1. Click **Delete**
+  1640→  1640→2. Confirm dialog appears
+  1641→  1641→3. Click **Confirm**
+  1642→  1642→4. ✅ Redirected to teams list, team gone
+  1643→  1643→
+  1644→  1644→---
+  1645→  1645→
+  1646→  1646→## 🚨 Common Issues & Fixes
+  1647→  1647→
+  1648→  1648→### Issue 1: 403 Forbidden on Create
+  1649→  1649→**Cause:** User doesn't have EVENT_MANAGER or TEAM_LEADER role
+  1650→  1650→**Fix:** Login as a user with proper role, or register as EVENT_MANAGER
+  1651→  1651→
+  1652→  1652→### Issue 2: Team not found (404)
+  1653→  1653→**Cause:** Invalid team ID in URL
+  1654→  1654→**Fix:** Check the URL, navigate from teams list
+  1655→  1655→
+  1656→  1656→### Issue 3: Can't add member
+  1657→  1657→**Cause:** User already in team or doesn't exist
+  1658→  1658→**Fix:** Check user list, make sure user exists
+  1659→  1659→
+  1660→  1660→### Issue 4: Delete fails
+  1661→  1661→**Cause:** Team has events assigned
+  1662→  1662→**Fix:** Delete events first, or implement cascade delete
+  1663→  1663→
+  1664→  1664→---
+  1665→  1665→
+  1666→  1666→## 🎯 What's Next After Phase 3
+  1667→  1667→
+  1668→  1668→Once Phase 3 is verified working, you'll be ready for:
+  1669→  1669→
+  1670→  1670→### **Phase 4: Event Management**
+  1671→  1671→- Create events
+  1672→  1672→- Assign events to teams
+  1673→  1673→- Event progress tracking
+  1674→  1674→- Event dashboard
+  1675→  1675→
+  1676→  1676→**Tell me when Phase 3 is verified working, and I'll give you the Phase 4 prompts! 🚀**

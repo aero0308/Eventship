@@ -4,6 +4,7 @@ import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } fro
 import { createTeamSchema } from '@/lib/schemas'
 import { canManageTeams, assertAccess } from '@/lib/permissions'
 import {
+  computeTeamStats,
   serializeTeamDetail,
   teamDetailInclude,
   teamListInclude,
@@ -62,7 +63,8 @@ export async function POST(request: Request) {
       where: { id: created.id },
       include: teamDetailInclude,
     })
-    return ok({ team: serializeTeamDetail(team) }, 201)
+    const stats = await computeTeamStats(team.events.map((event) => event.id))
+    return ok({ team: { ...serializeTeamDetail(team), stats } }, 201)
   } catch (error) {
     return handleApiError(error)
   }
