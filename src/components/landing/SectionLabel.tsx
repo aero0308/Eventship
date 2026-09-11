@@ -1,35 +1,27 @@
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface SectionLabelProps {
-  /** Zero-padded section number, e.g. "003". Decorative. */
-  index: string
-  /** Uppercase label text, e.g. "THE PROBLEM". */
-  title: string
-  /** Stick the label while its section scrolls (desktop only). */
-  sticky?: boolean
+  children: ReactNode
+  align?: 'left' | 'center'
   className?: string
 }
 
 /**
- * "001 — LABEL" — the recurring editorial index marker used across the
- * landing page. Mono, uppercase, wide tracking, accent em-dash.
+ * Small uppercase editorial label ("FEATURES") with an accent tick —
+ * the recurring section eyebrow used across the landing.
  */
-export function SectionLabel({ index, title, sticky = false, className }: SectionLabelProps) {
+export function SectionLabel({ children, align = 'center', className }: SectionLabelProps) {
   return (
     <p
       className={cn(
-        'font-evos-mono text-[11px] uppercase leading-none tracking-[0.22em]',
-        sticky && 'lg:sticky lg:top-24',
+        'flex items-center gap-2.5 text-xs font-medium uppercase tracking-[0.2em] text-fora-muted',
+        align === 'center' && 'justify-center',
         className,
       )}
     >
-      <span className="text-evos-muted" aria-hidden="true">
-        {index}
-      </span>
-      <span className="mx-2.5 text-evos-accent" aria-hidden="true">
-        —
-      </span>
-      <span className="text-evos-ink">{title}</span>
+      <span aria-hidden="true" className="h-1 w-1 rounded-full bg-fora-accent" />
+      {children}
     </p>
   )
 }

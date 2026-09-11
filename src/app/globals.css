@@ -288,53 +288,71 @@
   background-color: rgba(120, 113, 108, 0.55);
 }
 
-/* ---- EVENT OS landing — brutalist editorial design system ---------------
-   Namespaced (evos-*) so nothing leaks into the app shell. The landing is a
-   fixed-light, monochrome editorial surface: explicit hex tokens via @theme
-   (generates bg-evos-bg / text-evos-ink / font-evos-display … utilities) so
-   a persisted .dark class can never bleed into the design.
+/* ---- EVENT OS landing — Fora-inspired dark editorial design system -------
+   Namespaced (fora-*) so nothing leaks into the app shell. The landing is a
+   fixed-dark, layered-surface editorial design: explicit hex tokens via
+   @theme (generates bg-fora-bg / text-fora-text / font-fora-serif …
+   utilities) so a persisted .dark class can never bleed into — or wash
+   out — the design.
    NOTE: must be `inline` — the font tokens reference next/font variables
    that are defined on <body>, so they must be substituted per-element,
    not computed once at :root. */
 @theme inline {
-  --color-evos-bg: #fafaf7;
-  --color-evos-ink: #0a0a0a;
-  --color-evos-muted: #6b6b6b;
-  --color-evos-line: #e5e5e0;
-  --color-evos-accent: #ff4d00;
-  --font-evos-display: var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
-  --font-evos-body: var(--font-inter), "Inter", system-ui, sans-serif;
-  --font-evos-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-fora-bg: #0a0a0a;
+  --color-fora-surface: #111111;
+  --color-fora-surface-2: #161616;
+  --color-fora-surface-3: #1c1c1c;
+  --color-fora-border: #1f1f1f;
+  --color-fora-border-hover: #2f2f2f;
+  --color-fora-text: #ffffff;
+  --color-fora-text-2: #a0a0a0;
+  --color-fora-muted: #6b6b6b;
+  --color-fora-accent: #6366f1;
+  --color-fora-accent-hover: #4f46e5;
+  --color-fora-glow: #818cf8;
+  --font-fora-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-fora-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
 }
 
-.evos-root {
+.fora-root {
   scroll-behavior: smooth;
 }
 
-.evos-root ::selection {
-  background: #0a0a0a;
-  color: #fafaf7;
+.fora-root ::selection {
+  background: rgba(99, 102, 241, 0.4);
+  color: #ffffff;
 }
 
-.evos-root :focus-visible {
-  outline: 1.5px solid #0a0a0a;
-  outline-offset: 3px;
-  border-radius: 1px;
+.fora-root :focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Film-grain overlay — SVG turbulence, fixed, non-interactive. */
-.evos-noise {
+.fora-noise {
   position: fixed;
   inset: 0;
   z-index: 90;
   pointer-events: none;
-  opacity: 0.045;
+  opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 220px 220px;
 }
 
-/* Infinite marquee (track holds two copies, translate -50% loops seamlessly). */
-@keyframes evos-marquee {
+/* Dot-grid backdrop (pairs with a fade mask for hero/CTA washes). */
+.fora-dotgrid {
+  background-image: radial-gradient(circle, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+.fora-dotgrid-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+}
+
+/* Infinite logo marquee (track holds two copies, translate -50% loops). */
+@keyframes fora-marquee {
   from {
     transform: translateX(0);
   }
@@ -342,64 +360,51 @@
     transform: translateX(-50%);
   }
 }
-.evos-marquee-track {
-  animation: evos-marquee 32s linear infinite;
+.fora-marquee-track {
+  animation: fora-marquee 36s linear infinite;
   will-change: transform;
 }
-.evos-marquee:hover .evos-marquee-track {
+.fora-marquee:hover .fora-marquee-track {
   animation-play-state: paused;
 }
 
-/* Underline reveal — wipes left→right on hover/focus. */
-.evos-underline {
-  position: relative;
-}
-.evos-underline::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -3px;
-  height: 1px;
-  width: 100%;
-  background: currentColor;
-  transform: scaleX(0);
-  transform-origin: right;
-  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.evos-underline:hover::after,
-.evos-underline:focus-visible::after {
-  transform: scaleX(1);
-  transform-origin: left;
-}
-
-/* Custom cursor dot — inverted via blend mode; fine pointers only. */
-.evos-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 100;
-  pointer-events: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 9999px;
-  background: #fff;
-  mix-blend-mode: difference;
-}
-
-@media (pointer: coarse) {
-  .evos-cursor {
-    display: none;
+/* Slow vertical float for ambient glow orbs. */
+@keyframes fora-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
   }
+  50% {
+    transform: translate3d(0, -26px, 0) scale(1.05);
+  }
+}
+.fora-float {
+  animation: fora-float 13s ease-in-out infinite;
+}
+
+/* Pulsing halo used behind the "live" dot in mockups. */
+@keyframes fora-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(99, 102, 241, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+  }
+}
+.fora-pulse-ring {
+  animation: fora-pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .evos-root {
+  .fora-root {
     scroll-behavior: auto;
   }
-  .evos-marquee-track {
+  .fora-marquee-track,
+  .fora-float,
+  .fora-pulse-ring {
     animation: none;
-  }
-  .evos-cursor {
-    display: none;
   }
 }
