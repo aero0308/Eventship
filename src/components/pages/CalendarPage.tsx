@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CalendarArrowDown,
+  CalendarCheck,
   CalendarDays,
   CalendarRange,
   CheckCircle2,
@@ -375,6 +376,20 @@ export function CalendarPage() {
     setMonthKey((key) => shiftMonth(key, delta))
   }
 
+  // "Today" always produces visible feedback: it snaps back to the current
+  // month with the same slide animation as the arrows, then opens today's
+  // day agenda — so it still does something even when the grid is already
+  // showing the current month.
+  const goToday = () => {
+    const now = new Date()
+    const key = monthKeyOf(now)
+    if (key !== monthKey) {
+      setDirection(key < monthKey ? -1 : 1)
+      setMonthKey(key)
+    }
+    setAgendaDate(now)
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -387,14 +402,8 @@ export function CalendarPage() {
               <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              className="min-h-11"
-              onClick={() => {
-                setDirection(monthKey < monthKeyOf(new Date()) ? 1 : -1)
-                setMonthKey(monthKeyOf(new Date()))
-              }}
-            >
+            <Button variant="outline" className="min-h-11" onClick={goToday}>
+              <CalendarCheck className="mr-2 h-4 w-4" aria-hidden="true" />
               Today
             </Button>
             <Button variant="outline" onClick={handleExportIcs} disabled={!data || data.events.length === 0} className="min-h-11">

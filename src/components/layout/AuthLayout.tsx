@@ -12,10 +12,12 @@ interface AuthLayoutProps {
   children: React.ReactNode
 }
 
-/** Centered auth shell with a soft emerald backdrop — no header nav. */
+/** Centered auth shell with a soft emerald backdrop — no header nav.
+ *  Height-aware: on short viewports the compact rules in globals.css tighten
+ *  the shell so the forms fit without scrolling (same fields everywhere). */
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-muted/50 px-4 py-10">
+    <div className="auth-shell relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-muted/50 px-4 py-8 sm:py-10">
       {/* Close → back to landing page (top-right, thumb-friendly 44px target) */}
       <button
         type="button"
@@ -43,25 +45,27 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="relative z-10 flex w-full max-w-md flex-col items-center"
       >
-        <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/25">
-            <CalendarRange className="h-6 w-6" aria-hidden="true" />
+        <div className="auth-brand mb-5 flex flex-col items-center gap-2">
+          <span
+            className="auth-brand-icon flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/25"
+          >
+            <CalendarRange className="h-5 w-5" aria-hidden="true" />
           </span>
-          <span className="text-xl font-bold tracking-tight text-foreground">{APP_NAME}</span>
-          <span className="text-xs text-muted-foreground">{APP_TAGLINE}</span>
+          <span className="auth-brand-name text-lg font-bold tracking-tight text-foreground">{APP_NAME}</span>
+          <span className="auth-tagline text-xs text-muted-foreground">{APP_TAGLINE}</span>
         </div>
 
-        <Card className="w-full border-border shadow-lg shadow-stone-900/5">
-          <CardContent className="p-6">
-            <div className="mb-5">
-              <h1 className="text-xl font-bold tracking-tight text-foreground">{title}</h1>
+        <Card className="auth-card w-full border-border py-0 shadow-lg shadow-stone-900/5">
+          <CardContent className="auth-card-content p-5 sm:p-6">
+            <div className="auth-title-block mb-4">
+              <h1 className="auth-title text-xl font-bold tracking-tight text-foreground">{title}</h1>
               {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
             </div>
             {children}
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-xs text-muted-foreground/70">
+        <p className="auth-footer mt-5 text-xs text-muted-foreground/70">
           {APP_NAME} — Event Management System · {new Date().getFullYear()}
         </p>
       </motion.div>

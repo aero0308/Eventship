@@ -1,0 +1,736 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+     4→import { useHashRoute, navigate } from '@/hooks/use-hash-route'
+     5→import { motion } from 'framer-motion'
+     6→import {
+     7→  CalendarDays,
+     8→  CalendarPlus,
+     9→  CalendarRange,
+    10→  Download,
+    11→  Loader2,
+    12→  MapPin,
+    13→  Plus,
+    14→  Search,
+    15→  Users,
+    16→  X,
+    17→} from 'lucide-react'
+    18→import { format } from 'date-fns'
+    19→import type { EventDTO, EventStatus, TeamDTO } from '@/types'
+    20→import {
+    21→  EVENT_STATUSES,
+    22→  EVENT_STATUS_CLASSES,
+    23→  EVENT_STATUS_LABELS,
+    24→  ROUTES,
+    25→} from '@/lib/constants'
+    26→import { api, ApiClientError, qs } from '@/lib/api-client'
+    27→import { downloadCsv, csvDateStamp } from '@/lib/csv'
+    28→import { useToast } from '@/hooks/use-toast'
+    29→import { cn } from '@/lib/utils'
+    30→import { Alert, AlertDescription } from '@/components/ui/alert'
+    31→import { Badge } from '@/components/ui/badge'
+    32→import { Button } from '@/components/ui/button'
+    33→import { Card, CardContent } from '@/components/ui/card'
+    34→import {
+    35→  Dialog,
+    36→  DialogContent,
+    37→  DialogDescription,
+    38→  DialogFooter,
+    39→  DialogHeader,
+    40→  DialogTitle,
+    41→} from '@/components/ui/dialog'
+    42→import { Input } from '@/components/ui/input'
+    43→import { Label } from '@/components/ui/label'
+    44→import { Progress } from '@/components/ui/progress'
+    45→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    46→import { Skeleton } from '@/components/ui/skeleton'
+    47→import { Textarea } from '@/components/ui/textarea'
+    48→import { EmptyState } from '@/components/shared/EmptyState'
+    49→import { PageHeader } from '@/components/shared/PageHeader'
+    50→import { StatusBadge } from '@/components/shared/StatusBadge'
+    51→import { useAuthStore } from '@/stores/auth-store'
+    52→import {
+    53→  fetchPresenceSummary,
+    54→  getRealtimeSocket,
+    55→  setRealtimeUser,
+    56→  type PresenceGlobalPayload,
+    57→  type PresenceUser,
+    58→} from '@/lib/realtime-client'
+    59→
+    60→const NO_TEAM = '__no_team__'
+    61→
+    62→/** Status-colored top hairline on event cards — instant scannability in the grid. */
+    63→const EVENT_CARD_TOP_BORDER: Record<EventStatus, string> = {
+    64→  DRAFT: 'border-t-stone-400',
+    65→  PLANNING: 'border-t-amber-500',
+    66→  IN_PROGRESS: 'border-t-emerald-500',
+    67→  COMPLETED: 'border-t-teal-500',
+    68→  CANCELLED: 'border-t-red-400',
+    69→}
+    70→
+    71→function initialsOfName(name: string): string {
+    72→  return name
+    73→    .split(/\s+/)
+    74→    .filter(Boolean)
+    75→    .slice(0, 2)
+    76→    .map((part) => part[0]?.toUpperCase() ?? '')
+    77→    .join('')
+    78→}
+    79→
+    80→interface EventsPageProps {
+    81→  searchPlaceholder?: string
+    82→}
+    83→
+    84→interface EventFormState {
+    85→  name: string
+    86→  description: string
+    87→  location: string
+    88→  startDate: string
+    89→  endDate: string
+    90→  teamId: string
+    91→  status: EventStatus
+    92→}
+    93→
+    94→const EMPTY_FORM: EventFormState = {
+    95→  name: '',
+    96→  description: '',
+    97→  location: '',
+    98→  startDate: '',
+    99→  endDate: '',
+   100→  teamId: '',
+   101→  status: 'PLANNING',
+   102→}
+   103→
+   104→function formatRange(startISO: string, endISO: string): string {
+   105→  const start = new Date(startISO)
+   106→  const end = new Date(endISO)
+   107→  if (start.getFullYear() === end.getFullYear()) {
+   108→    if (format(start, 'MMM d, yyyy') === format(end, 'MMM d, yyyy')) return format(start, 'MMM d, yyyy')
+   109→    return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
+   110→  }
+   111→  return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`
+   112→}
+   113→
+   114→export function EventsPage({ searchPlaceholder }: EventsPageProps) {
+   115→  const { toast } = useToast()
+   116→  const path = useHashRoute()
+   117→  const user = useAuthStore((s) => s.user)
+   118→
+   119→  const [events, setEvents] = useState<EventDTO[]>([])
+   120→  const [teams, setTeams] = useState<TeamDTO[]>([])
+   121→  const [loading, setLoading] = useState(true)
+   122→  const [search, setSearch] = useState('')
+   123→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   124→  const [teamFilter, setTeamFilter] = useState<string>('all')
+   125→  // Date-range filter on the event start date (inclusive, YYYY-MM-DD inputs).
+   126→  const [dateFrom, setDateFrom] = useState('')
+   127→  const [dateTo, setDateTo] = useState('')
+   128→
+   129→  // ---- Live "who is where" (presence observer) ---------------------------
+   130→  // The grid joins no rooms; it snapshots event:* presence via an ack and
+   131→  // stays live through the site-wide presence:global echo.
+   132→  const [viewersByEvent, setViewersByEvent] = useState<Record<string, PresenceUser[]>>({})
+   133→
+   134→  useEffect(() => {
+   135→    if (!user) return
+   136→    setRealtimeUser({ id: user.id, fullName: user.fullName, role: user.role })
+   137→    const socket = getRealtimeSocket()
+   138→    if (!socket) return
+   139→
+   140→    let disposed = false
+   141→    const snapshot = async () => {
+   142→      const summaries = await fetchPresenceSummary(['event:'])
+   143→      if (disposed) return
+   144→      setViewersByEvent((prev) => {
+   145→        const next: Record<string, PresenceUser[]> = { ...prev }
+   146→        // Refresh every known room; prune rooms that vanished.
+   147→        for (const { room, viewers } of summaries) {
+   148→          const eventId = room.slice('event:'.length)
+   149→          const others = viewers.filter((v) => v.id !== user.id)
+   150→          if (others.length > 0) next[eventId] = others
+   151→          else delete next[eventId]
+   152→        }
+   153→        return next
+   154→      })
+   155→    }
+   156→
+   157→    const onGlobal = (payload: PresenceGlobalPayload) => {
+   158→      if (!payload?.room?.startsWith('event:')) return
+   159→      const eventId = payload.room.slice('event:'.length)
+   160→      const others = payload.viewers.filter((v) => v.id !== user.id)
+   161→      setViewersByEvent((prev) => {
+   162→        const next = { ...prev }
+   163→        if (others.length > 0) next[eventId] = others
+   164→        else delete next[eventId]
+   165→        return next
+   166→      })
+   167→    }
+   168→
+   169→    socket.on('presence:global', onGlobal)
+   170→    socket.once('connect', snapshot)
+   171→    if (socket.connected) void snapshot()
+   172→    return () => {
+   173→      disposed = true
+   174→      socket.off('presence:global', onGlobal)
+   175→      socket.off('connect', snapshot)
+   176→    }
+   177→  }, [user])
+   178→
+   179→  // Create dialog
+   180→  const [createOpen, setCreateOpen] = useState(false)
+   181→  const [form, setForm] = useState<EventFormState>(EMPTY_FORM)
+   182→  const [formError, setFormError] = useState<string | null>(null)
+   183→  const [saving, setSaving] = useState(false)
+   184→
+   185→  // ?new=1 hash query (e.g. from the command palette) auto-opens the create dialog.
+   186→  useEffect(() => {
+   187→    const query = path.split('?')[1] ?? ''
+   188→    if (new URLSearchParams(query).get('new') === '1') {
+   189→      setForm({ ...EMPTY_FORM })
+   190→      setFormError(null)
+   191→      setCreateOpen(true)
+   192→      navigate(ROUTES.EVENTS, true)
+   193→    }
+   194→  }, [path])
+   195→
+   196→  const loadTeams = useCallback(async () => {
+   197→    try {
+   198→      const data = await api.get<{ teams: TeamDTO[] }>('/teams')
+   199→      setTeams(data.teams)
+   200→    } catch {
+   201→      // Team filter will just be empty.
+   202→    }
+   203→  }, [])
+   204→
+   205→  const loadEvents = useCallback(async () => {
+   206→    setLoading(true)
+   207→    try {
+   208→      const data = await api.get<{ events: EventDTO[] }>(
+   209→        `/events${qs({
+   210→          status: statusFilter === 'all' ? undefined : statusFilter,
+   211→          teamId: teamFilter === 'all' ? undefined : teamFilter,
+   212→          search: search.trim() || undefined,
+   213→          startDateFrom: dateFrom || undefined,
+   214→          startDateTo: dateTo || undefined,
+   215→        })}`
+   216→      )
+   217→      setEvents(data.events)
+   218→    } catch (error) {
+   219→      const message = error instanceof ApiClientError ? error.message : 'Failed to load events.'
+   220→      toast({ title: 'Could not load events', description: message, variant: 'destructive' })
+   221→    } finally {
+   222→      setLoading(false)
+   223→    }
+   224→  }, [statusFilter, teamFilter, search, dateFrom, dateTo, toast])
+   225→
+   226→  useEffect(() => {
+   227→    void loadTeams()
+   228→  }, [loadTeams])
+   229→
+   230→  // Debounced fetch on filter changes.
+   231→  useEffect(() => {
+   232→    const timer = setTimeout(() => void loadEvents(), 250)
+   233→    return () => clearTimeout(timer)
+   234→  }, [loadEvents])
+   235→
+   236→  const teamNameById = useMemo(() => {
+   237→    const map = new Map<string, string>()
+   238→    teams.forEach((team) => map.set(team.id, team.name))
+   239→    return map
+   240→  }, [teams])
+   241→
+   242→  // How many filters are actively narrowing the list (for the Clear-all chip).
+   243→  const activeFilterCount = useMemo(
+   244→    () =>
+   245→      (statusFilter !== 'all' ? 1 : 0) +
+   246→      (teamFilter !== 'all' ? 1 : 0) +
+   247→      (search.trim() ? 1 : 0) +
+   248→      (dateFrom ? 1 : 0) +
+   249→      (dateTo ? 1 : 0),
+   250→    [statusFilter, teamFilter, search, dateFrom, dateTo]
+   251→  )
+   252→
+   253→  const clearFilters = () => {
+   254→    setSearch('')
+   255→    setStatusFilter('all')
+   256→    setTeamFilter('all')
+   257→    setDateFrom('')
+   258→    setDateTo('')
+   259→  }
+   260→
+   261→  const openCreate = () => {
+   262→    setForm(EMPTY_FORM)
+   263→    setFormError(null)
+   264→    setCreateOpen(true)
+   265→  }
+   266→
+   267→  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+   268→    event.preventDefault()
+   269→    setFormError(null)
+   270→
+   271→    if (!form.name.trim()) {
+   272→      setFormError('Please give the event a name.')
+   273→      return
+   274→    }
+   275→    if (!form.startDate || !form.endDate) {
+   276→      setFormError('Please pick both a start and end date.')
+   277→      return
+   278→    }
+   279→    if (new Date(form.endDate) < new Date(form.startDate)) {
+   280→      setFormError('The end date cannot be before the start date.')
+   281→      return
+   282→    }
+   283→    if (!form.teamId) {
+   284→      setFormError('Please choose a team responsible for this event.')
+   285→      return
+   286→    }
+   287→
+   288→    setSaving(true)
+   289→    try {
+   290→      const data = await api.post<{ event: EventDTO }>('/events', {
+   291→        name: form.name.trim(),
+   292→        description: form.description.trim() || undefined,
+   293→        location: form.location.trim() || undefined,
+   294→        startDate: new Date(`${form.startDate}T00:00:00`).toISOString(),
+   295→        endDate: new Date(`${form.endDate}T23:59:59`).toISOString(),
+   296→        teamId: form.teamId,
+   297→        status: form.status,
+   298→      })
+   299→      setCreateOpen(false)
+   300→      toast({ title: 'Event created', description: `“${data.event.name}” is ready to plan.` })
+   301→      void loadEvents()
+   302→    } catch (error) {
+   303→      const message = error instanceof ApiClientError ? error.message : 'Failed to create the event.'
+   304→      setFormError(message)
+   305→    } finally {
+   306→      setSaving(false)
+   307→    }
+   308→  }
+   309→
+   310→  const handleExport = () => {
+   311→    const rows: (string | number | null)[][] = [
+   312→      ['Name', 'Status', 'Team', 'Location', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Progress %', 'Created by'],
+   313→      ...events.map((event) => {
+   314→        const total = event.taskStats?.total ?? event.taskCount ?? 0
+   315→        const completed = event.taskStats?.completed ?? 0
+   316→        return [
+   317→        event.name,
+   318→        EVENT_STATUS_LABELS[event.status] ?? event.status,
+   319→        event.team?.name ?? teamNameById.get(event.teamId) ?? '',
+   320→        event.location ?? '',
+   321→        format(new Date(event.startDate), 'yyyy-MM-dd'),
+   322→        format(new Date(event.endDate), 'yyyy-MM-dd'),
+   323→        event.taskStats?.total ?? event.taskCount ?? 0,
+   324→        event.taskStats?.completed ?? 0,
+   325→        event.taskStats?.inProgress ?? 0,
+   326→        event.taskStats?.blocked ?? 0,
+   327→        event.taskStats?.notStarted ?? 0,
+   328→        event.taskStats?.percent ?? (total > 0 ? Math.round((completed / total) * 100) : 0),
+   329→        event.creator?.fullName ?? '',
+   330→      ]
+   331→      }),
+   332→    ]
+   333→    downloadCsv(`eventflow-events-${csvDateStamp()}`, rows)
+   334→    toast({ title: 'Export ready', description: `${events.length} event(s) exported to CSV.` })
+   335→  }
+   336→
+   337→  return (
+   338→    <div>
+   339→      <PageHeader
+   340→        title="Events"
+   341→        subtitle="Plan, track and complete every event your teams run."
+   342→        actions={
+   343→          <>
+   344→            <Button variant="outline" onClick={handleExport} disabled={events.length === 0} className="min-h-11">
+   345→              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+   346→              Export CSV
+   347→            </Button>
+   348→            <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+   349→              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+   350→              New Event
+   351→            </Button>
+   352→          </>
+   353→        }
+   354→      />
+   355→
+   356→      {/* Filter bar */}
+   357→      <section className="mb-6 space-y-3" aria-label="Event filters">
+   358→        <div className="flex flex-col gap-3 sm:flex-row">
+   359→          <div className="relative flex-1">
+   360→            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
+   361→            <Input
+   362→              type="search"
+   363→              value={search}
+   364→              onChange={(e) => setSearch(e.target.value)}
+   365→              placeholder={searchPlaceholder ?? 'Search events by name or description…'}
+   366→              className="h-11 pl-9"
+   367→              aria-label="Search events"
+   368→            />
+   369→          </div>
+   370→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   371→            <SelectTrigger className="h-11 w-full sm:w-44" aria-label="Filter by status">
+   372→              <SelectValue placeholder="All statuses" />
+   373→            </SelectTrigger>
+   374→            <SelectContent>
+   375→              <SelectItem value="all">All statuses</SelectItem>
+   376→              {EVENT_STATUSES.map((status) => (
+   377→                <SelectItem key={status} value={status}>
+   378→                  {EVENT_STATUS_LABELS[status]}
+   379→                </SelectItem>
+   380→              ))}
+   381→            </SelectContent>
+   382→          </Select>
+   383→          <Select value={teamFilter} onValueChange={setTeamFilter}>
+   384→            <SelectTrigger className="h-11 w-full sm:w-48" aria-label="Filter by team">
+   385→              <SelectValue placeholder="All teams" />
+   386→            </SelectTrigger>
+   387→            <SelectContent>
+   388→              <SelectItem value="all">All teams</SelectItem>
+   389→              {teams.map((team) => (
+   390→                <SelectItem key={team.id} value={team.id}>
+   391→                  {team.name}
+   392→                </SelectItem>
+   393→              ))}
+   394→            </SelectContent>
+   395→          </Select>
+   396→        </div>
+   397→
+   398→        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   399→          <div
+   400→            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5"
+   401→            role="group"
+   402→            aria-label="Filter by start date range"
+   403→          >
+   404→            <CalendarRange className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+   405→            <label className="sr-only" htmlFor="filter-date-from">
+   406→              Start date from
+   407→            </label>
+   408→            <Input
+   409→              id="filter-date-from"
+   410→              type="date"
+   411→              value={dateFrom}
+   412→              max={dateTo || undefined}
+   413→              onChange={(e) => setDateFrom(e.target.value)}
+   414→              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+   415→            />
+   416→            <span className="text-xs text-muted-foreground/60" aria-hidden="true">
+   417→              →
+   418→            </span>
+   419→            <label className="sr-only" htmlFor="filter-date-to">
+   420→              Start date to
+   421→            </label>
+   422→            <Input
+   423→              id="filter-date-to"
+   424→              type="date"
+   425→              value={dateTo}
+   426→              min={dateFrom || undefined}
+   427→              onChange={(e) => setDateTo(e.target.value)}
+   428→              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+   429→            />
+   430→          </div>
+   431→
+   432→          <p className="text-xs font-medium text-muted-foreground sm:ml-auto" aria-live="polite">
+   433→            {loading ? (
+   434→              'Loading…'
+   435→            ) : (
+   436→              <>
+   437→                <span className="font-semibold tabular-nums text-foreground">{events.length}</span>{' '}
+   438→                event{events.length === 1 ? '' : 's'}
+   439→                {activeFilterCount > 0 ? <span className="text-muted-foreground/70"> match filters</span> : null}
+   440→              </>
+   441→            )}
+   442→          </p>
+   443→
+   444→          {activeFilterCount > 0 ? (
+   445→            <Button
+   446→              variant="outline"
+   447→              size="sm"
+   448→              onClick={clearFilters}
+   449→              className="h-8 shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+   450→              aria-label={`Clear all ${activeFilterCount} active filters`}
+   451→            >
+   452→              <X className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   453→              Clear all
+   454→              <Badge variant="secondary" className="ml-1.5 h-5 rounded-full px-1.5 text-[10px] font-bold">
+   455→                {activeFilterCount}
+   456→              </Badge>
+   457→            </Button>
+   458→          ) : null}
+   459→        </div>
+   460→      </section>
+   461→
+   462→      {/* Events grid */}
+   463→      {loading ? (
+   464→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+   465→          {Array.from({ length: 6 }).map((_, i) => (
+   466→            <Skeleton key={i} className="h-56 rounded-xl" />
+   467→          ))}
+   468→        </div>
+   469→      ) : events.length === 0 ? (
+   470→        <EmptyState
+   471→          icon={CalendarDays}
+   472→          title="No events found"
+   473→          hint="Try adjusting the filters, or create your first event to get planning."
+   474→          action={
+   475→            <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   476→              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+   477→              New Event
+   478→            </Button>
+   479→          }
+   480→        />
+   481→      ) : (
+   482→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+   483→          {events.map((event, index) => {
+   484→            const total = event.taskStats?.total ?? event.taskCount ?? 0
+   485→            const completed = event.taskStats?.completed ?? 0
+   486→            const blocked = event.taskStats?.blocked ?? 0
+   487→            // Server-completed percentage (Phase 4), with client fallback for
+   488→            // any payload that predates the field.
+   489→            const percent = event.taskStats?.percent ?? (total > 0 ? Math.round((completed / total) * 100) : 0)
+   490→            const viewers = viewersByEvent[event.id] ?? []
+   491→            return (
+   492→              <motion.div
+   493→                key={event.id}
+   494→                initial={{ opacity: 0, y: 14 }}
+   495→                animate={{ opacity: 1, y: 0 }}
+   496→                transition={{ duration: 0.3, delay: Math.min(index * 0.05, 0.3), ease: 'easeOut' }}
+   497→              >
+   498→                <Card
+   499→                  className={cn(
+   500→                    'h-full cursor-pointer gap-3 overflow-hidden border-t-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md',
+   501→                    EVENT_CARD_TOP_BORDER[event.status]
+   502→                  )}
+   503→                  onClick={() => navigate(`${ROUTES.EVENTS}/${event.id}`)}
+   504→                  role="button"
+   505→                  tabIndex={0}
+   506→                  onKeyDown={(e) => {
+   507→                    if (e.key === 'Enter' || e.key === ' ') {
+   508→                      e.preventDefault()
+   509→                      navigate(`${ROUTES.EVENTS}/${event.id}`)
+   510→                    }
+   511→                  }}
+   512→                  aria-label={`Open details for ${event.name}`}
+   513→                >
+   514→                  <CardContent className="flex h-full flex-col px-4">
+   515→                    <div className="flex items-start justify-between gap-2">
+   516→                      <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{event.name}</h3>
+   517→                      <StatusBadge label={EVENT_STATUS_LABELS[event.status] ?? event.status} className={EVENT_STATUS_CLASSES[event.status]} />
+   518→                    </div>
+   519→
+   520→                    {event.description ? (
+   521→                      <p className="mt-1.5 line-clamp-2 min-h-10 text-sm text-muted-foreground">{event.description}</p>
+   522→                    ) : (
+   523→                      <p className="mt-1.5 min-h-10 text-sm italic text-muted-foreground/70">No description</p>
+   524→                    )}
+   525→
+   526→                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+   527→                      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 font-medium text-foreground">
+   528→                        <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+   529→                        {formatRange(event.startDate, event.endDate)}
+   530→                      </span>
+   531→                      {event.team ? (
+   532→                        <Badge variant="outline" className="border-border bg-muted/50 font-normal text-muted-foreground">
+   533→                          <Users className="mr-1 h-3 w-3" aria-hidden="true" />
+   534→                          {teamNameById.get(event.team.id) ?? event.team.name}
+   535→                        </Badge>
+   536→                      ) : null}
+   537→                    </div>
+   538→
+   539→                    {event.location ? (
+   540→                      <p className="mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground" title={event.location}>
+   541→                        <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+   542→                        <span className="truncate">{event.location}</span>
+   543→                      </p>
+   544→                    ) : null}
+   545→
+   546→                    <div className="mt-3">
+   547→                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+   548→                        <span>
+   549→                          <span className="font-semibold text-foreground">{completed}</span> of{' '}
+   550→                          <span className="font-semibold text-foreground">{total}</span> tasks done
+   551→                        </span>
+   552→                        <span>{percent}%</span>
+   553→                      </div>
+   554→                      <Progress value={percent} className="mt-1.5 h-1.5" aria-label={`${percent}% of tasks completed`} />
+   555→                    </div>
+   556→
+   557→                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+   558→                      <Badge variant="outline" className="border-border bg-card text-[11px] font-normal text-muted-foreground">
+   559→                        {total} tasks
+   560→                      </Badge>
+   561→                      {blocked > 0 ? (
+   562→                        <Badge variant="outline" className="border-red-200 bg-red-50 text-[11px] font-normal text-red-700">
+   563→                          {blocked} blocked
+   564→                        </Badge>
+   565→                      ) : null}
+   566→                      {viewers.length > 0 ? (
+   567→                        <span
+   568→                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/80 py-0.5 pl-1 pr-2 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+   569→                          title={`${viewers.map((v) => v.fullName).join(', ')} ${viewers.length === 1 ? 'is' : 'are'} viewing this event right now`}
+   570→                          aria-label={`${viewers.length} ${viewers.length === 1 ? 'person is' : 'people are'} viewing this event`}
+   571→                        >
+   572→                          <span className="flex -space-x-1" aria-hidden="true">
+   573→                            {viewers.slice(0, 3).map((viewer) => (
+   574→                              <span
+   575→                                key={viewer.id}
+   576→                                className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-600 text-[7px] font-bold text-white ring-1 ring-background"
+   577→                              >
+   578→                                {initialsOfName(viewer.fullName)}
+   579→                              </span>
+   580→                            ))}
+   581→                          </span>
+   582→                          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+   583→                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+   584→                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+   585→                          </span>
+   586→                          <span className="text-[10px] font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+   587→                            {viewers.length}
+   588→                          </span>
+   589→                        </span>
+   590→                      ) : null}
+   591→                      {event.creator ? (
+   592→                        <span className="ml-auto text-[11px] text-muted-foreground/70">by {event.creator.fullName}</span>
+   593→                      ) : null}
+   594→                    </div>
+   595→                  </CardContent>
+   596→                </Card>
+   597→              </motion.div>
+   598→            )
+   599→          })}
+   600→        </div>
+   601→      )}
+   602→
+   603→      {/* ============ Create dialog ============ */}
+   604→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   605→        <DialogContent className="sm:max-w-lg">
+   606→          <DialogHeader>
+   607→            <DialogTitle>Create a new event</DialogTitle>
+   608→            <DialogDescription>Give the event a name, dates and the team that owns it.</DialogDescription>
+   609→          </DialogHeader>
+   610→          <form onSubmit={handleCreate} className="space-y-4" noValidate>
+   611→            {formError ? (
+   612→              <Alert variant="destructive" role="alert">
+   613→                <AlertDescription>{formError}</AlertDescription>
+   614→              </Alert>
+   615→            ) : null}
+   616→
+   617→            <div className="space-y-2">
+   618→              <Label htmlFor="event-name">Name</Label>
+   619→              <Input
+   620→                id="event-name"
+   621→                value={form.name}
+   622→                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+   623→                placeholder="Launch Night Gala"
+   624→                className="h-11"
+   625→                required
+   626→              />
+   627→            </div>
+   628→
+   629→            <div className="space-y-2">
+   630→              <Label htmlFor="event-description">Description</Label>
+   631→              <Textarea
+   632→                id="event-description"
+   633→                value={form.description}
+   634→                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+   635→                placeholder="What is this event about?"
+   636→                rows={3}
+   637→              />
+   638→            </div>
+   639→
+   640→            <div className="space-y-2">
+   641→              <Label htmlFor="event-location" className="flex items-center gap-1.5">
+   642→                <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+   643→                Location
+   644→                <span className="text-xs font-normal text-muted-foreground">(optional — included in calendar exports)</span>
+   645→              </Label>
+   646→              <Input
+   647→                id="event-location"
+   648→                value={form.location}
+   649→                onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+   650→                placeholder="e.g. Grand Hall downtown or a video link"
+   651→                className="h-11"
+   652→                maxLength={200}
+   653→              />
+   654→            </div>
+   655→
+   656→            <div className="grid gap-4 sm:grid-cols-2">
+   657→              <div className="space-y-2">
+   658→                <Label htmlFor="event-start">Start date</Label>
+   659→                <Input
+   660→                  id="event-start"
+   661→                  type="date"
+   662→                  value={form.startDate}
+   663→                  onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+   664→                  className="h-11"
+   665→                  required
+   666→                />
+   667→              </div>
+   668→              <div className="space-y-2">
+   669→                <Label htmlFor="event-end">End date</Label>
+   670→                <Input
+   671→                  id="event-end"
+   672→                  type="date"
+   673→                  value={form.endDate}
+   674→                  onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+   675→                  className="h-11"
+   676→                  required
+   677→                />
+   678→              </div>
+   679→            </div>
+   680→
+   681→            <div className="grid gap-4 sm:grid-cols-2">
+   682→              <div className="space-y-2">
+   683→                <Label htmlFor="event-team">Team</Label>
+   684→                <Select
+   685→                  value={form.teamId || NO_TEAM}
+   686→                  onValueChange={(value) => setForm((f) => ({ ...f, teamId: value === NO_TEAM ? '' : value }))}
+   687→                >
+   688→                  <SelectTrigger id="event-team" className="h-11 w-full" aria-label="Team">
+   689→                    <SelectValue placeholder="Choose a team" />
+   690→                  </SelectTrigger>
+   691→                  <SelectContent>
+   692→                    <SelectItem value={NO_TEAM} disabled className="text-muted-foreground/70">
+   693→                      Choose a team…
+   694→                    </SelectItem>
+   695→                    {teams.map((team) => (
+   696→                      <SelectItem key={team.id} value={team.id}>
+   697→                        {team.name}
+   698→                      </SelectItem>
+   699→                    ))}
+   700→                  </SelectContent>
+   701→                </Select>
+   702→              </div>
+   703→              <div className="space-y-2">
+   704→                <Label htmlFor="event-status">Status</Label>
+   705→                <Select value={form.status} onValueChange={(value) => setForm((f) => ({ ...f, status: value as EventStatus }))}>
+   706→                  <SelectTrigger id="event-status" className="h-11 w-full" aria-label="Status">
+   707→                    <SelectValue />
+   708→                  </SelectTrigger>
+   709→                  <SelectContent>
+   710→                    {EVENT_STATUSES.map((status) => (
+   711→                      <SelectItem key={status} value={status}>
+   712→                        {EVENT_STATUS_LABELS[status]}
+   713→                      </SelectItem>
+   714→                    ))}
+   715→                  </SelectContent>
+   716→                </Select>
+   717→              </div>
+   718→            </div>
+   719→
+   720→            <DialogFooter className="gap-2 pt-2">
+   721→              <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>
+   722→                Cancel
+   723→              </Button>
+   724→              <Button type="submit" className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" disabled={saving}>
+   725→                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />}
+   726→                {saving ? 'Creating…' : 'Create event'}
+   727→              </Button>
+   728→            </DialogFooter>
+   729→          </form>
+   730→        </DialogContent>
+   731→      </Dialog>
+   732→
+   733→    </div>
+   734→  )
+   735→}
+   736→

@@ -525,12 +525,16 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
   const loadStats = useCallback(async () => {
     try {
-      const data = await api.get<{ stats: TaskStatsDTO }>('/tasks/stats')
+      // "My Tasks" gets personal numbers (assigned to me) instead of the
+      // role-wide scope — the two views must not share one stat strip.
+      const data = await api.get<{ stats: TaskStatsDTO }>(
+        `/tasks/stats${qs({ scope: scope === 'mine' ? 'mine' : undefined })}`
+      )
       setStats(data.stats)
     } catch {
       // Stats are supplementary — a failed refresh just keeps the last values.
     }
-  }, [])
+  }, [scope])
 
   const loadTasks = useCallback(
     async (options?: { silent?: boolean }) => {

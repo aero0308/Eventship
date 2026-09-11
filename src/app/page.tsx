@@ -60,7 +60,7 @@ function AuthRedirectPrompt() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-background px-4 text-center">
       <LoadingSpinner label="Checking your session…" />
-      <p className="max-w-sm text-sm text-stone-500">You need to be signed in to view this page.</p>
+      <p className="max-w-sm text-sm text-muted-foreground">You need to be signed in to view this page.</p>
       <Button className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => navigate(ROUTES.LOGIN)}>
         Go to sign in
       </Button>
@@ -75,14 +75,14 @@ function NotFoundCard({ path }: { path: string }) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={PAGE_TRANSITION}
-        className="w-full max-w-sm rounded-xl border border-stone-200 bg-white p-8 text-center shadow-sm"
+        className="w-full max-w-sm rounded-xl border border-border bg-card p-8 text-center shadow-sm"
       >
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-stone-100 text-stone-400">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Compass className="h-7 w-7" aria-hidden="true" />
         </span>
-        <h1 className="mt-4 text-xl font-bold text-stone-900">Page not found</h1>
-        <p className="mt-2 text-sm text-stone-500">
-          Nothing lives at <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">{path}</code>. Let&apos;s get you
+        <h1 className="mt-4 text-xl font-bold text-foreground">Page not found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Nothing lives at <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{path}</code>. Let&apos;s get you
           back on track.
         </p>
         <Button className="mt-6 min-h-11 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => navigate(ROUTES.HOME)}>

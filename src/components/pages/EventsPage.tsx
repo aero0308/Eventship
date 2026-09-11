@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { motion } from 'framer-motion'
 import {
+  ArrowRight,
   CalendarDays,
   CalendarPlus,
   CalendarRange,
@@ -397,11 +398,16 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5"
+            className="flex min-w-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5"
             role="group"
             aria-label="Filter by start date range"
           >
-            <CalendarRange className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+              aria-hidden="true"
+            >
+              <CalendarRange className="h-3.5 w-3.5" />
+            </span>
             <label className="sr-only" htmlFor="filter-date-from">
               Start date from
             </label>
@@ -411,10 +417,14 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
               value={dateFrom}
               max={dateTo || undefined}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+              className="h-7 w-[9.5rem] min-w-0 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
             />
-            <span className="text-xs text-muted-foreground/60" aria-hidden="true">
-              →
+            {/* Fixed-size flex-centered chip keeps the arrow perfectly centered */}
+            <span
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+              aria-hidden="true"
+            >
+              <ArrowRight className="h-3 w-3" />
             </span>
             <label className="sr-only" htmlFor="filter-date-to">
               Start date to
@@ -425,7 +435,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
               value={dateTo}
               min={dateFrom || undefined}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+              className="h-7 w-[9.5rem] min-w-0 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
             />
           </div>
 

@@ -95,7 +95,7 @@ export function RegisterPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit} className="auth-form space-y-4" noValidate>
       {error ? (
         <Alert variant="destructive" role="alert">
           <AlertCircle className="h-4 w-4" aria-hidden="true" />
@@ -103,32 +103,36 @@ export function RegisterPage() {
         </Alert>
       ) : null}
 
-      <div className="space-y-2">
-        <Label htmlFor="register-name">Full name</Label>
-        <Input
-          id="register-name"
-          type="text"
-          autoComplete="name"
-          placeholder="Alex Morgan"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          className="h-11"
-          required
-        />
-      </div>
+      {/* Name + email share a row on wide screens so the form fits short
+          viewports without scrolling (stacks on mobile). */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="register-name">Full name</Label>
+          <Input
+            id="register-name"
+            type="text"
+            autoComplete="name"
+            placeholder="Alex Morgan"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            className="h-11"
+            required
+          />
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="register-email">Email</Label>
-        <Input
-          id="register-email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@company.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="h-11"
-          required
-        />
+        <div className="space-y-2">
+          <Label htmlFor="register-email">Email</Label>
+          <Input
+            id="register-email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="h-11"
+            required
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

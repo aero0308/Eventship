@@ -26,8 +26,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -70,6 +68,9 @@ const PRIORITY_CHART_COLORS: Record<string, string> = {
   LOW: '#a8a29e', // stone-400
 }
 
+/** Outer → inner ring order for the priority rings (most critical first). */
+const PRIORITY_RING_ORDER = ['HIGH', 'MEDIUM', 'LOW'] as const
+
 /** Deterministic avatar tone per team name (stable across renders/visits). */
 const TEAM_TONES = [
   'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
@@ -91,6 +92,101 @@ function completionPill(percent: number): string {
   if (percent >= 75) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
   if (percent > 0) return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
   return 'bg-muted text-muted-foreground'
+}
+
+// ============ Priority rings (concentric activity-style donut) ============
+
+interface RingEntry {
+  key: string
+  name: string
+  value: number
+}
+
+/**
+ * Concentric "activity rings" for the priority breakdown: one ring per
+ * priority (HIGH outer → LOW inner), each filled by its share of all tasks,
+ * with the total count in the middle. Animated on mount, respects colors
+ * from PRIORITY_CHART_COLORS.
+ */
+function PriorityRings({ data }: { data: RingEntry[] }) {
+  const total = data.reduce((sum, entry) => sum + entry.value, 0)
+  const size = 208
+  const stroke = 15
+  const ringGap = 9
+
+  const rings = data.map((entry, index) => {
+    const radius = size / 2 - stroke / 2 - index * (stroke + ringGap)
+    const circumference = 2 * Math.PI * radius
+    return {
+      ...entry,
+      radius,
+      circumference,
+      share: total > 0 ? entry.value / total : 0,
+    }
+  })
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="h-full w-full -rotate-90"
+        role="img"
+        aria-label={`Priority breakdown of ${total} tasks: ${data
+          .map((entry) => `${entry.value} ${entry.name.toLowerCase()}`)
+          .join(', ')}`}
+      >
+        {rings.map((ring) => (
+          <g key={ring.key}>
+            {/* Track */}
+            <circle cx={size / 2} cy={size / 2} r={ring.radius} fill="none" stroke="var(--muted)" strokeWidth={stroke} />
+            {/* Value arc — starts at 12 o'clock (svg rotated -90°) */}
+            <motion.circle
+              cx={size / 2}
+              cy={size / 2}
+              r={ring.radius}
+              fill="none"
+              stroke={PRIORITY_CHART_COLORS[ring.key] ?? '#a8a29e'}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={ring.circumference}
+              initial={{ strokeDashoffset: ring.circumference }}
+              animate={{ strokeDashoffset: ring.circumference * (1 - ring.share) }}
+              transition={{ duration: 0.9, ease: 'easeOut', delay: 0.15 }}
+            />
+          </g>
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
+        <span className="text-[2rem] font-bold leading-none tabular-nums text-foreground">{total}</span>
+        <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">tasks</span>
+      </div>
+    </div>
+  )
+}
+
+/** Legend row for the priority rings: dot, label, count, share % and a mini bar. */
+function PriorityLegendRow({ entry, total }: { entry: RingEntry; total: number }) {
+  const share = total > 0 ? Math.round((entry.value / total) * 100) : 0
+  const color = PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e'
+  return (
+    <li className="space-y-1.5">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+        <span className="text-muted-foreground">{entry.name}</span>
+        <span className="ml-auto font-semibold tabular-nums text-foreground">{entry.value}</span>
+        <span className="w-11 text-right text-xs tabular-nums text-muted-foreground">{share}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ backgroundColor: color }}
+          initial={{ width: 0 }}
+          animate={{ width: `${share}%` }}
+          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+        />
+      </div>
+    </li>
+  )
 }
 
 function greeting(): string {
@@ -347,7 +443,16 @@ export function DashboardPage() {
   )
 
   const priorityData = useMemo(
-    () => (stats?.tasksByPriority ?? []).map((entry) => ({ name: PRIORITY_LABELS[entry.priority] ?? entry.priority, value: entry.count, key: entry.priority })),
+    () =>
+      (stats?.tasksByPriority ?? [])
+        .map((entry) => ({ name: PRIORITY_LABELS[entry.priority] ?? entry.priority, value: entry.count, key: entry.priority }))
+        .sort((a, b) => {
+          const rank = (key: string) => {
+            const index = PRIORITY_RING_ORDER.indexOf(key as (typeof PRIORITY_RING_ORDER)[number])
+            return index === -1 ? PRIORITY_RING_ORDER.length : index
+          }
+          return rank(a.key) - rank(b.key)
+        }),
     [stats]
   )
 
@@ -459,6 +564,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Tasks by priority</CardTitle>
+            <CardDescription>Share of all tasks per priority level.</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -466,37 +572,11 @@ export function DashboardPage() {
             ) : priorityData.every((d) => d.value === 0) ? (
               <EmptyState icon={ListTodo} title="No tasks yet" hint="Priorities will appear once tasks exist." />
             ) : (
-              <div className="flex h-64 flex-col items-center justify-center gap-2 sm:flex-row">
-                <div className="h-52 w-full max-w-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={priorityData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={80} paddingAngle={3} strokeWidth={2}>
-                        {priorityData.map((entry) => (
-                          <Cell key={entry.key} fill={PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: 10,
-                          border: '1px solid var(--border)',
-                          backgroundColor: 'var(--card)',
-                          color: 'var(--foreground)',
-                          fontSize: 13,
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                        }}
-                        labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }}
-                        itemStyle={{ color: 'var(--muted-foreground)' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <ul className="space-y-1.5">
+              <div className="flex h-64 flex-col items-center justify-center gap-6 sm:flex-row sm:gap-10">
+                <PriorityRings data={priorityData} />
+                <ul className="w-full max-w-72 space-y-4" aria-label="Priority legend">
                   {priorityData.map((entry) => (
-                    <li key={entry.key} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e' }} aria-hidden="true" />
-                      {entry.name}
-                      <span className="font-semibold text-foreground">{entry.value}</span>
-                    </li>
+                    <PriorityLegendRow key={entry.key} entry={entry} total={priorityData.reduce((sum, d) => sum + d.value, 0)} />
                   ))}
                 </ul>
               </div>

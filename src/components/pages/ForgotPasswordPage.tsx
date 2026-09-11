@@ -104,7 +104,7 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit} className="auth-form space-y-4" noValidate>
       {error ? (
         <Alert variant="destructive" role="alert">
           <LifeBuoy className="h-4 w-4" aria-hidden="true" />

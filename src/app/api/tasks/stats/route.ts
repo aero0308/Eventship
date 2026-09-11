@@ -3,21 +3,25 @@ import { handleApiError, ok, requireUser } from '@/lib/api-utils'
 import type { Prisma } from '@prisma/client'
 
 /**
- * GET /api/tasks/stats — role-scoped task statistics (Phase 5 get_task_stats).
+ * GET /api/tasks/stats — task statistics (Phase 5 get_task_stats).
  *
- * Scope rules (mirror the spec's authorization matrix):
- * - EMPLOYEE: tasks assigned to them.
- * - TEAM_LEADER: tasks inside events owned by their team.
- * - EVENT_MANAGER: every task.
+ * Scope rules:
+ * - `?scope=mine` → strictly tasks assigned to the caller (used by the
+ *   "My Tasks" page, so managers see personal numbers there, not org-wide).
+ * - Otherwise role-scoped (mirrors the spec's authorization matrix):
+ *   EMPLOYEE: tasks assigned to them.
+ *   TEAM_LEADER: tasks inside events owned by their team.
+ *   EVENT_MANAGER: every task.
  *
  * One groupBy over status + one overdue count keeps this to two queries.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await requireUser()
+    const mineScope = new URL(request.url).searchParams.get('scope') === 'mine'
 
     let where: Prisma.TaskWhereInput = {}
-    if (user.role === 'EMPLOYEE') {
+    if (mineScope || user.role === 'EMPLOYEE') {
       where = { assignedTo: user.id }
     } else if (user.role === 'TEAM_LEADER') {
       // A team leader without a team simply sees an empty scope.
