@@ -227,6 +227,39 @@ export interface DashboardMyFocusDTO {
   overdue: DashboardFocusBucketDTO
 }
 
+/** Phase 6: a blocked task in the dashboard "Blockers" widget. */
+export interface DashboardBlockerDTO {
+  id: string
+  title: string
+  priority: TaskPriority
+  eventId: string
+  eventName: string | null
+  assigneeName: string | null
+  dueDate: string | null
+  daysBlocked: number
+  latestComment: { content: string; authorName: string | null; createdAt: string } | null
+}
+
+/** Phase 6: one day of the 30-day progress trend. */
+export interface ProgressOverTimeDTO {
+  date: string
+  created: number
+  completed: number
+  cumulativeCompleted: number
+}
+
+/** Phase 6: per-person performance row (managers/leaders only). */
+export interface TopPerformerDTO {
+  userId: string
+  fullName: string
+  email: string
+  totalTasks: number
+  completedTasks: number
+  inProgressTasks: number
+  blockedTasks: number
+  completionRate: number
+}
+
 export interface DashboardStatsDTO {
   totals: {
     events: number
@@ -234,6 +267,7 @@ export interface DashboardStatsDTO {
     tasks: number
     completedTasks: number
     blockedTasks: number
+    overdueTasks: number
     teams: number
     members: number
     upcomingDeadlines: number
@@ -244,9 +278,20 @@ export interface DashboardStatsDTO {
   upcomingEvents: EventDTO[]
   upcomingDeadlines: TaskDTO[]
   recentActivity: ActivityLogDTO[]
-  teamWorkload: { teamId: string; teamName: string; openTasks: number; completedTasks: number }[]
+  teamWorkload: {
+    teamId: string
+    teamName: string
+    openTasks: number
+    completedTasks: number
+    blockedTasks: number
+    memberCount: number
+    completionRate: number
+  }[]
   completionRate: number
   myFocus: DashboardMyFocusDTO
+  blockers: DashboardBlockerDTO[]
+  progressOverTime: ProgressOverTimeDTO[]
+  topPerformers: TopPerformerDTO[]
 }
 
 export interface AuthResponse {

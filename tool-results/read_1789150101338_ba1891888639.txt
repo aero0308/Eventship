@@ -1,0 +1,2002 @@
+     1→PHASE 6: Dashboard & Analytics - Step-by-Step AI Prompts
+     2→📋 How This Works
+     3→For Phase 6, we'll build the complete dashboard system with stats, charts, and insights. This is what managers and team members see first when they log in!
+     4→
+     5→Order of work:
+     6→
+     7→First: Backend dashboard APIs (data aggregation)
+     8→
+     9→Then: Frontend dashboard service + store
+    10→
+    11→Then: Dashboard components (stats cards, charts, lists)
+    12→
+    13→Then: Dashboard page with layout
+    14→
+    15→Then: Test everything manually
+    16→
+    17→What You'll See by End of Phase 6:
+    18→
+    19→✅ Dashboard with 4 summary stat cards
+    20→
+    21→✅ Task distribution pie/donut chart
+    22→
+    23→✅ Task status bar chart
+    24→
+    25→✅ Upcoming deadlines list
+    26→
+    27→✅ Blockers list (tasks needing attention)
+    28→
+    29→✅ Recent activity feed
+    30→
+    31→✅ Team performance metrics
+    32→
+    33→✅ Auto-refresh every 30 seconds
+    34→
+    35→✅ Different views for managers vs employees
+    36→
+    37→📌 Step 6.1: Backend Dashboard APIs
+    38→🤖 Complete Prompt for Step 6.1:
+    39→text
+    40→We're starting Phase 6 - Dashboard & Analytics. First, build the backend dashboard APIs that aggregate data from all models.
+    41→
+    42→**Create these files:**
+    43→
+    44→1. **backend/app/schemas/dashboard.py** - Dashboard schemas:
+    45→```python
+    46→from pydantic import BaseModel
+    47→from typing import Optional, List, Dict
+    48→from datetime import datetime
+    49→from uuid import UUID
+    50→
+    51→class DashboardStats(BaseModel):
+    52→    total_events: int
+    53→    active_events: int
+    54→    total_tasks: int
+    55→    completed_tasks: int
+    56→    in_progress_tasks: int
+    57→    blocked_tasks: int
+    58→    not_started_tasks: int
+    59→    overdue_tasks: int
+    60→    completion_rate: float
+    61→    total_teams: int
+    62→    total_users: int
+    63→
+    64→class TaskDistribution(BaseModel):
+    65→    not_started: int
+    66→    in_progress: int
+    67→    blocked: int
+    68→    completed: int
+    69→
+    70→class PriorityDistribution(BaseModel):
+    71→    high: int
+    72→    medium: int
+    73→    low: int
+    74→
+    75→class UpcomingDeadline(BaseModel):
+    76→    id: UUID
+    77→    title: str
+    78→    due_date: datetime
+    79→    priority: str
+    80→    status: str
+    81→    event_name: Optional[str]
+    82→    assignee_name: Optional[str]
+    83→    days_until_due: int
+    84→    is_overdue: bool
+    85→
+    86→class BlockerInfo(BaseModel):
+    87→    id: UUID
+    88→    title: str
+    89→    priority: str
+    90→    event_name: Optional[str]
+    91→    assignee_name: Optional[str]
+    92→    due_date: Optional[datetime]
+    93→    days_blocked: int
+    94→    latest_comment: Optional[str]
+    95→
+    96→class ActivityItem(BaseModel):
+    97→    id: UUID
+    98→    action: str
+    99→    details: Optional[dict]
+   100→    user_name: str
+   101→    user_avatar: Optional[str]
+   102→    timestamp: datetime
+   103→    related_task_id: Optional[UUID]
+   104→    related_event_id: Optional[UUID]
+   105→
+   106→class TeamPerformance(BaseModel):
+   107→    team_id: UUID
+   108→    team_name: str
+   109→    member_count: int
+   110→    total_tasks: int
+   111→    completed_tasks: int
+   112→    blocked_tasks: int
+   113→    completion_rate: float
+   114→
+   115→class EmployeePerformance(BaseModel):
+   116→    user_id: UUID
+   117→    user_name: str
+   118→    user_avatar: Optional[str]
+   119→    total_tasks: int
+   120→    completed_tasks: int
+   121→    in_progress_tasks: int
+   122→    blocked_tasks: int
+   123→    completion_rate: float
+   124→
+   125→class ProgressOverTime(BaseModel):
+   126→    date: str
+   127→    completed: int
+   128→    created: int
+   129→    cumulative_completed: int
+   130→
+   131→class DashboardResponse(BaseModel):
+   132→    stats: DashboardStats
+   133→    task_distribution: TaskDistribution
+   134→    priority_distribution: PriorityDistribution
+   135→    upcoming_deadlines: List[UpcomingDeadline]
+   136→    blockers: List[BlockerInfo]
+   137→    recent_activity: List[ActivityItem]
+   138→    team_performance: Optional[List[TeamPerformance]] = None
+   139→    top_performers: Optional[List[EmployeePerformance]] = None
+   140→    progress_over_time: Optional[List[ProgressOverTime]] = None
+   141→backend/app/crud/dashboard.py - Dashboard aggregation functions:
+   142→
+   143→python
+   144→from sqlalchemy.orm import Session
+   145→from sqlalchemy import func, and_, or_
+   146→from typing import List, Optional, Dict
+   147→from uuid import UUID
+   148→from datetime import datetime, timedelta
+   149→
+   150→from app.models.task import Task, TaskStatus, TaskPriority
+   151→from app.models.event import Event, EventStatus
+   152→from app.models.team import Team
+   153→from app.models.user import User, UserRole
+   154→from app.models.activity import ActivityLog
+   155→from app.models.comment import TaskComment
+   156→
+   157→
+   158→def get_dashboard_stats(db: Session, user: Optional[User] = None) -> Dict:
+   159→    """
+   160→    Get overall dashboard statistics.
+   161→    
+   162→    Authorization:
+   163→    - EVENT_MANAGER: sees all data
+   164→    - TEAM_LEADER: sees team data
+   165→    - EMPLOYEE: sees only their tasks
+   166→    """
+   167→    # Base queries with role-based filtering
+   168→    if user and user.role == UserRole.EMPLOYEE:
+   169→        # Employee: only their tasks
+   170→        task_query = db.query(Task).filter(Task.assigned_to == user.id)
+   171→        event_query = db.query(Event).join(Team).filter(Team.id == user.team_id)
+   172→        team_query = db.query(Team).filter(Team.id == user.team_id)
+   173→        user_query = db.query(User).filter(User.team_id == user.team_id)
+   174→    elif user and user.role == UserRole.TEAM_LEADER:
+   175→        # Team leader: team's data
+   176→        task_query = db.query(Task).join(Event).filter(Event.team_id == user.team_id)
+   177→        event_query = db.query(Event).filter(Event.team_id == user.team_id)
+   178→        team_query = db.query(Team).filter(Team.id == user.team_id)
+   179→        user_query = db.query(User).filter(User.team_id == user.team_id)
+   180→    else:
+   181→        # Manager: all data
+   182→        task_query = db.query(Task)
+   183→        event_query = db.query(Event)
+   184→        team_query = db.query(Team)
+   185→        user_query = db.query(User)
+   186→    
+   187→    # Count stats
+   188→    total_tasks = task_query.count()
+   189→    completed_tasks = task_query.filter(Task.status == TaskStatus.COMPLETED).count()
+   190→    in_progress_tasks = task_query.filter(Task.status == TaskStatus.IN_PROGRESS).count()
+   191→    blocked_tasks = task_query.filter(Task.status == TaskStatus.BLOCKED).count()
+   192→    not_started_tasks = task_query.filter(Task.status == TaskStatus.NOT_STARTED).count()
+   193→    overdue_tasks = task_query.filter(
+   194→        Task.due_date < datetime.utcnow(),
+   195→        Task.status != TaskStatus.COMPLETED
+   196→    ).count()
+   197→    
+   198→    total_events = event_query.count()
+   199→    active_events = event_query.filter(
+   200→        Event.status.in_([EventStatus.PLANNING, EventStatus.IN_PROGRESS])
+   201→    ).count()
+   202→    
+   203→    total_teams = team_query.count()
+   204→    total_users = user_query.count()
+   205→    
+   206→    completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+   207→    
+   208→    return {
+   209→        "total_events": total_events,
+   210→        "active_events": active_events,
+   211→        "total_tasks": total_tasks,
+   212→        "completed_tasks": completed_tasks,
+   213→        "in_progress_tasks": in_progress_tasks,
+   214→        "blocked_tasks": blocked_tasks,
+   215→        "not_started_tasks": not_started_tasks,
+   216→        "overdue_tasks": overdue_tasks,
+   217→        "completion_rate": round(completion_rate, 2),
+   218→        "total_teams": total_teams,
+   219→        "total_users": total_users
+   220→    }
+   221→
+   222→
+   223→def get_task_distribution(db: Session, user: Optional[User] = None) -> Dict:
+   224→    """Get task count by status for chart"""
+   225→    query = db.query(Task)
+   226→    
+   227→    # Apply role filter
+   228→    if user:
+   229→        if user.role == UserRole.EMPLOYEE:
+   230→            query = query.filter(Task.assigned_to == user.id)
+   231→        elif user.role == UserRole.TEAM_LEADER:
+   232→            query = query.join(Event).filter(Event.team_id == user.team_id)
+   233→    
+   234→    return {
+   235→        "not_started": query.filter(Task.status == TaskStatus.NOT_STARTED).count(),
+   236→        "in_progress": query.filter(Task.status == TaskStatus.IN_PROGRESS).count(),
+   237→        "blocked": query.filter(Task.status == TaskStatus.BLOCKED).count(),
+   238→        "completed": query.filter(Task.status == TaskStatus.COMPLETED).count()
+   239→    }
+   240→
+   241→
+   242→def get_priority_distribution(db: Session, user: Optional[User] = None) -> Dict:
+   243→    """Get task count by priority for chart"""
+   244→    query = db.query(Task)
+   245→    
+   246→    if user:
+   247→        if user.role == UserRole.EMPLOYEE:
+   248→            query = query.filter(Task.assigned_to == user.id)
+   249→        elif user.role == UserRole.TEAM_LEADER:
+   250→            query = query.join(Event).filter(Event.team_id == user.team_id)
+   251→    
+   252→    return {
+   253→        "high": query.filter(Task.priority == TaskPriority.HIGH).count(),
+   254→        "medium": query.filter(Task.priority == TaskPriority.MEDIUM).count(),
+   255→        "low": query.filter(Task.priority == TaskPriority.LOW).count()
+   256→    }
+   257→
+   258→
+   259→def get_upcoming_deadlines(
+   260→    db: Session,
+   261→    user: Optional[User] = None,
+   262→    days: int = 7,
+   263→    limit: int = 10
+   264→) -> List[Dict]:
+   265→    """Get tasks due in the next N days"""
+   266→    now = datetime.utcnow()
+   267→    future = now + timedelta(days=days)
+   268→    
+   269→    query = db.query(Task).filter(
+   270→        Task.due_date.between(now, future),
+   271→        Task.status != TaskStatus.COMPLETED
+   272→    )
+   273→    
+   274→    # Role-based filtering
+   275→    if user:
+   276→        if user.role == UserRole.EMPLOYEE:
+   277→            query = query.filter(Task.assigned_to == user.id)
+   278→        elif user.role == UserRole.TEAM_LEADER:
+   279→            query = query.join(Event).filter(Event.team_id == user.team_id)
+   280→    
+   281→    tasks = query.order_by(Task.due_date.asc()).limit(limit).all()
+   282→    
+   283→    return [{
+   284→        "id": t.id,
+   285→        "title": t.title,
+   286→        "due_date": t.due_date,
+   287→        "priority": t.priority.value,
+   288→        "status": t.status.value,
+   289→        "event_name": t.event.name if t.event else None,
+   290→        "assignee_name": t.assignee.full_name if t.assignee else None,
+   291→        "days_until_due": (t.due_date - now).days,
+   292→        "is_overdue": False
+   293→    } for t in tasks]
+   294→
+   295→
+   296→def get_blockers(
+   297→    db: Session,
+   298→    user: Optional[User] = None,
+   299→    limit: int = 10
+   300→) -> List[Dict]:
+   301→    """Get all blocked tasks with details"""
+   302→    query = db.query(Task).filter(Task.status == TaskStatus.BLOCKED)
+   303→    
+   304→    if user:
+   305→        if user.role == UserRole.EMPLOYEE:
+   306→            query = query.filter(Task.assigned_to == user.id)
+   307→        elif user.role == UserRole.TEAM_LEADER:
+   308→            query = query.join(Event).filter(Event.team_id == user.team_id)
+   309→    
+   310→    tasks = query.order_by(Task.updated_at.desc()).limit(limit).all()
+   311→    
+   312→    result = []
+   313→    for t in tasks:
+   314→        # Get latest comment
+   315→        latest_comment = db.query(TaskComment).filter(
+   316→            TaskComment.task_id == t.id
+   317→        ).order_by(TaskComment.created_at.desc()).first()
+   318→        
+   319→        # Calculate days blocked (since last status change)
+   320→        days_blocked = (datetime.utcnow() - t.updated_at).days if t.updated_at else 0
+   321→        
+   322→        result.append({
+   323→            "id": t.id,
+   324→            "title": t.title,
+   325→            "priority": t.priority.value,
+   326→            "event_name": t.event.name if t.event else None,
+   327→            "assignee_name": t.assignee.full_name if t.assignee else None,
+   328→            "due_date": t.due_date,
+   329→            "days_blocked": days_blocked,
+   330→            "latest_comment": latest_comment.content if latest_comment else None
+   331→        })
+   332→    
+   333→    return result
+   334→
+   335→
+   336→def get_recent_activity(
+   337→    db: Session,
+   338→    user: Optional[User] = None,
+   339→    limit: int = 20
+   340→) -> List[Dict]:
+   341→    """Get recent activity logs"""
+   342→    query = db.query(ActivityLog)
+   343→    
+   344→    # Role-based filtering
+   345→    if user and user.role == UserRole.EMPLOYEE:
+   346→        # Employee sees activity related to their tasks
+   347→        task_ids = db.query(Task.id).filter(Task.assigned_to == user.id).subquery()
+   348→        query = query.filter(
+   349→            or_(
+   350→                ActivityLog.user_id == user.id,
+   351→                ActivityLog.details['task_id'].astext.in_(
+   352→                    db.query(Task.id).filter(Task.assigned_to == user.id)
+   353→                )
+   354→            )
+   355→        )
+   356→    
+   357→    activities = query.order_by(ActivityLog.timestamp.desc()).limit(limit).all()
+   358→    
+   359→    return [{
+   360→        "id": a.id,
+   361→        "action": a.action,
+   362→        "details": a.details,
+   363→        "user_name": a.user.full_name if a.user else "Unknown",
+   364→        "user_avatar": None,
+   365→        "timestamp": a.timestamp,
+   366→        "related_task_id": a.details.get("task_id") if a.details else None,
+   367→        "related_event_id": a.details.get("event_id") if a.details else None
+   368→    } for a in activities]
+   369→
+   370→
+   371→def get_team_performance(
+   372→    db: Session,
+   373→    user: Optional[User] = None,
+   374→    limit: int = 10
+   375→) -> List[Dict]:
+   376→    """Get performance metrics per team (managers only)"""
+   377→    teams = db.query(Team).limit(limit).all()
+   378→    
+   379→    result = []
+   380→    for team in teams:
+   381→        total_tasks = db.query(Task).join(Event).filter(Event.team_id == team.id).count()
+   382→        completed_tasks = db.query(Task).join(Event).filter(
+   383→            Event.team_id == team.id,
+   384→            Task.status == TaskStatus.COMPLETED
+   385→        ).count()
+   386→        blocked_tasks = db.query(Task).join(Event).filter(
+   387→            Event.team_id == team.id,
+   388→            Task.status == TaskStatus.BLOCKED
+   389→        ).count()
+   390→        member_count = db.query(User).filter(User.team_id == team.id).count()
+   391→        
+   392→        completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+   393→        
+   394→        result.append({
+   395→            "team_id": team.id,
+   396→            "team_name": team.name,
+   397→            "member_count": member_count,
+   398→            "total_tasks": total_tasks,
+   399→            "completed_tasks": completed_tasks,
+   400→            "blocked_tasks": blocked_tasks,
+   401→            "completion_rate": round(completion_rate, 2)
+   402→        })
+   403→    
+   404→    return result
+   405→
+   406→
+   407→def get_top_performers(
+   408→    db: Session,
+   409→    user: Optional[User] = None,
+   410→    limit: int = 5
+   411→) -> List[Dict]:
+   412→    """Get top performing employees (managers only)"""
+   413→    # Query users with their task counts
+   414→    users = db.query(User).filter(User.role == UserRole.EMPLOYEE)
+   415→    
+   416→    if user and user.role == UserRole.TEAM_LEADER:
+   417→        users = users.filter(User.team_id == user.team_id)
+   418→    
+   419→    result = []
+   420→    for u in users.limit(50).all():  # Limit initial query
+   421→        total = db.query(Task).filter(Task.assigned_to == u.id).count()
+   422→        completed = db.query(Task).filter(
+   423→            Task.assigned_to == u.id,
+   424→            Task.status == TaskStatus.COMPLETED
+   425→        ).count()
+   426→        in_progress = db.query(Task).filter(
+   427→            Task.assigned_to == u.id,
+   428→            Task.status == TaskStatus.IN_PROGRESS
+   429→        ).count()
+   430→        blocked = db.query(Task).filter(
+   431→            Task.assigned_to == u.id,
+   432→            Task.status == TaskStatus.BLOCKED
+   433→        ).count()
+   434→        
+   435→        if total > 0:
+   436→            completion_rate = (completed / total * 100)
+   437→            result.append({
+   438→                "user_id": u.id,
+   439→                "user_name": u.full_name,
+   440→                "user_avatar": None,
+   441→                "total_tasks": total,
+   442→                "completed_tasks": completed,
+   443→                "in_progress_tasks": in_progress,
+   444→                "blocked_tasks": blocked,
+   445→                "completion_rate": round(completion_rate, 2)
+   446→            })
+   447→    
+   448→    # Sort by completion rate descending
+   449→    result.sort(key=lambda x: x["completion_rate"], reverse=True)
+   450→    return result[:limit]
+   451→
+   452→
+   453→def get_progress_over_time(
+   454→    db: Session,
+   455→    user: Optional[User] = None,
+   456→    days: int = 30
+   457→) -> List[Dict]:
+   458→    """Get daily progress data for the last N days"""
+   459→    result = []
+   460→    now = datetime.utcnow()
+   461→    
+   462→    for i in range(days, -1, -1):
+   463→        date = now - timedelta(days=i)
+   464→        date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+   465→        date_end = date_start + timedelta(days=1)
+   466→        
+   467→        query_created = db.query(Task).filter(
+   468→            Task.created_at.between(date_start, date_end)
+   469→        )
+   470→        query_completed = db.query(Task).filter(
+   471→            Task.status == TaskStatus.COMPLETED,
+   472→            Task.updated_at.between(date_start, date_end)
+   473→        )
+   474→        
+   475→        if user:
+   476→            if user.role == UserRole.EMPLOYEE:
+   477→                query_created = query_created.filter(Task.assigned_to == user.id)
+   478→                query_completed = query_completed.filter(Task.assigned_to == user.id)
+   479→            elif user.role == UserRole.TEAM_LEADER:
+   480→                query_created = query_created.join(Event).filter(Event.team_id == user.team_id)
+   481→                query_completed = query_completed.join(Event).filter(Event.team_id == user.team_id)
+   482→        
+   483→        result.append({
+   484→            "date": date_start.strftime("%Y-%m-%d"),
+   485→            "created": query_created.count(),
+   486→            "completed": query_completed.count(),
+   487→            "cumulative_completed": 0  # Will calculate below
+   488→        })
+   489→    
+   490→    # Calculate cumulative
+   491→    cumulative = 0
+   492→    for item in result:
+   493→        cumulative += item["completed"]
+   494→        item["cumulative_completed"] = cumulative
+   495→    
+   496→    return result
+   497→backend/app/api/v1/dashboard.py - Dashboard API endpoints:
+   498→
+   499→python
+   500→from fastapi import APIRouter, Depends, Query
+   501→from sqlalchemy.orm import Session
+   502→from typing import Optional
+   503→
+   504→from app.api.deps import get_current_active_user
+   505→from app.core.database import get_db
+   506→from app.crud import dashboard as dashboard_crud
+   507→from app.models.user import User
+   508→from app.schemas.dashboard import (
+   509→    DashboardResponse, DashboardStats, TaskDistribution,
+   510→    PriorityDistribution, UpcomingDeadline, BlockerInfo,
+   511→    ActivityItem, TeamPerformance, EmployeePerformance,
+   512→    ProgressOverTime
+   513→)
+   514→
+   515→router = APIRouter()
+   516→
+   517→
+   518→@router.get("/stats", response_model=DashboardStats)
+   519→async def get_stats(
+   520→    db: Session = Depends(get_db),
+   521→    current_user: User = Depends(get_current_active_user)
+   522→):
+   523→    """Get dashboard statistics"""
+   524→    return dashboard_crud.get_dashboard_stats(db, current_user)
+   525→
+   526→
+   527→@router.get("/task-distribution", response_model=TaskDistribution)
+   528→async def get_task_distribution(
+   529→    db: Session = Depends(get_db),
+   530→    current_user: User = Depends(get_current_active_user)
+   531→):
+   532→    """Get task count by status"""
+   533→    return dashboard_crud.get_task_distribution(db, current_user)
+   534→
+   535→
+   536→@router.get("/priority-distribution", response_model=PriorityDistribution)
+   537→async def get_priority_distribution(
+   538→    db: Session = Depends(get_db),
+   539→    current_user: User = Depends(get_current_active_user)
+   540→):
+   541→    """Get task count by priority"""
+   542→    return dashboard_crud.get_priority_distribution(db, current_user)
+   543→
+   544→
+   545→@router.get("/upcoming-deadlines", response_model=list[UpcomingDeadline])
+   546→async def get_upcoming_deadlines(
+   547→    days: int = Query(7, ge=1, le=90),
+   548→    limit: int = Query(10, ge=1, le=50),
+   549→    db: Session = Depends(get_db),
+   550→    current_user: User = Depends(get_current_active_user)
+   551→):
+   552→    """Get tasks due in next N days"""
+   553→    return dashboard_crud.get_upcoming_deadlines(db, current_user, days, limit)
+   554→
+   555→
+   556→@router.get("/blockers", response_model=list[BlockerInfo])
+   557→async def get_blockers(
+   558→    limit: int = Query(10, ge=1, le=50),
+   559→    db: Session = Depends(get_db),
+   560→    current_user: User = Depends(get_current_active_user)
+   561→):
+   562→    """Get all blocked tasks"""
+   563→    return dashboard_crud.get_blockers(db, current_user, limit)
+   564→
+   565→
+   566→@router.get("/recent-activity", response_model=list[ActivityItem])
+   567→async def get_recent_activity(
+   568→    limit: int = Query(20, ge=1, le=100),
+   569→    db: Session = Depends(get_db),
+   570→    current_user: User = Depends(get_current_active_user)
+   571→):
+   572→    """Get recent activity logs"""
+   573→    return dashboard_crud.get_recent_activity(db, current_user, limit)
+   574→
+   575→
+   576→@router.get("/team-performance", response_model=list[TeamPerformance])
+   577→async def get_team_performance(
+   578→    limit: int = Query(10, ge=1, le=50),
+   579→    db: Session = Depends(get_db),
+   580→    current_user: User = Depends(get_current_active_user)
+   581→):
+   582→    """Get team performance metrics"""
+   583→    return dashboard_crud.get_team_performance(db, current_user, limit)
+   584→
+   585→
+   586→@router.get("/top-performers", response_model=list[EmployeePerformance])
+   587→async def get_top_performers(
+   588→    limit: int = Query(5, ge=1, le=20),
+   589→    db: Session = Depends(get_db),
+   590→    current_user: User = Depends(get_current_active_user)
+   591→):
+   592→    """Get top performing employees"""
+   593→    return dashboard_crud.get_top_performers(db, current_user, limit)
+   594→
+   595→
+   596→@router.get("/progress-over-time", response_model=list[ProgressOverTime])
+   597→async def get_progress_over_time(
+   598→    days: int = Query(30, ge=7, le=90),
+   599→    db: Session = Depends(get_db),
+   600→    current_user: User = Depends(get_current_active_user)
+   601→):
+   602→    """Get progress data over time"""
+   603→    return dashboard_crud.get_progress_over_time(db, current_user, days)
+   604→
+   605→
+   606→@router.get("/", response_model=DashboardResponse)
+   607→async def get_full_dashboard(
+   608→    db: Session = Depends(get_db),
+   609→    current_user: User = Depends(get_current_active_user)
+   610→):
+   611→    """
+   612→    Get all dashboard data in a single request.
+   613→    This is optimized for the initial dashboard load.
+   614→    """
+   615→    is_manager = current_user.role.value == "EVENT_MANAGER"
+   616→    is_leader = current_user.role.value == "TEAM_LEADER"
+   617→    
+   618→    return {
+   619→        "stats": dashboard_crud.get_dashboard_stats(db, current_user),
+   620→        "task_distribution": dashboard_crud.get_task_distribution(db, current_user),
+   621→        "priority_distribution": dashboard_crud.get_priority_distribution(db, current_user),
+   622→        "upcoming_deadlines": dashboard_crud.get_upcoming_deadlines(db, current_user, 7, 10),
+   623→        "blockers": dashboard_crud.get_blockers(db, current_user, 10),
+   624→        "recent_activity": dashboard_crud.get_recent_activity(db, current_user, 20),
+   625→        "team_performance": dashboard_crud.get_team_performance(db, current_user) if (is_manager or is_leader) else None,
+   626→        "top_performers": dashboard_crud.get_top_performers(db, current_user) if (is_manager or is_leader) else None,
+   627→        "progress_over_time": dashboard_crud.get_progress_over_time(db, current_user, 30)
+   628→    }
+   629→Update backend/app/main.py - Include dashboard router:
+   630→
+   631→python
+   632→from app.api.v1 import dashboard
+   633→
+   634→app.include_router(
+   635→    dashboard.router,
+   636→    prefix="/api/v1/dashboard",
+   637→    tags=["Dashboard"]
+   638→)
+   639→Requirements:
+   640→
+   641→Role-based filtering on all endpoints
+   642→
+   643→Efficient database queries (avoid N+1)
+   644→
+   645→Return empty lists instead of errors for missing data
+   646→
+   647→Comprehensive schemas with proper types
+   648→
+   649→Generate ALL complete files.
+   650→
+   651→text
+   652→
+   653→---
+   654→
+   655→## 📌 Step 6.2: Frontend Dashboard Service & Store
+   656→
+   657→### 🤖 Complete Prompt for Step 6.2:
+   658→Now create the frontend dashboard service and store.
+   659→
+   660→Install Recharts first:
+   661→
+   662→Run in terminal:
+   663→
+   664→bash
+   665→cd frontend
+   666→npm install recharts
+   667→npm install date-fns
+   668→Create these files:
+   669→
+   670→frontend/src/types/dashboard.ts - Dashboard types:
+   671→
+   672→typescript
+   673→export interface DashboardStats {
+   674→    total_events: number
+   675→    active_events: number
+   676→    total_tasks: number
+   677→    completed_tasks: number
+   678→    in_progress_tasks: number
+   679→    blocked_tasks: number
+   680→    not_started_tasks: number
+   681→    overdue_tasks: number
+   682→    completion_rate: number
+   683→    total_teams: number
+   684→    total_users: number
+   685→}
+   686→
+   687→export interface TaskDistribution {
+   688→    not_started: number
+   689→    in_progress: number
+   690→    blocked: number
+   691→    completed: number
+   692→}
+   693→
+   694→export interface PriorityDistribution {
+   695→    high: number
+   696→    medium: number
+   697→    low: number
+   698→}
+   699→
+   700→export interface UpcomingDeadline {
+   701→    id: string
+   702→    title: string
+   703→    due_date: string
+   704→    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+   705→    status: string
+   706→    event_name: string | null
+   707→    assignee_name: string | null
+   708→    days_until_due: number
+   709→    is_overdue: boolean
+   710→}
+   711→
+   712→export interface BlockerInfo {
+   713→    id: string
+   714→    title: string
+   715→    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+   716→    event_name: string | null
+   717→    assignee_name: string | null
+   718→    due_date: string | null
+   719→    days_blocked: number
+   720→    latest_comment: string | null
+   721→}
+   722→
+   723→export interface ActivityItem {
+   724→    id: string
+   725→    action: string
+   726→    details: any
+   727→    user_name: string
+   728→    user_avatar: string | null
+   729→    timestamp: string
+   730→    related_task_id: string | null
+   731→    related_event_id: string | null
+   732→}
+   733→
+   734→export interface TeamPerformance {
+   735→    team_id: string
+   736→    team_name: string
+   737→    member_count: number
+   738→    total_tasks: number
+   739→    completed_tasks: number
+   740→    blocked_tasks: number
+   741→    completion_rate: number
+   742→}
+   743→
+   744→export interface EmployeePerformance {
+   745→    user_id: string
+   746→    user_name: string
+   747→    user_avatar: string | null
+   748→    total_tasks: number
+   749→    completed_tasks: number
+   750→    in_progress_tasks: number
+   751→    blocked_tasks: number
+   752→    completion_rate: number
+   753→}
+   754→
+   755→export interface ProgressOverTime {
+   756→    date: string
+   757→    completed: number
+   758→    created: number
+   759→    cumulative_completed: number
+   760→}
+   761→
+   762→export interface DashboardResponse {
+   763→    stats: DashboardStats
+   764→    task_distribution: TaskDistribution
+   765→    priority_distribution: PriorityDistribution
+   766→    upcoming_deadlines: UpcomingDeadline[]
+   767→    blockers: BlockerInfo[]
+   768→    recent_activity: ActivityItem[]
+   769→    team_performance: TeamPerformance[] | null
+   770→    top_performers: EmployeePerformance[] | null
+   771→    progress_over_time: ProgressOverTime[] | null
+   772→}
+   773→frontend/src/services/dashboardService.ts:
+   774→
+   775→typescript
+   776→import api from './api'
+   777→import { 
+   778→    DashboardResponse, DashboardStats, TaskDistribution,
+   779→    PriorityDistribution, UpcomingDeadline, BlockerInfo,
+   780→    ActivityItem, TeamPerformance, EmployeePerformance,
+   781→    ProgressOverTime
+   782→} from '../types/dashboard'
+   783→
+   784→export const dashboardService = {
+   785→    // Get complete dashboard in one request
+   786→    getDashboard: async () => {
+   787→        const response = await api.get('/dashboard/')
+   788→        return response.data as DashboardResponse
+   789→    },
+   790→    
+   791→    // Individual endpoints
+   792→    getStats: async () => {
+   793→        const response = await api.get('/dashboard/stats')
+   794→        return response.data as DashboardStats
+   795→    },
+   796→    
+   797→    getTaskDistribution: async () => {
+   798→        const response = await api.get('/dashboard/task-distribution')
+   799→        return response.data as TaskDistribution
+   800→    },
+   801→    
+   802→    getPriorityDistribution: async () => {
+   803→        const response = await api.get('/dashboard/priority-distribution')
+   804→        return response.data as PriorityDistribution
+   805→    },
+   806→    
+   807→    getUpcomingDeadlines: async (days: number = 7, limit: number = 10) => {
+   808→        const response = await api.get('/dashboard/upcoming-deadlines', {
+   809→            params: { days, limit }
+   810→        })
+   811→        return response.data as UpcomingDeadline[]
+   812→    },
+   813→    
+   814→    getBlockers: async (limit: number = 10) => {
+   815→        const response = await api.get('/dashboard/blockers', {
+   816→            params: { limit }
+   817→        })
+   818→        return response.data as BlockerInfo[]
+   819→    },
+   820→    
+   821→    getRecentActivity: async (limit: number = 20) => {
+   822→        const response = await api.get('/dashboard/recent-activity', {
+   823→            params: { limit }
+   824→        })
+   825→        return response.data as ActivityItem[]
+   826→    },
+   827→    
+   828→    getTeamPerformance: async (limit: number = 10) => {
+   829→        const response = await api.get('/dashboard/team-performance', {
+   830→            params: { limit }
+   831→        })
+   832→        return response.data as TeamPerformance[]
+   833→    },
+   834→    
+   835→    getTopPerformers: async (limit: number = 5) => {
+   836→        const response = await api.get('/dashboard/top-performers', {
+   837→            params: { limit }
+   838→        })
+   839→        return response.data as EmployeePerformance[]
+   840→    },
+   841→    
+   842→    getProgressOverTime: async (days: number = 30) => {
+   843→        const response = await api.get('/dashboard/progress-over-time', {
+   844→            params: { days }
+   845→        })
+   846→        return response.data as ProgressOverTime[]
+   847→    }
+   848→}
+   849→frontend/src/stores/dashboardStore.ts:
+   850→
+   851→typescript
+   852→import { create } from 'zustand'
+   853→import { dashboardService } from '../services/dashboardService'
+   854→import {
+   855→    DashboardStats, TaskDistribution, PriorityDistribution,
+   856→    UpcomingDeadline, BlockerInfo, ActivityItem,
+   857→    TeamPerformance, EmployeePerformance, ProgressOverTime
+   858→} from '../types/dashboard'
+   859→
+   860→interface DashboardState {
+   861→    // State
+   862→    stats: DashboardStats | null
+   863→    taskDistribution: TaskDistribution | null
+   864→    priorityDistribution: PriorityDistribution | null
+   865→    upcomingDeadlines: UpcomingDeadline[]
+   866→    blockers: BlockerInfo[]
+   867→    recentActivity: ActivityItem[]
+   868→    teamPerformance: TeamPerformance[]
+   869→    topPerformers: EmployeePerformance[]
+   870→    progressOverTime: ProgressOverTime[]
+   871→    isLoading: boolean
+   872→    error: string | null
+   873→    lastUpdated: Date | null
+   874→    
+   875→    // Actions
+   876→    fetchDashboard: () => Promise<void>
+   877→    refreshDashboard: () => Promise<void>
+   878→    fetchStats: () => Promise<void>
+   879→    fetchUpcomingDeadlines: (days?: number) => Promise<void>
+   880→    fetchBlockers: () => Promise<void>
+   881→    fetchRecentActivity: () => Promise<void>
+   882→    clearError: () => void
+   883→}
+   884→
+   885→export const useDashboardStore = create<DashboardState>((set, get) => ({
+   886→    stats: null,
+   887→    taskDistribution: null,
+   888→    priorityDistribution: null,
+   889→    upcomingDeadlines: [],
+   890→    blockers: [],
+   891→    recentActivity: [],
+   892→    teamPerformance: [],
+   893→    topPerformers: [],
+   894→    progressOverTime: [],
+   895→    isLoading: false,
+   896→    error: null,
+   897→    lastUpdated: null,
+   898→    
+   899→    fetchDashboard: async () => {
+   900→        set({ isLoading: true, error: null })
+   901→        try {
+   902→            const data = await dashboardService.getDashboard()
+   903→            set({
+   904→                stats: data.stats,
+   905→                taskDistribution: data.task_distribution,
+   906→                priorityDistribution: data.priority_distribution,
+   907→                upcomingDeadlines: data.upcoming_deadlines,
+   908→                blockers: data.blockers,
+   909→                recentActivity: data.recent_activity,
+   910→                teamPerformance: data.team_performance || [],
+   911→                topPerformers: data.top_performers || [],
+   912→                progressOverTime: data.progress_over_time || [],
+   913→                isLoading: false,
+   914→                lastUpdated: new Date()
+   915→            })
+   916→        } catch (error: any) {
+   917→            set({ 
+   918→                error: error.response?.data?.detail || 'Failed to load dashboard', 
+   919→                isLoading: false 
+   920→            })
+   921→        }
+   922→    },
+   923→    
+   924→    refreshDashboard: async () => {
+   925→        // Silent refresh (no loading state change)
+   926→        try {
+   927→            const data = await dashboardService.getDashboard()
+   928→            set({
+   929→                stats: data.stats,
+   930→                taskDistribution: data.task_distribution,
+   931→                priorityDistribution: data.priority_distribution,
+   932→                upcomingDeadlines: data.upcoming_deadlines,
+   933→                blockers: data.blockers,
+   934→                recentActivity: data.recent_activity,
+   935→                teamPerformance: data.team_performance || [],
+   936→                topPerformers: data.top_performers || [],
+   937→                progressOverTime: data.progress_over_time || [],
+   938→                lastUpdated: new Date()
+   939→            })
+   940→        } catch (error) {
+   941→            // Silent fail on refresh
+   942→            console.error('Dashboard refresh failed', error)
+   943→        }
+   944→    },
+   945→    
+   946→    fetchStats: async () => {
+   947→        try {
+   948→            const stats = await dashboardService.getStats()
+   949→            set({ stats })
+   950→        } catch (error: any) {
+   951→            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+   952→        }
+   953→    },
+   954→    
+   955→    fetchUpcomingDeadlines: async (days = 7) => {
+   956→        try {
+   957→            const deadlines = await dashboardService.getUpcomingDeadlines(days)
+   958→            set({ upcomingDeadlines: deadlines })
+   959→        } catch (error: any) {
+   960→            set({ error: error.response?.data?.detail || 'Failed to fetch deadlines' })
+   961→        }
+   962→    },
+   963→    
+   964→    fetchBlockers: async () => {
+   965→        try {
+   966→            const blockers = await dashboardService.getBlockers()
+   967→            set({ blockers })
+   968→        } catch (error: any) {
+   969→            set({ error: error.response?.data?.detail || 'Failed to fetch blockers' })
+   970→        }
+   971→    },
+   972→    
+   973→    fetchRecentActivity: async () => {
+   974→        try {
+   975→            const activity = await dashboardService.getRecentActivity()
+   976→            set({ recentActivity: activity })
+   977→        } catch (error: any) {
+   978→            set({ error: error.response?.data?.detail || 'Failed to fetch activity' })
+   979→        }
+   980→    },
+   981→    
+   982→    clearError: () => set({ error: null })
+   983→}))
+   984→frontend/src/hooks/useDashboard.ts - Custom hooks:
+   985→
+   986→typescript
+   987→import { useEffect, useRef } from 'react'
+   988→import { useDashboardStore } from '../stores/dashboardStore'
+   989→
+   990→/**
+   991→ * Fetch dashboard data on mount
+   992→ */
+   993→export const useDashboard = () => {
+   994→    const { 
+   995→        stats, taskDistribution, priorityDistribution,
+   996→        upcomingDeadlines, blockers, recentActivity,
+   997→        teamPerformance, topPerformers, progressOverTime,
+   998→        isLoading, error, fetchDashboard 
+   999→    } = useDashboardStore()
+  1000→    
+  1001→    useEffect(() => {
+  1002→        fetchDashboard()
+  1003→    }, [])
+  1004→    
+  1005→    return {
+  1006→        stats, taskDistribution, priorityDistribution,
+  1007→        upcomingDeadlines, blockers, recentActivity,
+  1008→        teamPerformance, topPerformers, progressOverTime,
+  1009→        isLoading, error,
+  1010→        refresh: () => useDashboardStore.getState().refreshDashboard()
+  1011→    }
+  1012→}
+  1013→
+  1014→/**
+  1015→ * Auto-refresh dashboard every N seconds
+  1016→ */
+  1017→export const useAutoRefreshDashboard = (intervalMs: number = 30000) => {
+  1018→    const refreshDashboard = useDashboardStore(state => state.refreshDashboard)
+  1019→    const intervalRef = useRef<NodeJS.Timeout>()
+  1020→    
+  1021→    useEffect(() => {
+  1022→        intervalRef.current = setInterval(() => {
+  1023→            refreshDashboard()
+  1024→        }, intervalMs)
+  1025→        
+  1026→        return () => {
+  1027→            if (intervalRef.current) {
+  1028→                clearInterval(intervalRef.current)
+  1029→            }
+  1030→        }
+  1031→    }, [intervalMs, refreshDashboard])
+  1032→}
+  1033→Requirements:
+  1034→
+  1035→Complete type safety
+  1036→
+  1037→Efficient refresh (silent for auto-refresh)
+  1038→
+  1039→Loading and error states
+  1040→
+  1041→Generate ALL complete files.
+  1042→
+  1043→text
+  1044→
+  1045→---
+  1046→
+  1047→## 📌 Step 6.3: Dashboard Components (Stats & Charts)
+  1048→
+  1049→### 🤖 Complete Prompt for Step 6.3:
+  1050→Now create all dashboard UI components. Use Recharts for charts.
+  1051→
+  1052→Create these files:
+  1053→
+  1054→frontend/src/components/dashboard/DashboardStats.tsx - Stats cards:
+  1055→
+  1056→typescript
+  1057→import { Link } from 'react-router-dom'
+  1058→import { DashboardStats as StatsType } from '../../types/dashboard'
+  1059→import { Card } from '../ui/Card'
+  1060→
+  1061→interface DashboardStatsProps {
+  1062→    stats: StatsType | null
+  1063→    isLoading?: boolean
+  1064→}
+  1065→
+  1066→export const DashboardStats = ({ stats, isLoading }: DashboardStatsProps) => {
+  1067→    if (isLoading || !stats) {
+  1068→        return <StatsSkeleton />
+  1069→    }
+  1070→    
+  1071→    const statCards = [
+  1072→        {
+  1073→            label: 'Total Tasks',
+  1074→            value: stats.total_tasks,
+  1075→            subtitle: `${stats.completed_tasks} completed`,
+  1076→            color: 'text-blue-600',
+  1077→            bgColor: 'bg-blue-50',
+  1078→            icon: '📋',
+  1079→            link: '/tasks'
+  1080→        },
+  1081→        {
+  1082→            label: 'In Progress',
+  1083→            value: stats.in_progress_tasks,
+  1084→            subtitle: 'Being worked on',
+  1085→            color: 'text-yellow-600',
+  1086→            bgColor: 'bg-yellow-50',
+  1087→            icon: '⚡',
+  1088→            link: '/tasks?status=IN_PROGRESS'
+  1089→        },
+  1090→        {
+  1091→            label: 'Blocked',
+  1092→            value: stats.blocked_tasks,
+  1093→            subtitle: 'Needs attention',
+  1094→            color: 'text-red-600',
+  1095→            bgColor: 'bg-red-50',
+  1096→            icon: '🚫',
+  1097→            link: '/tasks?status=BLOCKED',
+  1098→            highlight: stats.blocked_tasks > 0
+  1099→        },
+  1100→        {
+  1101→            label: 'Overdue',
+  1102→            value: stats.overdue_tasks,
+  1103→            subtitle: 'Past due date',
+  1104→            color: 'text-orange-600',
+  1105→            bgColor: 'bg-orange-50',
+  1106→            icon: '⏰',
+  1107→            link: '/tasks?overdue=true',
+  1108→            highlight: stats.overdue_tasks > 0
+  1109→        }
+  1110→    ]
+  1111→    
+  1112→    return (
+  1113→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1114→            {statCards.map(card => (
+  1115→                <Link key={card.label} to={card.link}>
+  1116→                    <Card className={`hover:shadow-lg transition-all cursor-pointer ${card.highlight ? 'ring-2 ring-red-200' : ''}`}>
+  1117→                        <div className="p-5">
+  1118→                            <div className="flex justify-between items-start">
+  1119→                                <div>
+  1120→                                    <p className="text-sm text-gray-500">{card.label}</p>
+  1121→                                    <p className={`text-3xl font-bold mt-1 ${card.color}`}>
+  1122→                                        {card.value}
+  1123→                                    </p>
+  1124→                                    <p className="text-xs text-gray-400 mt-1">
+  1125→                                        {card.subtitle}
+  1126→                                    </p>
+  1127→                                </div>
+  1128→                                <div className={`text-2xl ${card.bgColor} p-3 rounded-lg`}>
+  1129→                                    {card.icon}
+  1130→                                </div>
+  1131→                            </div>
+  1132→                        </div>
+  1133→                    </Card>
+  1134→                </Link>
+  1135→            ))}
+  1136→        </div>
+  1137→    )
+  1138→}
+  1139→
+  1140→const StatsSkeleton = () => (
+  1141→    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1142→        {[...Array(4)].map((_, i) => (
+  1143→            <Card key={i}>
+  1144→                <div className="p-5 animate-pulse">
+  1145→                    <div className="h-4 bg-gray-200 rounded w-20 mb-3" />
+  1146→                    <div className="h-8 bg-gray-200 rounded w-16 mb-2" />
+  1147→                    <div className="h-3 bg-gray-200 rounded w-24" />
+  1148→                </div>
+  1149→            </Card>
+  1150→        ))}
+  1151→    </div>
+  1152→)
+  1153→frontend/src/components/dashboard/TaskDistributionChart.tsx - Pie chart:
+  1154→
+  1155→typescript
+  1156→import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+  1157→import { TaskDistribution } from '../../types/dashboard'
+  1158→import { Card } from '../ui/Card'
+  1159→
+  1160→interface TaskDistributionChartProps {
+  1161→    data: TaskDistribution | null
+  1162→    isLoading?: boolean
+  1163→}
+  1164→
+  1165→const COLORS = {
+  1166→    not_started: '#94a3b8',   // gray
+  1167→    in_progress: '#3b82f6',   // blue
+  1168→    blocked: '#ef4444',        // red
+  1169→    completed: '#22c55e'       // green
+  1170→}
+  1171→
+  1172→export const TaskDistributionChart = ({ data, isLoading }: TaskDistributionChartProps) => {
+  1173→    if (isLoading || !data) {
+  1174→        return <ChartSkeleton title="Task Distribution" />
+  1175→    }
+  1176→    
+  1177→    const total = data.not_started + data.in_progress + data.blocked + data.completed
+  1178→    
+  1179→    if (total === 0) {
+  1180→        return (
+  1181→            <Card>
+  1182→                <div className="p-6">
+  1183→                    <h3 className="font-semibold mb-4">Task Distribution</h3>
+  1184→                    <div className="h-64 flex items-center justify-center text-gray-400">
+  1185→                        No tasks yet
+  1186→                    </div>
+  1187→                </div>
+  1188→            </Card>
+  1189→        )
+  1190→    }
+  1191→    
+  1192→    const chartData = [
+  1193→        { name: 'Not Started', value: data.not_started, color: COLORS.not_started },
+  1194→        { name: 'In Progress', value: data.in_progress, color: COLORS.in_progress },
+  1195→        { name: 'Blocked', value: data.blocked, color: COLORS.blocked },
+  1196→        { name: 'Completed', value: data.completed, color: COLORS.completed }
+  1197→    ].filter(item => item.value > 0)
+  1198→    
+  1199→    return (
+  1200→        <Card>
+  1201→            <div className="p-6">
+  1202→                <div className="flex justify-between items-center mb-4">
+  1203→                    <h3 className="font-semibold">Task Distribution</h3>
+  1204→                    <span className="text-sm text-gray-500">{total} total</span>
+  1205→                </div>
+  1206→                <div className="h-64">
+  1207→                    <ResponsiveContainer width="100%" height="100%">
+  1208→                        <PieChart>
+  1209→                            <Pie
+  1210→                                data={chartData}
+  1211→                                cx="50%"
+  1212→                                cy="50%"
+  1213→                                innerRadius={60}
+  1214→                                outerRadius={80}
+  1215→                                paddingAngle={2}
+  1216→                                dataKey="value"
+  1217→                            >
+  1218→                                {chartData.map((entry, index) => (
+  1219→                                    <Cell key={`cell-${index}`} fill={entry.color} />
+  1220→                                ))}
+  1221→                            </Pie>
+  1222→                            <Tooltip />
+  1223→                            <Legend />
+  1224→                        </PieChart>
+  1225→                    </ResponsiveContainer>
+  1226→                </div>
+  1227→            </div>
+  1228→        </Card>
+  1229→    )
+  1230→}
+  1231→
+  1232→const ChartSkeleton = ({ title }: { title: string }) => (
+  1233→    <Card>
+  1234→        <div className="p-6">
+  1235→            <h3 className="font-semibold mb-4">{title}</h3>
+  1236→            <div className="h-64 bg-gray-100 rounded animate-pulse" />
+  1237→        </div>
+  1238→    </Card>
+  1239→)
+  1240→frontend/src/components/dashboard/PriorityChart.tsx - Bar chart for priorities:
+  1241→
+  1242→typescript
+  1243→import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+  1244→import { PriorityDistribution } from '../../types/dashboard'
+  1245→import { Card } from '../ui/Card'
+  1246→
+  1247→interface PriorityChartProps {
+  1248→    data: PriorityDistribution | null
+  1249→    isLoading?: boolean
+  1250→}
+  1251→
+  1252→const PRIORITY_COLORS = {
+  1253→    high: '#ef4444',
+  1254→    medium: '#f59e0b',
+  1255→    low: '#10b981'
+  1256→}
+  1257→
+  1258→export const PriorityChart = ({ data, isLoading }: PriorityChartProps) => {
+  1259→    if (isLoading || !data) {
+  1260→        return (
+  1261→            <Card>
+  1262→                <div className="p-6">
+  1263→                    <h3 className="font-semibold mb-4">Tasks by Priority</h3>
+  1264→                    <div className="h-64 bg-gray-100 rounded animate-pulse" />
+  1265→                </div>
+  1266→            </Card>
+  1267→        )
+  1268→    }
+  1269→    
+  1270→    const chartData = [
+  1271→        { priority: 'High', count: data.high, color: PRIORITY_COLORS.high },
+  1272→        { priority: 'Medium', count: data.medium, color: PRIORITY_COLORS.medium },
+  1273→        { priority: 'Low', count: data.low, color: PRIORITY_COLORS.low }
+  1274→    ]
+  1275→    
+  1276→    return (
+  1277→        <Card>
+  1278→            <div className="p-6">
+  1279→                <h3 className="font-semibold mb-4">Tasks by Priority</h3>
+  1280→                <div className="h-64">
+  1281→                    <ResponsiveContainer width="100%" height="100%">
+  1282→                        <BarChart data={chartData}>
+  1283→                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+  1284→                            <XAxis dataKey="priority" />
+  1285→                            <YAxis allowDecimals={false} />
+  1286→                            <Tooltip />
+  1287→                            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+  1288→                                {chartData.map((entry, index) => (
+  1289→                                    <Cell key={`cell-${index}`} fill={entry.color} />
+  1290→                                ))}
+  1291→                            </Bar>
+  1292→                        </BarChart>
+  1293→                    </ResponsiveContainer>
+  1294→                </div>
+  1295→            </div>
+  1296→        </Card>
+  1297→    )
+  1298→}
+  1299→frontend/src/components/dashboard/ProgressChart.tsx - Line chart over time:
+  1300→
+  1301→typescript
+  1302→import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+  1303→import { ProgressOverTime } from '../../types/dashboard'
+  1304→import { Card } from '../ui/Card'
+  1305→import { format } from 'date-fns'
+  1306→
+  1307→interface ProgressChartProps {
+  1308→    data: ProgressOverTime[] | null
+  1309→    isLoading?: boolean
+  1310→}
+  1311→
+  1312→export const ProgressChart = ({ data, isLoading }: ProgressChartProps) => {
+  1313→    if (isLoading || !data || data.length === 0) {
+  1314→        return (
+  1315→            <Card>
+  1316→                <div className="p-6">
+  1317→                    <h3 className="font-semibold mb-4">Progress Over Time</h3>
+  1318→                    <div className="h-64 bg-gray-100 rounded animate-pulse" />
+  1319→                </div>
+  1320→            </Card>
+  1321→        )
+  1322→    }
+  1323→    
+  1324→    const chartData = data.map(item => ({
+  1325→        date: format(new Date(item.date), 'MMM dd'),
+  1326→        created: item.created,
+  1327→        completed: item.completed,
+  1328→        cumulative: item.cumulative_completed
+  1329→    }))
+  1330→    
+  1331→    return (
+  1332→        <Card>
+  1333→            <div className="p-6">
+  1334→                <div className="flex justify-between items-center mb-4">
+  1335→                    <h3 className="font-semibold">Progress Over Time</h3>
+  1336→                    <span className="text-sm text-gray-500">Last 30 days</span>
+  1337→                </div>
+  1338→                <div className="h-64">
+  1339→                    <ResponsiveContainer width="100%" height="100%">
+  1340→                        <LineChart data={chartData}>
+  1341→                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+  1342→                            <XAxis dataKey="date" fontSize={11} />
+  1343→                            <YAxis allowDecimals={false} fontSize={11} />
+  1344→                            <Tooltip />
+  1345→                            <Legend />
+  1346→                            <Line 
+  1347→                                type="monotone" 
+  1348→                                dataKey="created" 
+  1349→                                stroke="#3b82f6" 
+  1350→                                strokeWidth={2}
+  1351→                                name="Created"
+  1352→                            />
+  1353→                            <Line 
+  1354→                                type="monotone" 
+  1355→                                dataKey="completed" 
+  1356→                                stroke="#22c55e" 
+  1357→                                strokeWidth={2}
+  1358→                                name="Completed"
+  1359→                            />
+  1360→                            <Line 
+  1361→                                type="monotone" 
+  1362→                                dataKey="cumulative" 
+  1363→                                stroke="#8b5cf6" 
+  1364→                                strokeWidth={2}
+  1365→                                strokeDasharray="5 5"
+  1366→                                name="Total Completed"
+  1367→                            />
+  1368→                        </LineChart>
+  1369→                    </ResponsiveContainer>
+  1370→                </div>
+  1371→            </div>
+  1372→        </Card>
+  1373→    )
+  1374→}
+  1375→frontend/src/components/dashboard/WelcomeBanner.tsx:
+  1376→
+  1377→typescript
+  1378→import { useAuth } from '../../hooks/useAuth'
+  1379→import { format } from 'date-fns'
+  1380→
+  1381→export const WelcomeBanner = () => {
+  1382→    const { user } = useAuth()
+  1383→    
+  1384→    const getGreeting = () => {
+  1385→        const hour = new Date().getHours()
+  1386→        if (hour < 12) return 'Good morning'
+  1387→        if (hour < 18) return 'Good afternoon'
+  1388→        return 'Good evening'
+  1389→    }
+  1390→    
+  1391→    return (
+  1392→        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg p-6 text-white">
+  1393→            <div className="flex justify-between items-start">
+  1394→                <div>
+  1395→                    <h1 className="text-2xl font-bold">
+  1396→                        {getGreeting()}, {user?.full_name?.split(' ')[0]}! 👋
+  1397→                    </h1>
+  1398→                    <p className="text-blue-100 mt-1">
+  1399→                        Here's what's happening with your events today.
+  1400→                    </p>
+  1401→                </div>
+  1402→                <div className="text-right text-sm text-blue-100">
+  1403→                    <p>{format(new Date(), 'EEEE')}</p>
+  1404→                    <p className="font-semibold text-white">
+  1405→                        {format(new Date(), 'MMMM dd, yyyy')}
+  1406→                    </p>
+  1407→                </div>
+  1408→            </div>
+  1409→        </div>
+  1410→    )
+  1411→}
+  1412→Requirements:
+  1413→
+  1414→All charts use Recharts
+  1415→
+  1416→Empty states with helpful messages
+  1417→
+  1418→Loading skeletons
+  1419→
+  1420→Responsive design
+  1421→
+  1422→Proper TypeScript types
+  1423→
+  1424→Generate ALL complete files.
+  1425→
+  1426→text
+  1427→
+  1428→---
+  1429→
+  1430→## 📌 Step 6.4: Dashboard Lists (Deadlines, Blockers, Activity)
+  1431→
+  1432→### 🤖 Complete Prompt for Step 6.4:
+  1433→Now create the dashboard list components.
+  1434→
+  1435→Create these files:
+  1436→
+  1437→frontend/src/components/dashboard/UpcomingDeadlines.tsx:
+  1438→
+  1439→typescript
+  1440→import { Link } from 'react-router-dom'
+  1441→import { UpcomingDeadline } from '../../types/dashboard'
+  1442→import { Card } from '../ui/Card'
+  1443→import { Badge } from '../ui/Badge'
+  1444→import { EmptyState } from '../ui/EmptyState'
+  1445→import { format, isToday, isTomorrow } from 'date-fns'
+  1446→
+  1447→interface UpcomingDeadlinesProps {
+  1448→    deadlines: UpcomingDeadline[]
+  1449→    isLoading?: boolean
+  1450→}
+  1451→
+  1452→export const UpcomingDeadlines = ({ deadlines, isLoading }: UpcomingDeadlinesProps) => {
+  1453→    if (isLoading) {
+  1454→        return <ListSkeleton title="Upcoming Deadlines" />
+  1455→    }
+  1456→    
+  1457→    const formatDueDate = (deadline: UpcomingDeadline) => {
+  1458→        if (deadline.days_until_due === 0) return 'Due today'
+  1459→        if (deadline.days_until_due === 1) return 'Due tomorrow'
+  1460→        if (deadline.days_until_due < 0) return `Overdue by ${Math.abs(deadline.days_until_due)} days`
+  1461→        return `Due in ${deadline.days_until_due} days`
+  1462→    }
+  1463→    
+  1464→    const getDueDateColor = (deadline: UpcomingDeadline) => {
+  1465→        if (deadline.days_until_due <= 0) return 'text-red-600 font-semibold'
+  1466→        if (deadline.days_until_due <= 1) return 'text-orange-600 font-semibold'
+  1467→        if (deadline.days_until_due <= 3) return 'text-yellow-600'
+  1468→        return 'text-gray-500'
+  1469→    }
+  1470→    
+  1471→    return (
+  1472→        <Card>
+  1473→            <div className="p-6">
+  1474→                <div className="flex justify-between items-center mb-4">
+  1475→                    <h3 className="font-semibold">⏰ Upcoming Deadlines</h3>
+  1476→                    <Link to="/tasks" className="text-sm text-blue-600 hover:underline">
+  1477→                        View all
+  1478→                    </Link>
+  1479→                </div>
+  1480→                
+  1481→                {deadlines.length === 0 ? (
+  1482→                    <div className="text-center py-8 text-gray-400 text-sm">
+  1483→                        No upcoming deadlines in the next 7 days 🎉
+  1484→                    </div>
+  1485→                ) : (
+  1486→                    <div className="space-y-3">
+  1487→                        {deadlines.map(deadline => (
+  1488→                            <Link 
+  1489→                                key={deadline.id} 
+  1490→                                to={`/tasks/${deadline.id}`}
+  1491→                                className="block p-3 rounded-lg hover:bg-gray-50 transition-colors"
+  1492→                            >
+  1493→                                <div className="flex justify-between items-start gap-3">
+  1494→                                    <div className="flex-1 min-w-0">
+  1495→                                        <p className="font-medium text-sm truncate">
+  1496→                                            {deadline.title}
+  1497→                                        </p>
+  1498→                                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+  1499→                                            {deadline.event_name && (
+  1500→                                                <span className="truncate">📅 {deadline.event_name}</span>
+  1501→                                            )}
+  1502→                                            {deadline.assignee_name && (
+  1503→                                                <span className="truncate">👤 {deadline.assignee_name}</span>
+  1504→                                            )}
+  1505→                                        </div>
+  1506→                                    </div>
+  1507→                                    <div className="text-right flex-shrink-0">
+  1508→                                        <Badge 
+  1509→                                            variant={
+  1510→                                                deadline.priority === 'HIGH' ? 'danger' :
+  1511→                                                deadline.priority === 'MEDIUM' ? 'warning' : 'default'
+  1512→                                            } 
+  1513→                                            size="sm"
+  1514→                                        >
+  1515→                                            {deadline.priority}
+  1516→                                        </Badge>
+  1517→                                        <p className={`text-xs mt-1 ${getDueDateColor(deadline)}`}>
+  1518→                                            {formatDueDate(deadline)}
+  1519→                                        </p>
+  1520→                                    </div>
+  1521→                                </div>
+  1522→                            </Link>
+  1523→                        ))}
+  1524→                    </div>
+  1525→                )}
+  1526→            </div>
+  1527→        </Card>
+  1528→    )
+  1529→}
+  1530→
+  1531→const ListSkeleton = ({ title }: { title: string }) => (
+  1532→    <Card>
+  1533→        <div className="p-6">
+  1534→            <h3 className="font-semibold mb-4">{title}</h3>
+  1535→            <div className="space-y-3">
+  1536→                {[...Array(3)].map((_, i) => (
+  1537→                    <div key={i} className="animate-pulse">
+  1538→                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+  1539→                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+  1540→                    </div>
+  1541→                ))}
+  1542→            </div>
+  1543→        </div>
+  1544→    </Card>
+  1545→)
+  1546→frontend/src/components/dashboard/BlockersList.tsx:
+  1547→
+  1548→typescript
+  1549→import { Link } from 'react-router-dom'
+  1550→import { BlockerInfo } from '../../types/dashboard'
+  1551→import { Card } from '../ui/Card'
+  1552→import { Badge } from '../ui/Badge'
+  1553→
+  1554→interface BlockersListProps {
+  1555→    blockers: BlockerInfo[]
+  1556→    isLoading?: boolean
+  1557→}
+  1558→
+  1559→export const BlockersList = ({ blockers, isLoading }: BlockersListProps) => {
+  1560→    if (isLoading) {
+  1561→        return <ListSkeleton title="🚫 Blockers" />
+  1562→    }
+  1563→    
+  1564→    if (blockers.length === 0) {
+  1565→        return (
+  1566→            <Card>
+  1567→                <div className="p-6">
+  1568→                    <h3 className="font-semibold mb-4">🚫 Blockers</h3>
+  1569→                    <div className="text-center py-8 text-green-600 text-sm">
+  1570→                        ✅ No blockers! Everything is running smoothly.
+  1571→                    </div>
+  1572→                </div>
+  1573→            </Card>
+  1574→        )
+  1575→    }
+  1576→    
+  1577→    return (
+  1578→        <Card className="border-red-200">
+  1579→            <div className="p-6">
+  1580→                <div className="flex justify-between items-center mb-4">
+  1581→                    <div className="flex items-center gap-2">
+  1582→                        <h3 className="font-semibold">🚫 Blockers</h3>
+  1583→                        <Badge variant="danger" size="sm">{blockers.length}</Badge>
+  1584→                    </div>
+  1585→                    <Link to="/tasks?status=BLOCKED" className="text-sm text-blue-600 hover:underline">
+  1586→                        View all
+  1587→                    </Link>
+  1588→                </div>
+  1589→                
+  1590→                <div className="space-y-3">
+  1591→                    {blockers.slice(0, 5).map(blocker => (
+  1592→                        <Link 
+  1593→                            key={blocker.id} 
+  1594→                            to={`/tasks/${blocker.id}`}
+  1595→                            className="block p-3 rounded-lg bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+  1596→                        >
+  1597→                            <div className="flex justify-between items-start gap-3">
+  1598→                                <div className="flex-1 min-w-0">
+  1599→                                    <p className="font-medium text-sm truncate">
+  1600→                                        {blocker.title}
+  1601→                                    </p>
+  1602→                                    {blocker.latest_comment && (
+  1603→                                        <p className="text-xs text-gray-600 mt-1 line-clamp-2 italic">
+  1604→                                            "{blocker.latest_comment}"
+  1605→                                        </p>
+  1606→                                    )}
+  1607→                                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+  1608→                                        {blocker.event_name && <span>📅 {blocker.event_name}</span>}
+  1609→                                        {blocker.assignee_name && <span>👤 {blocker.assignee_name}</span>}
+  1610→                                    </div>
+  1611→                                </div>
+  1612→                                <div className="text-right flex-shrink-0">
+  1613→                                    <Badge 
+  1614→                                        variant={
+  1615→                                            blocker.priority === 'HIGH' ? 'danger' :
+  1616→                                            blocker.priority === 'MEDIUM' ? 'warning' : 'default'
+  1617→                                        } 
+  1618→                                        size="sm"
+  1619→                                    >
+  1620→                                        {blocker.priority}
+  1621→                                    </Badge>
+  1622→                                    {blocker.days_blocked > 0 && (
+  1623→                                        <p className="text-xs text-red-600 mt-1">
+  1624→                                            Blocked {blocker.days_blocked}d
+  1625→                                        </p>
+  1626→                                    )}
+  1627→                                </div>
+  1628→                            </div>
+  1629→                        </Link>
+  1630→                    ))}
+  1631→                    
+  1632→                    {blockers.length > 5 && (
+  1633→                        <p className="text-xs text-gray-500 text-center pt-2">
+  1634→                            +{blockers.length - 5} more blockers
+  1635→                        </p>
+  1636→                    )}
+  1637→                </div>
+  1638→            </div>
+  1639→        </Card>
+  1640→    )
+  1641→}
+  1642→
+  1643→const ListSkeleton = ({ title }: { title: string }) => (
+  1644→    <Card>
+  1645→        <div className="p-6">
+  1646→            <h3 className="font-semibold mb-4">{title}</h3>
+  1647→            <div className="space-y-3">
+  1648→                {[...Array(3)].map((_, i) => (
+  1649→                    <div key={i} className="animate-pulse">
+  1650→                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+  1651→                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+  1652→                    </div>
+  1653→                ))}
+  1654→            </div>
+  1655→        </div>
+  1656→    </Card>
+  1657→)
+  1658→frontend/src/components/dashboard/RecentActivity.tsx:
+  1659→
+  1660→typescript
+  1661→import { Link } from 'react-router-dom'
+  1662→import { ActivityItem } from '../../types/dashboard'
+  1663→import { Card } from '../ui/Card'
+  1664→import { Avatar } from '../ui/Avatar'
+  1665→import { formatDistanceToNow } from 'date-fns'
+  1666→
+  1667→interface RecentActivityProps {
+  1668→    activities: ActivityItem[]
+  1669→    isLoading?: boolean
+  1670→}
+  1671→
+  1672→const actionIcons: Record<string, string> = {
+  1673→    'TASK_CREATED': '➕',
+  1674→    'TASK_UPDATED': '✏️',
+  1675→    'TASK_STATUS_CHANGED': '🔄',
+  1676→    'TASK_COMPLETED': '✅',
+  1677→    'TASK_ASSIGNED': '👤',
+  1678→    'TASK_BLOCKED': '🚫',
+  1679→    'COMMENT_ADDED': '💬',
+  1680→    'EVENT_CREATED': '📅',
+  1681→    'EVENT_UPDATED': '📝',
+  1682→    'TEAM_CREATED': '👥',
+  1683→    'USER_REGISTERED': '🎉',
+  1684→    'DEPENDENCY_ADDED': '🔗'
+  1685→}
+  1686→
+  1687→const actionMessages: Record<string, string> = {
+  1688→    'TASK_CREATED': 'created task',
+  1689→    'TASK_UPDATED': 'updated task',
+  1690→    'TASK_STATUS_CHANGED': 'changed status of',
+  1691→    'TASK_COMPLETED': 'completed task',
+  1692→    'TASK_ASSIGNED': 'was assigned',
+  1693→    'TASK_BLOCKED': 'blocked task',
+  1694→    'COMMENT_ADDED': 'commented on',
+  1695→    'EVENT_CREATED': 'created event',
+  1696→    'EVENT_UPDATED': 'updated event',
+  1697→    'TEAM_CREATED': 'created team',
+  1698→    'USER_REGISTERED': 'joined',
+  1699→    'DEPENDENCY_ADDED': 'added dependency to'
+  1700→}
+  1701→
+  1702→export const RecentActivity = ({ activities, isLoading }: RecentActivityProps) => {
+  1703→    if (isLoading) {
+  1704→        return <ListSkeleton title="📊 Recent Activity" />
+  1705→    }
+  1706→    
+  1707→    if (activities.length === 0) {
+  1708→        return (
+  1709→            <Card>
+  1710→                <div className="p-6">
+  1711→                    <h3 className="font-semibold mb-4">📊 Recent Activity</h3>
+  1712→                    <div className="text-center py-8 text-gray-400 text-sm">
+  1713→                        No recent activity
+  1714→                    </div>
+  1715→                </div>
+  1716→            </Card>
+  1717→        )
+  1718→    }
+  1719→    
+  1720→    return (
+  1721→        <Card>
+  1722→            <div className="p-6">
+  1723→                <h3 className="font-semibold mb-4">📊 Recent Activity</h3>
+  1724→                
+  1725→                <div className="space-y-4">
+  1726→                    {activities.slice(0, 10).map(activity => {
+  1727→                        const icon = actionIcons[activity.action] || '📌'
+  1728→                        const message = actionMessages[activity.action] || activity.action.toLowerCase()
+  1729→                        const taskId = activity.related_task_id
+  1730→                        const eventId = activity.related_event_id
+  1731→                        
+  1732→                        const linkTo = taskId ? `/tasks/${taskId}` : eventId ? `/events/${eventId}` : null
+  1733→                        
+  1734→                        const content = (
+  1735→                            <div className="flex gap-3">
+  1736→                                <div className="flex-shrink-0">
+  1737→                                    <Avatar name={activity.user_name} size="sm" />
+  1738→                                </div>
+  1739→                                <div className="flex-1 min-w-0">
+  1740→                                    <p className="text-sm">
+  1741→                                        <span className="font-medium">{activity.user_name}</span>
+  1742→                                        {' '}
+  1743→                                        <span className="text-gray-600">{message}</span>
+  1744→                                        {activity.details?.task_title && (
+  1745→                                            <span className="font-medium"> "{activity.details.task_title}"</span>
+  1746→                                        )}
+  1747→                                        {activity.details?.event_name && (
+  1748→                                            <span className="font-medium"> "{activity.details.event_name}"</span>
+  1749→                                        )}
+  1750→                                    </p>
+  1751→                                    <p className="text-xs text-gray-400 mt-1">
+  1752→                                        {icon} {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+  1753→                                    </p>
+  1754→                                </div>
+  1755→                            </div>
+  1756→                        )
+  1757→                        
+  1758→                        return linkTo ? (
+  1759→                            <Link 
+  1760→                                key={activity.id} 
+  1761→                                to={linkTo}
+  1762→                                className="block p-2 rounded hover:bg-gray-50 transition-colors"
+  1763→                            >
+  1764→                                {content}
+  1765→                            </Link>
+  1766→                        ) : (
+  1767→                            <div key={activity.id} className="p-2">
+  1768→                                {content}
+  1769→                            </div>
+  1770→                        )
+  1771→                    })}
+  1772→                </div>
+  1773→            </div>
+  1774→        </Card>
+  1775→    )
+  1776→}
+  1777→
+  1778→const ListSkeleton = ({ title }: { title: string }) => (
+  1779→    <Card>
+  1780→        <div className="p-6">
+  1781→            <h3 className="font-semibold mb-4">{title}</h3>
+  1782→            <div className="space-y-3">
+  1783→                {[...Array(5)].map((_, i) => (
+  1784→                    <div key={i} className="animate-pulse flex gap-3">
+  1785→                        <div className="w-8 h-8 bg-gray-200 rounded-full" />
+  1786→                        <div className="flex-1">
+  1787→                            <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
+  1788→                            <div className="h-2 bg-gray-200 rounded w-1/3" />
+  1789→                        </div>
+  1790→                    </div>
+  1791→                ))}
+  1792→            </div>
+  1793→        </div>
+  1794→    </Card>
+  1795→)
+  1796→frontend/src/components/dashboard/TeamPerformance.tsx:
+  1797→
+  1798→typescript
+  1799→import { Link } from 'react-router-dom'
+  1800→import { TeamPerformance as TeamPerfType } from '../../types/dashboard'
+  1801→import { Card } from '../ui/Card'
+  1802→import { ProgressBar } from '../ui/ProgressBar'
+  1803→
+  1804→interface TeamPerformanceProps {
+  1805→    teams: TeamPerfType[]
+  1806→    isLoading?: boolean
+  1807→}
+  1808→
+  1809→export const TeamPerformance = ({ teams, isLoading }: TeamPerformanceProps) => {
+  1810→    if (isLoading) {
+  1811→        return <ListSkeleton title="👥 Team Performance" />
+  1812→    }
+  1813→    
+  1814→    if (teams.length === 0) return null
+  1815→    
+  1816→    return (
+  1817→        <Card>
+  1818→            <div className="p-6">
+  1819→                <h3 className="font-semibold mb-4">👥 Team Performance</h3>
+  1820→                
+  1821→                <div className="space-y-4">
+  1822→                    {teams.map(team => (
+  1823→                        <Link 
+  1824→                            key={team.team_id} 
+  1825→                            to={`/teams/${team.team_id}`}
+  1826→                            className="block p-3 rounded-lg hover:bg-gray-50 transition-colors"
+  1827→                        >
+  1828→                            <div className="flex justify-between items-start mb-2">
+  1829→                                <div>
+  1830→                                    <p className="font-medium text-sm">{team.team_name}</p>
+  1831→                                    <p className="text-xs text-gray-500">
+  1832→                                        {team.member_count} members · {team.total_tasks} tasks
+  1833→                                    </p>
+  1834→                                </div>
+  1835→                                <span className="text-sm font-semibold text-blue-600">
+  1836→                                    {team.completion_rate}%
+  1837→                                </span>
+  1838→                            </div>
+  1839→                            <ProgressBar 
+  1840→                                value={team.completion_rate} 
+  1841→                                showLabel={false}
+  1842→                                variant={
+  1843→                                    team.blocked_tasks > 0 ? 'warning' :
+  1844→                                    team.completion_rate >= 75 ? 'success' : 'default'
+  1845→                                }
+  1846→                            />
+  1847→                            <div className="flex gap-3 mt-2 text-xs text-gray-500">
+  1848→                                <span>✅ {team.completed_tasks} done</span>
+  1849→                                {team.blocked_tasks > 0 && (
+  1850→                                    <span className="text-red-600">🚫 {team.blocked_tasks} blocked</span>
+  1851→                                )}
+  1852→                            </div>
+  1853→                        </Link>
+  1854→                    ))}
+  1855→                </div>
+  1856→            </div>
+  1857→        </Card>
+  1858→    )
+  1859→}
+  1860→
+  1861→const ListSkeleton = ({ title }: { title: string }) => (
+  1862→    <Card>
+  1863→        <div className="p-6">
+  1864→            <h3 className="font-semibold mb-4">{title}</h3>
+  1865→            <div className="space-y-4">
+  1866→                {[...Array(3)].map((_, i) => (
+  1867→                    <div key={i} className="animate-pulse">
+  1868→                        <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+  1869→                        <div className="h-2 bg-gray-200 rounded w-full mb-2" />
+  1870→                        <div className="h-3 bg-gray-200 rounded w-1/3" />
+  1871→                    </div>
+  1872→                ))}
+  1873→            </div>
+  1874→        </div>
+  1875→    </Card>
+  1876→)
+  1877→Requirements:
+  1878→
+  1879→Link to relevant details
+  1880→
+  1881→Empty states
+  1882→
+  1883→Loading skeletons
+  1884→
+  1885→Responsive
+  1886→
+  1887→TypeScript types
+  1888→
+  1889→Generate ALL complete files.
+  1890→
+  1891→text
+  1892→
+  1893→---
+  1894→
+  1895→## 📌 Step 6.5: Dashboard Page & Routes
+  1896→
+  1897→### 🤖 Complete Prompt for Step 6.5:
+  1898→Now create the main DashboardPage that brings everything together.
+  1899→
+  1900→Create these files:
+  1901→
+  1902→frontend/src/pages/DashboardPage.tsx:
+  1903→
+  1904→typescript
+  1905→import { Link } from 'react-router-dom'
+  1906→import { useAuth } from '../hooks/useAuth'
+  1907→import { useDashboard, useAutoRefreshDashboard } from '../hooks/useDashboard'
+  1908→import { WelcomeBanner } from '../components/dashboard/WelcomeBanner'
+  1909→import { DashboardStats } from '../components/dashboard/DashboardStats'
+  1910→import { TaskDistributionChart } from '../components/dashboard/TaskDistributionChart'
+  1911→import { PriorityChart } from '../components/dashboard/PriorityChart'
+  1912→import { ProgressChart } from '../components/dashboard/ProgressChart'
+  1913→import { UpcomingDeadlines } from '../components/dashboard/UpcomingDeadlines'
+  1914→import { BlockersList } from '../components/dashboard/BlockersList'
+  1915→import { RecentActivity } from '../components/dashboard/RecentActivity'
+  1916→import { TeamPerformance } from '../components/dashboard/TeamPerformance'
+  1917→import { Button } from '../components/ui/Button'
+  1918→
+  1919→export const DashboardPage = () => {
+  1920→    const { user } = useAuth()
+  1921→    const {
+  1922→        stats,
+  1923→        taskDistribution,
+  1924→        priorityDistribution,
+  1925→        upcomingDeadlines,
+  1926→        blockers,
+  1927→        recentActivity,
+  1928→        teamPerformance,
+  1929→        progressOverTime,
+  1930→        isLoading,
+  1931→        refresh
+  1932→    } = useDashboard()
+  1933→    
+  1934→    // Auto-refresh every 30 seconds
+  1935→    useAutoRefreshDashboard(30000)
+  1936→    
+  1937→    const isManager = user?.role === 'EVENT_MANAGER'
+  1938→    const isLeader = user?.role === 'TEAM_LEADER'
+  1939→    const canSeeTeamPerformance = isManager || isLeader
+  1940→    
+  1941→    return (
+  1942→        <div className="space-y-6">
+  1943→            {/* Welcome Banner */}
+  1944→            <WelcomeBanner />
+  1945→            
+  1946→            {/* Quick Actions */}
+  1947→            <div className="flex flex-wrap gap-2">
+  1948→                <Link to="/events/new">
+  1949→                    <Button size="sm">+ New Event</Button>
+  1950→                </Link>
+  1951→                <Link to="/tasks/new">
+  1952→                    <Button variant="secondary" size="sm">+ New Task</Button>
+  1953→                </Link>
+  1954→                <Link to="/teams/new">
+  1955→                    <Button variant="secondary" size="sm">+ New Team</Button>
+  1956→                </Link>
+  1957→                <Button 
+  1958→                    variant="secondary" 
+  1959→                    size="sm" 
+  1960→                    onClick={refresh}
+  1961→                    disabled={isLoading}
+  1962→                >
+  1963→                    🔄 Refresh
+  1964→                </Button>
+  1965→            </div>
+  1966→            
+  1967→            {/* Stats Cards */}
+  1968→            <DashboardStats stats={stats} isLoading={isLoading} />
+  1969→            
+  1970→            {/* Blockers (highlighted if any) */}
+  1971→            {blockers.length > 0 && (
+  1972→                <BlockersList blockers={blockers} isLoading={isLoading} />
+  1973→            )}
+  1974→            
+  1975→            {/* Charts Row 1 */}
+  1976→            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  1977→                <TaskDistributionChart data={taskDistribution} isLoading={isLoading} />
+  1978→                <PriorityChart data={priorityDistribution} isLoading={isLoading} />
+  1979→            </div>
+  1980→            
+  1981→            {/* Progress Over Time */}
+  1982→            <ProgressChart data={progressOverTime} isLoading={isLoading} />
+  1983→            
+  1984→            {/* Lists Row */}
+  1985→            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  1986→                <UpcomingDeadlines deadlines={upcomingDeadlines} isLoading={isLoading} />
+  1987→                <RecentActivity activities={recentActivity} isLoading={isLoading} />
+  1988→            </div>
+  1989→            
+  1990→            {/* Team Performance (Managers and Leaders only) */}
+  1991→            {canSeeTeamPerformance && teamPerformance.length > 0 && (
+  1992→                <TeamPerformance teams={teamPerformance} isLoading={isLoading} />
+  1993→            )}
+  1994→        </div>
+  1995→    )
+  1996→}
+  1997→Update frontend/src/App.tsx:
+  1998→
+  1999→typescript
+  2000→import { DashboardPage } from './pages/DashboardPage'
+
+[showing lines 1-2000 of 2213; use offset=2001 with limit to continue reading]

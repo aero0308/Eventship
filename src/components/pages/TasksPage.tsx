@@ -476,6 +476,17 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
     return new URLSearchParams(query).get('assignee') ?? ''
   }, [path])
 
+  // Phase 6: deep-linkable status/overdue presets (dashboard stat cards land here).
+  const queryStatus = useMemo(() => {
+    const query = path.split('?')[1] ?? ''
+    return new URLSearchParams(query).get('status') ?? ''
+  }, [path])
+
+  const queryOverdue = useMemo(() => {
+    const query = path.split('?')[1] ?? ''
+    return new URLSearchParams(query).get('overdue') === 'true'
+  }, [path])
+
   const [tasks, setTasks] = useState<TaskDTO[]>([])
   const [events, setEvents] = useState<EventDTO[]>([])
   const [users, setUsers] = useState<UserDTO[]>([])
@@ -495,6 +506,9 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   const [eventFilter, setEventFilter] = useState<string>('all')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
+  // Phase 6: status/overdue filters (feed from ?status= / ?overdue= deep links).
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [overdueOnly, setOverdueOnly] = useState(false)
   // Quick filter: only tasks waiting on unfinished dependencies.
   const [blockedOnly, setBlockedOnly] = useState(false)
 
@@ -523,6 +537,17 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
     }
   }, [queryAssignee, scope])
 
+  // Phase 6: ?status=BLOCKED / ?overdue=true deep links (dashboard stat cards).
+  useEffect(() => {
+    if (queryStatus && TASK_STATUSES.includes(queryStatus as TaskStatus)) {
+      setStatusFilter(queryStatus)
+    }
+  }, [queryStatus])
+
+  useEffect(() => {
+    if (queryOverdue) setOverdueOnly(true)
+  }, [queryOverdue])
+
   const loadStats = useCallback(async () => {
     try {
       // "My Tasks" gets personal numbers (assigned to me) instead of the
@@ -543,7 +568,8 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
         const data = await api.get<{ tasks: TaskDTO[] }>(
           `/tasks${qs({
             eventId: eventFilter !== 'all' ? eventFilter : undefined,
-            status: undefined,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            overdue: overdueOnly ? 'true' : undefined,
             priority: priorityFilter !== 'all' ? priorityFilter : undefined,
             assignedTo:
               scope === 'mine'
@@ -566,7 +592,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
         setLoading(false)
       }
     },
-    [eventFilter, priorityFilter, assigneeFilter, search, scope, loadStats, toast]
+    [eventFilter, priorityFilter, assigneeFilter, statusFilter, overdueOnly, search, scope, loadStats, toast]
   )
 
   // ---- Realtime: live board updates --------------------------------------
@@ -588,8 +614,8 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   // Latest filter values for the realtime optimistic matcher — the socket
   // effect below subscribes once; refs keep the predicate current without
   // resubscribing on every keystroke.
-  const filtersRef = useRef({ eventFilter, assigneeFilter, priorityFilter, search })
-  filtersRef.current = { eventFilter, assigneeFilter, priorityFilter, search }
+  const filtersRef = useRef({ eventFilter, assigneeFilter, priorityFilter, statusFilter, overdueOnly, search })
+  filtersRef.current = { eventFilter, assigneeFilter, priorityFilter, statusFilter, overdueOnly, search }
 
   // Events + users feed the filter dropdowns; refetched on event:updated.
   const loadMeta = useCallback(async () => {
@@ -997,6 +1023,8 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
         if (!okAssignee) return false
       }
       if (f.priorityFilter !== 'all' && task.priority !== f.priorityFilter) return false
+      if (f.statusFilter !== 'all' && task.status !== f.statusFilter) return false
+      if (f.overdueOnly && (task.status === 'COMPLETED' || !task.dueDate || new Date(task.dueDate) >= new Date())) return false
       const needle = f.search.trim().toLowerCase()
       if (needle) {
         const haystack = `${task.title} ${task.description ?? ''} ${task.event?.name ?? ''}`.toLowerCase()
@@ -1622,7 +1650,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
       ) : null}
 
       {/* Filters */}
-      <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Task filters">
+      <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Task filters">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
           <Input
@@ -1643,6 +1671,19 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
             {events.map((event) => (
               <SelectItem key={event.id} value={event.id}>
                 {event.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-11 w-full" aria-label="Filter by status">
+            <SelectValue placeholder="Any status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Any status</SelectItem>
+            {TASK_STATUSES.map((status) => (
+              <SelectItem key={status} value={status}>
+                {TASK_STATUS_LABELS[status] ?? status}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1675,6 +1716,20 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
             ))}
           </SelectContent>
         </Select>
+        <button
+          type="button"
+          onClick={() => setOverdueOnly((v) => !v)}
+          aria-pressed={overdueOnly}
+          className={cn(
+            'inline-flex h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition-all duration-200',
+            overdueOnly
+              ? 'border-red-300 bg-red-50 text-red-700 shadow-sm ring-1 ring-red-200 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
+              : 'border-input bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+          )}
+        >
+          <Clock className={cn('h-4 w-4', overdueOnly && 'animate-pulse')} aria-hidden="true" />
+          Overdue only
+        </button>
         <button
           type="button"
           onClick={() => setBlockedOnly((v) => !v)}

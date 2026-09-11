@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity as ActivityIcon,
@@ -16,6 +17,9 @@ import {
   MapPin,
   RefreshCw,
   Sparkles,
+  Siren,
+  TrendingUp,
+  Trophy,
   UserCheck,
   Users,
 } from 'lucide-react'
@@ -26,12 +30,14 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, TaskDTO } from '@/types'
+import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, ProgressOverTimeDTO, TaskDTO } from '@/types'
 import { useTheme } from 'next-themes'
 import {
   EVENT_STATUS_CLASSES,
@@ -71,6 +77,12 @@ const STATUS_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
     BLOCKED: '#cf6f66',
     COMPLETED: '#31af8c',
   },
+}
+
+/** Progress-trend series colors (created / completed / cumulative), per theme. */
+const TREND_COLORS: Record<'light' | 'dark', { created: string; completed: string; cumulative: string }> = {
+  light: { created: '#f59e0b', completed: '#10b981', cumulative: '#78716c' },
+  dark: { created: '#d3a04c', completed: '#31af8c', cumulative: '#a8a29e' },
 }
 
 const PRIORITY_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
@@ -221,6 +233,58 @@ function greeting(): string {
   if (hour < 12) return 'Good morning'
   if (hour < 18) return 'Good afternoon'
   return 'Good evening'
+}
+
+// ============ Phase 6: 30-day progress trend chart ============
+
+const TREND_TOOLTIP_STYLE: CSSProperties = {
+  borderRadius: 10,
+  border: '1px solid var(--border)',
+  backgroundColor: 'var(--card)',
+  color: 'var(--foreground)',
+  fontSize: 13,
+  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+}
+
+/**
+ * Created vs. completed per day over the last 30 days, plus the cumulative
+ * completed line (Phase 6 "progress over time"). Series colors follow the
+ * active theme so nothing glows on the dark canvas.
+ */
+function ProgressTrendChart({ data, scheme }: { data: ProgressOverTimeDTO[]; scheme: 'light' | 'dark' }) {
+  const colors = TREND_COLORS[scheme]
+  const chartData = data.map((day) => ({
+    date: format(new Date(`${day.date}T00:00:00`), 'MMM d'),
+    Created: day.created,
+    Completed: day.completed,
+    'Total done': day.cumulativeCompleted,
+  }))
+
+  const totalCreated = data.reduce((sum, day) => sum + day.created, 0)
+  const totalCompleted = data.reduce((sum, day) => sum + day.completed, 0)
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground" aria-hidden="true">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.created }} /> Created ({totalCreated})</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.completed }} /> Completed ({totalCompleted})</span>
+        <span className="flex items-center gap-1.5"><span className="h-0 w-3 border-t-2 border-dashed" style={{ borderColor: colors.cumulative }} /> Total done</span>
+      </div>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={4} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={TREND_TOOLTIP_STYLE} labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }} itemStyle={{ color: 'var(--muted-foreground)' }} />
+            <Line type="monotone" dataKey="Created" stroke={colors.created} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Completed" stroke={colors.completed} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Total done" stroke={colors.cumulative} strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
 }
 
 type FocusKey = 'dueToday' | 'dueThisWeek' | 'overdue'
@@ -424,7 +488,12 @@ export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
   const [loading, setLoading] = useState(true)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [, setTick] = useState(0) // re-render loop for the "updated X ago" label
   const scheme = useChartScheme()
+
+  // Phase 6 role gating: only managers/leaders get the performance widgets.
+  const canSeePerformance = user?.role === 'EVENT_MANAGER' || user?.role === 'TEAM_LEADER'
 
   // Focus strip scope — "All tasks" or "Mine only". Persisted per browser.
   const [focusScope, setFocusScope] = useState<'all' | 'mine'>(() => {
@@ -433,26 +502,50 @@ export function DashboardPage() {
   })
   const [focusPending, setFocusPending] = useState(false)
 
+  const loadDashboard = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true)
+      try {
+        const data = await api.get<{ stats: DashboardStatsDTO }>(
+          `/dashboard${focusScope === 'mine' ? '?focus=mine' : ''}`
+        )
+        setStats(data.stats)
+        setLastUpdated(Date.now())
+      } catch {
+        // Rendered empty state handles null stats below; silent refresh keeps last data.
+      } finally {
+        if (!options?.silent) setLoading(false)
+        setFocusPending(false)
+      }
+    },
+    [focusScope]
+  )
+
+  // Initial load + refetch when the focus scope flips.
   useEffect(() => {
-    let cancelled = false
-    api
-      .get<{ stats: DashboardStatsDTO }>(`/dashboard${focusScope === 'mine' ? '?focus=mine' : ''}`)
-      .then((data) => {
-        if (!cancelled) setStats(data.stats)
-      })
-      .catch(() => {
-        // Rendered empty state handles null stats below.
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-          setFocusPending(false)
-        }
-      })
-    return () => {
-      cancelled = true
+    void loadDashboard()
+  }, [loadDashboard])
+
+  // Phase 6: auto-refresh every 30s (skips hidden tabs) + refresh on tab return.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
+    }, 30000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
     }
-  }, [focusScope])
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [loadDashboard])
+
+  // Ticker so the "Updated …" label stays honest between refreshes.
+  useEffect(() => {
+    const timer = setInterval(() => setTick((value) => value + 1), 20000)
+    return () => clearInterval(timer)
+  }, [])
 
   const handleFocusScopeChange = (scope: 'all' | 'mine') => {
     if (scope === focusScope) return
@@ -485,12 +578,41 @@ export function DashboardPage() {
   )
 
   const openTasks = stats ? stats.totals.tasks - stats.totals.completedTasks : 0
+  const updatedLabel = lastUpdated
+    ? Date.now() - lastUpdated < 20000
+      ? 'just now'
+      : `${formatDistanceToNow(new Date(lastUpdated), { addSuffix: true })}`
+    : null
 
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle={user ? `${greeting()}, ${user.fullName} — here's what's happening across your events.` : "Here's what's happening across your events."}
+        subtitle={
+          user
+            ? `${greeting()}, ${user.fullName} — here's what's happening across your events.`
+            : "Here's what's happening across your events."
+        }
+        actions={
+          <>
+            {updatedLabel ? (
+              <span className="hidden text-xs text-muted-foreground sm:inline" title="Auto-refreshes every 30 seconds">
+                Updated {updatedLabel}
+              </span>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5"
+              onClick={() => void loadDashboard()}
+              disabled={loading}
+              aria-label="Refresh dashboard data"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} aria-hidden="true" />
+              Refresh
+            </Button>
+          </>
+        }
       />
 
       {/* ============ My focus strip ============ */}
@@ -507,10 +629,10 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {/* ============ Stat cards ============ */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key statistics">
+      {/* ============ Stat cards (Phase 6: click-through to filtered views) ============ */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Key statistics">
         {loading || !stats ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
         ) : (
           <>
             <StatCard
@@ -519,6 +641,8 @@ export function DashboardPage() {
               value={stats.totals.activeEvents}
               sub={`${stats.totals.events} events in total`}
               tint="emerald"
+              onClick={() => navigate(ROUTES.EVENTS)}
+              actionLabel="View all events"
             />
             <StatCard
               icon={ListTodo}
@@ -526,6 +650,8 @@ export function DashboardPage() {
               value={openTasks}
               sub={`${stats.totals.tasks} tasks tracked overall`}
               tint="amber"
+              onClick={() => navigate(ROUTES.TASKS)}
+              actionLabel="Open the task board"
             />
             <StatCard
               icon={CheckCircle2}
@@ -534,6 +660,8 @@ export function DashboardPage() {
               sub={`${Math.round(stats.completionRate)}% completion rate`}
               tint="stone"
               progress={stats.completionRate}
+              onClick={() => navigate(`${ROUTES.TASKS}?status=COMPLETED`)}
+              actionLabel="View completed tasks"
             />
             <StatCard
               icon={AlertTriangle}
@@ -541,6 +669,17 @@ export function DashboardPage() {
               value={stats.totals.blockedTasks}
               sub={stats.totals.blockedTasks > 0 ? 'Needs immediate attention' : 'Nothing blocked — nice!'}
               tint="red"
+              onClick={() => navigate(`${ROUTES.TASKS}?status=BLOCKED`)}
+              actionLabel="View blocked tasks"
+            />
+            <StatCard
+              icon={Clock}
+              label="Overdue"
+              value={stats.totals.overdueTasks}
+              sub={stats.totals.overdueTasks > 0 ? 'Past their due date' : 'Everything on schedule'}
+              tint="red"
+              onClick={() => navigate(`${ROUTES.TASKS}?overdue=true`)}
+              actionLabel="View overdue tasks"
             />
           </>
         )}
@@ -608,6 +747,114 @@ export function DashboardPage() {
                   ))}
                 </ul>
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ============ Phase 6: progress trend & blockers ============ */}
+      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Progress and blockers">
+        <Card>
+          <CardHeader className="gap-1.5">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+              Progress over time
+            </CardTitle>
+            <CardDescription>Daily created vs. completed tasks over the last 30 days.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-64 w-full rounded-lg" />
+            ) : !stats || stats.progressOverTime.length === 0 ? (
+              <EmptyState icon={TrendingUp} title="No trend yet" hint="Task activity over the last 30 days will appear here." />
+            ) : (
+              <ProgressTrendChart data={stats.progressOverTime} scheme={scheme} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Siren className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
+              Blockers
+              {stats && stats.blockers.length > 0 ? (
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
+                  {stats.blockers.length}
+                </span>
+              ) : null}
+            </CardTitle>
+            {stats && stats.blockers.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
+                onClick={() => navigate(`${ROUTES.TASKS}?status=BLOCKED`)}
+              >
+                View board
+                <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : !stats || stats.blockers.length === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="No blockers"
+                hint="Everything is running smoothly — blocked tasks would land here."
+              />
+            ) : (
+              <ul className="scrollbar-thin max-h-64 space-y-2.5 overflow-y-auto pr-1">
+                {stats.blockers.map((blocker) => (
+                  <li key={blocker.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/events/${blocker.eventId}`)}
+                      className="w-full rounded-xl border border-red-200/70 bg-red-50/60 p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-red-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 dark:border-red-500/20 dark:bg-red-500/[0.07] dark:hover:border-red-500/40"
+                      aria-label={`Blocked task ${blocker.title}. Open its event.`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{blocker.title}</p>
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                            blocker.daysBlocked >= 3
+                              ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+                          )}
+                        >
+                          {blocker.daysBlocked === 0 ? 'Just now' : `${blocker.daysBlocked}d blocked`}
+                        </span>
+                      </div>
+                      {blocker.latestComment ? (
+                        <p className="mt-1 line-clamp-2 text-xs italic text-muted-foreground">
+                          “{blocker.latestComment.content}”
+                          {blocker.latestComment.authorName ? <span className="not-italic"> — {blocker.latestComment.authorName}</span> : null}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs italic text-muted-foreground/70">No blocker reason recorded yet.</p>
+                      )}
+                      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            blocker.priority === 'HIGH' ? 'bg-red-500' : blocker.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-stone-400'
+                          )}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{blocker.eventName ?? 'Unknown event'}</span>
+                        {blocker.assigneeName ? <span className="truncate">· {blocker.assigneeName}</span> : <span>· Unassigned</span>}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -750,12 +997,16 @@ export function DashboardPage() {
                   Done
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-red-400" />
+                  Blocked
+                </span>
+                <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-400" />
                   Open
                 </span>
               </div>
             </div>
-            <CardDescription>Completed vs. open task share for every team.</CardDescription>
+            <CardDescription>Completion, blockers and membership for every team.</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -769,9 +1020,10 @@ export function DashboardPage() {
             ) : (
               <ul className="space-y-3">
                 {stats.teamWorkload.map((team) => {
-                  const total = team.openTasks + team.completedTasks
+                  const total = team.openTasks + team.completedTasks + team.blockedTasks
                   const donePercent = total > 0 ? Math.round((team.completedTasks / total) * 100) : 0
-                  const openPercent = 100 - donePercent
+                  const blockedPercent = total > 0 ? Math.round((team.blockedTasks / total) * 100) : 0
+                  const openPercent = Math.max(0, 100 - donePercent - blockedPercent)
                   return (
                     <li key={team.teamId}>
                       <button
@@ -796,8 +1048,17 @@ export function DashboardPage() {
                               <span className="font-semibold text-emerald-700 dark:text-emerald-300">{team.completedTasks} done</span>
                               {' · '}
                               <span className="font-semibold text-amber-700 dark:text-amber-300">{team.openTasks} open</span>
+                              {team.blockedTasks > 0 ? (
+                                <>
+                                  {' · '}
+                                  <span className="font-semibold text-red-700 dark:text-red-300">{team.blockedTasks} blocked</span>
+                                </>
+                              ) : null}
                               {' · '}
-                              {total} total
+                              <span className="inline-flex items-center gap-0.5">
+                                <Users className="h-3 w-3" aria-hidden="true" />
+                                {team.memberCount}
+                              </span>
                             </p>
                           </div>
                           <span
@@ -816,11 +1077,14 @@ export function DashboardPage() {
                         <div
                           className="mt-3 flex h-2 gap-0.5"
                           role="img"
-                          aria-label={`${team.teamName}: ${donePercent}% complete — ${team.completedTasks} done, ${team.openTasks} open`}
+                          aria-label={`${team.teamName}: ${donePercent}% complete — ${team.completedTasks} done, ${team.blockedTasks} blocked, ${team.openTasks} open, ${team.memberCount} members`}
                         >
                           {total > 0 ? (
                             <>
                               <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${donePercent}%` }} />
+                              {blockedPercent > 0 ? (
+                                <div className="h-full rounded-full bg-red-400/90 transition-all duration-500" style={{ width: `${blockedPercent}%` }} />
+                              ) : null}
                               <div className="h-full rounded-full bg-amber-400/90 transition-all duration-500" style={{ width: `${openPercent}%` }} />
                             </>
                           ) : null}
@@ -871,6 +1135,92 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </section>
+
+      {/* ============ Phase 6: top performers (managers & leaders only) ============ */}
+      {canSeePerformance ? (
+        <section className="mt-6" aria-label="Top performers">
+          <Card>
+            <CardHeader className="gap-1.5">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                Top performers
+              </CardTitle>
+              <CardDescription>
+                {user?.role === 'TEAM_LEADER' && user.teamId
+                  ? 'Completion leaderboard for your team, over all assigned tasks.'
+                  : 'Completion leaderboard across everyone with assigned tasks.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                  ))}
+                </div>
+              ) : !stats || stats.topPerformers.length === 0 ? (
+                <EmptyState icon={Trophy} title="No assigned tasks yet" hint="Assign tasks to team members to build the leaderboard." />
+              ) : (
+                <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {stats.topPerformers.map((performer, index) => {
+                    const rank = index + 1
+                    const rankStyles =
+                      rank === 1
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 ring-amber-300/60 dark:ring-amber-500/30'
+                        : rank === 2
+                          ? 'bg-stone-100 text-stone-700 dark:bg-stone-500/15 dark:text-stone-300 ring-stone-300/60 dark:ring-stone-500/30'
+                          : rank === 3
+                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-300 ring-orange-300/60 dark:ring-orange-500/30'
+                            : 'bg-muted text-muted-foreground ring-border'
+                    return (
+                      <li key={performer.userId}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`${ROUTES.TASKS}?assignee=${performer.userId}`)}
+                          title={`View ${performer.fullName}'s tasks`}
+                          className="group w-full rounded-xl border border-border bg-card p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-600/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:hover:border-emerald-500/40"
+                          aria-label={`Rank ${rank}: ${performer.fullName}, ${performer.completionRate}% completion`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" aria-hidden="true">
+                              {initialsOf(performer.fullName)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-foreground">{performer.fullName}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {performer.completedTasks}/{performer.totalTasks} done
+                                {performer.blockedTasks > 0 ? (
+                                  <span className="ml-1 font-semibold text-red-700 dark:text-red-300">· {performer.blockedTasks} blocked</span>
+                                ) : null}
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ring-1',
+                                rankStyles
+                              )}
+                              aria-hidden="true"
+                            >
+                              {rank}
+                            </span>
+                          </div>
+                          <div className="mt-2.5">
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                              <span>Completion</span>
+                              <span className="font-bold tabular-nums text-foreground">{performer.completionRate}%</span>
+                            </div>
+                            <Progress value={performer.completionRate} className="mt-1 h-1.5" aria-hidden="true" />
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
     </div>
   )
 }

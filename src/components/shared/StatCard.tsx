@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -15,6 +16,10 @@ interface StatCardProps {
   tint?: StatTint
   /** Optional 0-100 progress bar (e.g. completion rate). */
   progress?: number
+  /** Optional click-through (e.g. jump to the filtered task list). */
+  onClick?: () => void
+  /** Accessible description for the click action. */
+  actionLabel?: string
   className?: string
 }
 
@@ -45,8 +50,9 @@ function useCountUp(target: number, duration = 650): number {
   return value
 }
 
-export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', progress, className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', progress, onClick, actionLabel, className }: StatCardProps) {
   const display = useCountUp(value)
+  const interactive = typeof onClick === 'function'
 
   return (
     <motion.div
@@ -54,7 +60,29 @@ export function StatCard({ icon: Icon, label, value, sub, tint = 'emerald', prog
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
-      <div className={cn('h-full rounded-xl border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-emerald-500/20 dark:hover:ring-emerald-400/20', className)}>
+      <div
+        className={cn(
+          'h-full rounded-xl border bg-card p-4 shadow-sm transition-all duration-200',
+          interactive && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+          !interactive && 'hover:-translate-y-0.5 hover:shadow-md',
+          'hover:ring-1 hover:ring-emerald-500/20 dark:hover:ring-emerald-400/20',
+          className
+        )}
+        {...(interactive
+          ? {
+              role: 'button',
+              tabIndex: 0,
+              onClick,
+              onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onClick?.()
+                }
+              },
+              'aria-label': actionLabel ? `${label} — ${actionLabel}` : label,
+            }
+          : {})}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>

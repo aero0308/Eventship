@@ -8,6 +8,7 @@ import { handleApiError, ok, requireUser } from '@/lib/api-utils'
 import { serializeEvent, computeTaskStatsMap, emptyTaskStats } from '../_lib/events'
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const PROGRESS_DAYS = 30
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -15,6 +16,13 @@ function startOfDay(date: Date): Date {
 
 function endOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+}
+
+function dayKey(date: Date): string {
+  const y = date.getFullYear()
+  const m = `${date.getMonth() + 1}`.padStart(2, '0')
+  const d = `${date.getDate()}`.padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 /** Task include shape shared by the three focus buckets. */
@@ -79,6 +87,10 @@ export async function GET(request: Request) {
     const focusWhere = focusMine ? { assignedTo: user.id } : {}
     const now = new Date()
     const weekFromNow = new Date(now.getTime() + WEEK_MS)
+    const windowStart = startOfDay(new Date(now.getTime() - (PROGRESS_DAYS - 1) * 86400000))
+    const isManager = user.role === 'EVENT_MANAGER'
+    const isLeader = user.role === 'TEAM_LEADER'
+    const canSeePerformance = isManager || isLeader
 
     const [
       totalEvents,
@@ -86,18 +98,21 @@ export async function GET(request: Request) {
       totalTasks,
       completedTasks,
       blockedTasks,
+      overdueTotal,
       totalTeams,
       activeMembers,
       upcomingDeadlinesTotal,
       taskStatusGroups,
       taskPriorityGroups,
       eventStatusGroups,
+      teamMemberGroups,
     ] = await Promise.all([
       db.event.count(),
       db.event.count({ where: { status: { in: ['IN_PROGRESS', 'PLANNING'] } } }),
       db.task.count(),
       db.task.count({ where: { status: 'COMPLETED' } }),
       db.task.count({ where: { status: 'BLOCKED' } }),
+      db.task.count({ where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } } }),
       db.team.count(),
       db.user.count({ where: { isActive: true } }),
       db.task.count({
@@ -106,13 +121,14 @@ export async function GET(request: Request) {
       db.task.groupBy({ by: ['status'], _count: { _all: true } }),
       db.task.groupBy({ by: ['priority'], _count: { _all: true } }),
       db.event.groupBy({ by: ['status'], _count: { _all: true } }),
+      db.user.groupBy({ by: ['teamId'], where: { teamId: { not: null }, isActive: true }, _count: { _all: true } }),
     ])
 
     const statusCounts = new Map(taskStatusGroups.map((g) => [g.status, g._count._all]))
     const priorityCounts = new Map(taskPriorityGroups.map((g) => [g.priority, g._count._all]))
     const eventStatusCounts = new Map(eventStatusGroups.map((g) => [g.status, g._count._all]))
 
-    const [upcomingEvents, upcomingDeadlineTasks, recentActivityLogs, teams, allTasks, focusQueries] =
+    const [upcomingEvents, upcomingDeadlineTasks, recentActivityLogs, teams, allTasks, blockerTasks, progressRows, performerRows, focusQueries] =
       await Promise.all([
         db.event.findMany({
           where: { startDate: { gte: now } },
@@ -135,7 +151,7 @@ export async function GET(request: Request) {
         }),
         db.activityLog.findMany({
           orderBy: { timestamp: 'desc' },
-          take: 8,
+          take: 12,
           include: { user: { select: { id: true, fullName: true } } },
         }),
         db.team.findMany({
@@ -143,6 +159,35 @@ export async function GET(request: Request) {
           select: { id: true, name: true, events: { select: { id: true } } },
         }),
         db.task.findMany({ select: { eventId: true, status: true } }),
+        // ---- Phase 6: blockers (blocked tasks + latest blocker comment) ----
+        db.task.findMany({
+          where: { status: 'BLOCKED' },
+          orderBy: { updatedAt: 'desc' },
+          take: 6,
+          include: {
+            event: { select: { id: true, name: true } },
+            assignee: { select: { id: true, fullName: true } },
+            comments: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              include: { user: { select: { id: true, fullName: true } } },
+            },
+          },
+        }),
+        // ---- Phase 6: 30-day progress trend (created vs completed per day) ----
+        db.task.findMany({
+          where: {
+            OR: [{ createdAt: { gte: windowStart } }, { status: 'COMPLETED', updatedAt: { gte: windowStart } }],
+          },
+          select: { createdAt: true, updatedAt: true, status: true },
+        }),
+        // ---- Phase 6: per-assignee performance rows (role-gated, cheap scan) ----
+        canSeePerformance
+          ? db.task.findMany({
+              where: isLeader && user.teamId ? { event: { teamId: user.teamId } } : undefined,
+              select: { assignedTo: true, status: true },
+            })
+          : Promise.resolve([] as { assignedTo: string | null; status: string }[]),
         // ---- "My focus" buckets: due today / due within a week / overdue ----
         Promise.all([
           db.task.findMany({
@@ -189,11 +234,18 @@ export async function GET(request: Request) {
     for (const team of teams) {
       for (const event of team.events) eventToTeam.set(event.id, team.id)
     }
+    const memberCountByTeam = new Map<string, number>()
+    for (const group of teamMemberGroups) {
+      if (group.teamId) memberCountByTeam.set(group.teamId, group._count._all)
+    }
     const teamWorkload = teams.map((team) => ({
       teamId: team.id,
       teamName: team.name,
       openTasks: 0,
       completedTasks: 0,
+      blockedTasks: 0,
+      memberCount: memberCountByTeam.get(team.id) ?? 0,
+      completionRate: 0,
     }))
     const workloadByTeam = new Map(teamWorkload.map((entry) => [entry.teamId, entry]))
     for (const task of allTasks) {
@@ -202,8 +254,70 @@ export async function GET(request: Request) {
       const entry = workloadByTeam.get(teamId)
       if (!entry) continue
       if (task.status === 'COMPLETED') entry.completedTasks += 1
+      else if (task.status === 'BLOCKED') entry.blockedTasks += 1
       else entry.openTasks += 1
     }
+    // Completion rate per team (Phase 6 team-performance metrics).
+    for (const team of teamWorkload) {
+      const total = team.openTasks + team.completedTasks
+      team.completionRate = total > 0 ? Math.round((team.completedTasks / total) * 100) : 0
+    }
+
+    // ---- Phase 6: 30-day progress trend (single pass over the rows) ----
+    const createdByDay = new Map<string, number>()
+    const completedByDay = new Map<string, number>()
+    for (const row of progressRows) {
+      const created = dayKey(row.createdAt)
+      if (row.createdAt >= windowStart) createdByDay.set(created, (createdByDay.get(created) ?? 0) + 1)
+      if (row.status === 'COMPLETED' && row.updatedAt >= windowStart) {
+        const completed = dayKey(row.updatedAt)
+        completedByDay.set(completed, (completedByDay.get(completed) ?? 0) + 1)
+      }
+    }
+    const progressOverTime: { date: string; created: number; completed: number; cumulativeCompleted: number }[] = []
+    let cumulative = 0
+    for (let i = PROGRESS_DAYS - 1; i >= 0; i -= 1) {
+      const key = dayKey(new Date(now.getTime() - i * 86400000))
+      const created = createdByDay.get(key) ?? 0
+      const completed = completedByDay.get(key) ?? 0
+      cumulative += completed
+      progressOverTime.push({ date: key, created, completed, cumulativeCompleted: cumulative })
+    }
+
+    // ---- Phase 6: top performers (managers = whole org, leaders = their team) ----
+    const perfByUser = new Map<string, { total: number; completed: number; inProgress: number; blocked: number }>()
+    for (const row of performerRows) {
+      if (!row.assignedTo) continue
+      const entry = perfByUser.get(row.assignedTo) ?? { total: 0, completed: 0, inProgress: 0, blocked: 0 }
+      entry.total += 1
+      if (row.status === 'COMPLETED') entry.completed += 1
+      else if (row.status === 'IN_PROGRESS') entry.inProgress += 1
+      else if (row.status === 'BLOCKED') entry.blocked += 1
+      perfByUser.set(row.assignedTo, entry)
+    }
+    const performerUserIds = [...perfByUser.keys()]
+    const performerUsers = performerUserIds.length
+      ? await db.user.findMany({
+          where: { id: { in: performerUserIds }, isActive: true },
+          select: { id: true, fullName: true, email: true },
+        })
+      : []
+    const topPerformers = performerUsers
+      .map((u) => {
+        const entry = perfByUser.get(u.id)! // non-null asserted: id came from the map keys
+        return {
+          userId: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          totalTasks: entry.total,
+          completedTasks: entry.completed,
+          inProgressTasks: entry.inProgress,
+          blockedTasks: entry.blocked,
+          completionRate: Math.round((entry.completed / entry.total) * 100),
+        }
+      })
+      .sort((a, b) => b.completionRate - a.completionRate || b.completedTasks - a.completedTasks)
+      .slice(0, 5)
 
     const stats = {
       totals: {
@@ -212,6 +326,7 @@ export async function GET(request: Request) {
         tasks: totalTasks,
         completedTasks,
         blockedTasks,
+        overdueTasks: overdueTotal,
         teams: totalTeams,
         members: activeMembers,
         upcomingDeadlines: upcomingDeadlinesTotal,
@@ -265,6 +380,26 @@ export async function GET(request: Request) {
       },
       completionRate:
         totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      // ---- Phase 6 additions ----
+      blockers: blockerTasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        priority: task.priority,
+        eventId: task.eventId,
+        eventName: task.event?.name ?? null,
+        assigneeName: task.assignee?.fullName ?? null,
+        dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+        daysBlocked: Math.max(0, Math.floor((now.getTime() - task.updatedAt.getTime()) / 86400000)),
+        latestComment: task.comments[0]
+          ? {
+              content: task.comments[0].content,
+              authorName: task.comments[0].user?.fullName ?? null,
+              createdAt: task.comments[0].createdAt.toISOString(),
+            }
+          : null,
+      })),
+      progressOverTime,
+      topPerformers,
     }
 
     return ok({ stats })
