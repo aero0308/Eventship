@@ -32,6 +32,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, TaskDTO } from '@/types'
+import { useTheme } from 'next-themes'
 import {
   EVENT_STATUS_CLASSES,
   EVENT_STATUS_LABELS,
@@ -55,17 +56,40 @@ import { StatCard } from '@/components/shared/StatCard'
 import { ActivityItem } from '@/components/shared/ActivityFeed'
 import { initialsOf } from '@/components/layout/Layout'
 
-const STATUS_CHART_COLORS: Record<string, string> = {
-  NOT_STARTED: '#a8a29e', // stone-400
-  IN_PROGRESS: '#f59e0b', // amber-500
-  BLOCKED: '#ef4444', // red-500
-  COMPLETED: '#10b981', // emerald-500
+const STATUS_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
+  light: {
+    NOT_STARTED: '#a8a29e', // stone-400
+    IN_PROGRESS: '#f59e0b', // amber-500
+    BLOCKED: '#ef4444', // red-500
+    COMPLETED: '#10b981', // emerald-500
+  },
+  // Dark theme: same hues, chroma pulled way down so bars don't glow on black
+  // (values chosen to match the .dark palette overrides in globals.css).
+  dark: {
+    NOT_STARTED: '#a8a29e',
+    IN_PROGRESS: '#d3a04c',
+    BLOCKED: '#cf6f66',
+    COMPLETED: '#31af8c',
+  },
 }
 
-const PRIORITY_CHART_COLORS: Record<string, string> = {
-  HIGH: '#ef4444', // red-500
-  MEDIUM: '#f59e0b', // amber-500
-  LOW: '#a8a29e', // stone-400
+const PRIORITY_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
+  light: {
+    HIGH: '#ef4444', // red-500
+    MEDIUM: '#f59e0b', // amber-500
+    LOW: '#a8a29e', // stone-400
+  },
+  dark: {
+    HIGH: '#cf6f66',
+    MEDIUM: '#d3a04c',
+    LOW: '#a8a29e',
+  },
+}
+
+/** Theme-aware chart palette (defaults to light until next-themes mounts). */
+function useChartScheme(): 'light' | 'dark' {
+  const { resolvedTheme } = useTheme()
+  return resolvedTheme === 'dark' ? 'dark' : 'light'
 }
 
 /** Outer → inner ring order for the priority rings (most critical first). */
@@ -113,6 +137,8 @@ function PriorityRings({ data }: { data: RingEntry[] }) {
   const size = 208
   const stroke = 15
   const ringGap = 9
+  const scheme = useChartScheme()
+  const colors = PRIORITY_CHART_COLORS[scheme]
 
   const rings = data.map((entry, index) => {
     const radius = size / 2 - stroke / 2 - index * (stroke + ringGap)
@@ -145,7 +171,7 @@ function PriorityRings({ data }: { data: RingEntry[] }) {
               cy={size / 2}
               r={ring.radius}
               fill="none"
-              stroke={PRIORITY_CHART_COLORS[ring.key] ?? '#a8a29e'}
+              stroke={colors[ring.key] ?? '#a8a29e'}
               strokeWidth={stroke}
               strokeLinecap="round"
               strokeDasharray={ring.circumference}
@@ -167,7 +193,8 @@ function PriorityRings({ data }: { data: RingEntry[] }) {
 /** Legend row for the priority rings: dot, label, count, share % and a mini bar. */
 function PriorityLegendRow({ entry, total }: { entry: RingEntry; total: number }) {
   const share = total > 0 ? Math.round((entry.value / total) * 100) : 0
-  const color = PRIORITY_CHART_COLORS[entry.key] ?? '#a8a29e'
+  const scheme = useChartScheme()
+  const color = PRIORITY_CHART_COLORS[scheme][entry.key] ?? '#a8a29e'
   return (
     <li className="space-y-1.5">
       <div className="flex items-center gap-2 text-sm">
@@ -397,6 +424,7 @@ export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
   const [loading, setLoading] = useState(true)
+  const scheme = useChartScheme()
 
   // Focus strip scope — "All tasks" or "Mine only". Persisted per browser.
   const [focusScope, setFocusScope] = useState<'all' | 'mine'>(() => {
@@ -551,7 +579,7 @@ export function DashboardPage() {
                     />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={48}>
                       {statusData.map((entry) => (
-                        <Cell key={entry.key} fill={STATUS_CHART_COLORS[entry.key] ?? '#78716c'} />
+                        <Cell key={entry.key} fill={STATUS_CHART_COLORS[scheme][entry.key] ?? '#78716c'} />
                       ))}
                     </Bar>
                   </BarChart>

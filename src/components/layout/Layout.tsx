@@ -441,7 +441,10 @@ export function Layout({ children }: LayoutProps) {
                   Profile &amp; settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => void handleLogout()} className="text-red-600 focus:bg-red-50 focus:text-red-700">
+                <DropdownMenuItem
+                  onClick={() => void handleLogout()}
+                  className="text-red-600 focus:bg-red-50 focus:text-red-700 dark:text-red-400 dark:focus:bg-red-500/10 dark:focus:text-red-300"
+                >
                   <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
                   Log out
                 </DropdownMenuItem>
@@ -495,7 +498,7 @@ export function Layout({ children }: LayoutProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-10 w-10 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
+                    className="h-10 w-10 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                     onClick={() => void handleLogout()}
                     aria-label="Log out"
                   >

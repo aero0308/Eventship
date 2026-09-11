@@ -21,7 +21,7 @@ interface StatCardProps {
 const TINT_CLASSES: Record<StatTint, string> = {
   emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  red: 'bg-red-100 text-red-600',
+  red: 'bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300',
   stone: 'bg-muted text-muted-foreground',
 }
 

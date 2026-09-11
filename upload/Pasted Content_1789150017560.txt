@@ -1,0 +1,2213 @@
+PHASE 6: Dashboard & Analytics - Step-by-Step AI Prompts
+📋 How This Works
+For Phase 6, we'll build the complete dashboard system with stats, charts, and insights. This is what managers and team members see first when they log in!
+
+Order of work:
+
+First: Backend dashboard APIs (data aggregation)
+
+Then: Frontend dashboard service + store
+
+Then: Dashboard components (stats cards, charts, lists)
+
+Then: Dashboard page with layout
+
+Then: Test everything manually
+
+What You'll See by End of Phase 6:
+
+✅ Dashboard with 4 summary stat cards
+
+✅ Task distribution pie/donut chart
+
+✅ Task status bar chart
+
+✅ Upcoming deadlines list
+
+✅ Blockers list (tasks needing attention)
+
+✅ Recent activity feed
+
+✅ Team performance metrics
+
+✅ Auto-refresh every 30 seconds
+
+✅ Different views for managers vs employees
+
+📌 Step 6.1: Backend Dashboard APIs
+🤖 Complete Prompt for Step 6.1:
+text
+We're starting Phase 6 - Dashboard & Analytics. First, build the backend dashboard APIs that aggregate data from all models.
+
+**Create these files:**
+
+1. **backend/app/schemas/dashboard.py** - Dashboard schemas:
+```python
+from pydantic import BaseModel
+from typing import Optional, List, Dict
+from datetime import datetime
+from uuid import UUID
+
+class DashboardStats(BaseModel):
+    total_events: int
+    active_events: int
+    total_tasks: int
+    completed_tasks: int
+    in_progress_tasks: int
+    blocked_tasks: int
+    not_started_tasks: int
+    overdue_tasks: int
+    completion_rate: float
+    total_teams: int
+    total_users: int
+
+class TaskDistribution(BaseModel):
+    not_started: int
+    in_progress: int
+    blocked: int
+    completed: int
+
+class PriorityDistribution(BaseModel):
+    high: int
+    medium: int
+    low: int
+
+class UpcomingDeadline(BaseModel):
+    id: UUID
+    title: str
+    due_date: datetime
+    priority: str
+    status: str
+    event_name: Optional[str]
+    assignee_name: Optional[str]
+    days_until_due: int
+    is_overdue: bool
+
+class BlockerInfo(BaseModel):
+    id: UUID
+    title: str
+    priority: str
+    event_name: Optional[str]
+    assignee_name: Optional[str]
+    due_date: Optional[datetime]
+    days_blocked: int
+    latest_comment: Optional[str]
+
+class ActivityItem(BaseModel):
+    id: UUID
+    action: str
+    details: Optional[dict]
+    user_name: str
+    user_avatar: Optional[str]
+    timestamp: datetime
+    related_task_id: Optional[UUID]
+    related_event_id: Optional[UUID]
+
+class TeamPerformance(BaseModel):
+    team_id: UUID
+    team_name: str
+    member_count: int
+    total_tasks: int
+    completed_tasks: int
+    blocked_tasks: int
+    completion_rate: float
+
+class EmployeePerformance(BaseModel):
+    user_id: UUID
+    user_name: str
+    user_avatar: Optional[str]
+    total_tasks: int
+    completed_tasks: int
+    in_progress_tasks: int
+    blocked_tasks: int
+    completion_rate: float
+
+class ProgressOverTime(BaseModel):
+    date: str
+    completed: int
+    created: int
+    cumulative_completed: int
+
+class DashboardResponse(BaseModel):
+    stats: DashboardStats
+    task_distribution: TaskDistribution
+    priority_distribution: PriorityDistribution
+    upcoming_deadlines: List[UpcomingDeadline]
+    blockers: List[BlockerInfo]
+    recent_activity: List[ActivityItem]
+    team_performance: Optional[List[TeamPerformance]] = None
+    top_performers: Optional[List[EmployeePerformance]] = None
+    progress_over_time: Optional[List[ProgressOverTime]] = None
+backend/app/crud/dashboard.py - Dashboard aggregation functions:
+
+python
+from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, or_
+from typing import List, Optional, Dict
+from uuid import UUID
+from datetime import datetime, timedelta
+
+from app.models.task import Task, TaskStatus, TaskPriority
+from app.models.event import Event, EventStatus
+from app.models.team import Team
+from app.models.user import User, UserRole
+from app.models.activity import ActivityLog
+from app.models.comment import TaskComment
+
+
+def get_dashboard_stats(db: Session, user: Optional[User] = None) -> Dict:
+    """
+    Get overall dashboard statistics.
+    
+    Authorization:
+    - EVENT_MANAGER: sees all data
+    - TEAM_LEADER: sees team data
+    - EMPLOYEE: sees only their tasks
+    """
+    # Base queries with role-based filtering
+    if user and user.role == UserRole.EMPLOYEE:
+        # Employee: only their tasks
+        task_query = db.query(Task).filter(Task.assigned_to == user.id)
+        event_query = db.query(Event).join(Team).filter(Team.id == user.team_id)
+        team_query = db.query(Team).filter(Team.id == user.team_id)
+        user_query = db.query(User).filter(User.team_id == user.team_id)
+    elif user and user.role == UserRole.TEAM_LEADER:
+        # Team leader: team's data
+        task_query = db.query(Task).join(Event).filter(Event.team_id == user.team_id)
+        event_query = db.query(Event).filter(Event.team_id == user.team_id)
+        team_query = db.query(Team).filter(Team.id == user.team_id)
+        user_query = db.query(User).filter(User.team_id == user.team_id)
+    else:
+        # Manager: all data
+        task_query = db.query(Task)
+        event_query = db.query(Event)
+        team_query = db.query(Team)
+        user_query = db.query(User)
+    
+    # Count stats
+    total_tasks = task_query.count()
+    completed_tasks = task_query.filter(Task.status == TaskStatus.COMPLETED).count()
+    in_progress_tasks = task_query.filter(Task.status == TaskStatus.IN_PROGRESS).count()
+    blocked_tasks = task_query.filter(Task.status == TaskStatus.BLOCKED).count()
+    not_started_tasks = task_query.filter(Task.status == TaskStatus.NOT_STARTED).count()
+    overdue_tasks = task_query.filter(
+        Task.due_date < datetime.utcnow(),
+        Task.status != TaskStatus.COMPLETED
+    ).count()
+    
+    total_events = event_query.count()
+    active_events = event_query.filter(
+        Event.status.in_([EventStatus.PLANNING, EventStatus.IN_PROGRESS])
+    ).count()
+    
+    total_teams = team_query.count()
+    total_users = user_query.count()
+    
+    completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+    
+    return {
+        "total_events": total_events,
+        "active_events": active_events,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "in_progress_tasks": in_progress_tasks,
+        "blocked_tasks": blocked_tasks,
+        "not_started_tasks": not_started_tasks,
+        "overdue_tasks": overdue_tasks,
+        "completion_rate": round(completion_rate, 2),
+        "total_teams": total_teams,
+        "total_users": total_users
+    }
+
+
+def get_task_distribution(db: Session, user: Optional[User] = None) -> Dict:
+    """Get task count by status for chart"""
+    query = db.query(Task)
+    
+    # Apply role filter
+    if user:
+        if user.role == UserRole.EMPLOYEE:
+            query = query.filter(Task.assigned_to == user.id)
+        elif user.role == UserRole.TEAM_LEADER:
+            query = query.join(Event).filter(Event.team_id == user.team_id)
+    
+    return {
+        "not_started": query.filter(Task.status == TaskStatus.NOT_STARTED).count(),
+        "in_progress": query.filter(Task.status == TaskStatus.IN_PROGRESS).count(),
+        "blocked": query.filter(Task.status == TaskStatus.BLOCKED).count(),
+        "completed": query.filter(Task.status == TaskStatus.COMPLETED).count()
+    }
+
+
+def get_priority_distribution(db: Session, user: Optional[User] = None) -> Dict:
+    """Get task count by priority for chart"""
+    query = db.query(Task)
+    
+    if user:
+        if user.role == UserRole.EMPLOYEE:
+            query = query.filter(Task.assigned_to == user.id)
+        elif user.role == UserRole.TEAM_LEADER:
+            query = query.join(Event).filter(Event.team_id == user.team_id)
+    
+    return {
+        "high": query.filter(Task.priority == TaskPriority.HIGH).count(),
+        "medium": query.filter(Task.priority == TaskPriority.MEDIUM).count(),
+        "low": query.filter(Task.priority == TaskPriority.LOW).count()
+    }
+
+
+def get_upcoming_deadlines(
+    db: Session,
+    user: Optional[User] = None,
+    days: int = 7,
+    limit: int = 10
+) -> List[Dict]:
+    """Get tasks due in the next N days"""
+    now = datetime.utcnow()
+    future = now + timedelta(days=days)
+    
+    query = db.query(Task).filter(
+        Task.due_date.between(now, future),
+        Task.status != TaskStatus.COMPLETED
+    )
+    
+    # Role-based filtering
+    if user:
+        if user.role == UserRole.EMPLOYEE:
+            query = query.filter(Task.assigned_to == user.id)
+        elif user.role == UserRole.TEAM_LEADER:
+            query = query.join(Event).filter(Event.team_id == user.team_id)
+    
+    tasks = query.order_by(Task.due_date.asc()).limit(limit).all()
+    
+    return [{
+        "id": t.id,
+        "title": t.title,
+        "due_date": t.due_date,
+        "priority": t.priority.value,
+        "status": t.status.value,
+        "event_name": t.event.name if t.event else None,
+        "assignee_name": t.assignee.full_name if t.assignee else None,
+        "days_until_due": (t.due_date - now).days,
+        "is_overdue": False
+    } for t in tasks]
+
+
+def get_blockers(
+    db: Session,
+    user: Optional[User] = None,
+    limit: int = 10
+) -> List[Dict]:
+    """Get all blocked tasks with details"""
+    query = db.query(Task).filter(Task.status == TaskStatus.BLOCKED)
+    
+    if user:
+        if user.role == UserRole.EMPLOYEE:
+            query = query.filter(Task.assigned_to == user.id)
+        elif user.role == UserRole.TEAM_LEADER:
+            query = query.join(Event).filter(Event.team_id == user.team_id)
+    
+    tasks = query.order_by(Task.updated_at.desc()).limit(limit).all()
+    
+    result = []
+    for t in tasks:
+        # Get latest comment
+        latest_comment = db.query(TaskComment).filter(
+            TaskComment.task_id == t.id
+        ).order_by(TaskComment.created_at.desc()).first()
+        
+        # Calculate days blocked (since last status change)
+        days_blocked = (datetime.utcnow() - t.updated_at).days if t.updated_at else 0
+        
+        result.append({
+            "id": t.id,
+            "title": t.title,
+            "priority": t.priority.value,
+            "event_name": t.event.name if t.event else None,
+            "assignee_name": t.assignee.full_name if t.assignee else None,
+            "due_date": t.due_date,
+            "days_blocked": days_blocked,
+            "latest_comment": latest_comment.content if latest_comment else None
+        })
+    
+    return result
+
+
+def get_recent_activity(
+    db: Session,
+    user: Optional[User] = None,
+    limit: int = 20
+) -> List[Dict]:
+    """Get recent activity logs"""
+    query = db.query(ActivityLog)
+    
+    # Role-based filtering
+    if user and user.role == UserRole.EMPLOYEE:
+        # Employee sees activity related to their tasks
+        task_ids = db.query(Task.id).filter(Task.assigned_to == user.id).subquery()
+        query = query.filter(
+            or_(
+                ActivityLog.user_id == user.id,
+                ActivityLog.details['task_id'].astext.in_(
+                    db.query(Task.id).filter(Task.assigned_to == user.id)
+                )
+            )
+        )
+    
+    activities = query.order_by(ActivityLog.timestamp.desc()).limit(limit).all()
+    
+    return [{
+        "id": a.id,
+        "action": a.action,
+        "details": a.details,
+        "user_name": a.user.full_name if a.user else "Unknown",
+        "user_avatar": None,
+        "timestamp": a.timestamp,
+        "related_task_id": a.details.get("task_id") if a.details else None,
+        "related_event_id": a.details.get("event_id") if a.details else None
+    } for a in activities]
+
+
+def get_team_performance(
+    db: Session,
+    user: Optional[User] = None,
+    limit: int = 10
+) -> List[Dict]:
+    """Get performance metrics per team (managers only)"""
+    teams = db.query(Team).limit(limit).all()
+    
+    result = []
+    for team in teams:
+        total_tasks = db.query(Task).join(Event).filter(Event.team_id == team.id).count()
+        completed_tasks = db.query(Task).join(Event).filter(
+            Event.team_id == team.id,
+            Task.status == TaskStatus.COMPLETED
+        ).count()
+        blocked_tasks = db.query(Task).join(Event).filter(
+            Event.team_id == team.id,
+            Task.status == TaskStatus.BLOCKED
+        ).count()
+        member_count = db.query(User).filter(User.team_id == team.id).count()
+        
+        completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        
+        result.append({
+            "team_id": team.id,
+            "team_name": team.name,
+            "member_count": member_count,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "blocked_tasks": blocked_tasks,
+            "completion_rate": round(completion_rate, 2)
+        })
+    
+    return result
+
+
+def get_top_performers(
+    db: Session,
+    user: Optional[User] = None,
+    limit: int = 5
+) -> List[Dict]:
+    """Get top performing employees (managers only)"""
+    # Query users with their task counts
+    users = db.query(User).filter(User.role == UserRole.EMPLOYEE)
+    
+    if user and user.role == UserRole.TEAM_LEADER:
+        users = users.filter(User.team_id == user.team_id)
+    
+    result = []
+    for u in users.limit(50).all():  # Limit initial query
+        total = db.query(Task).filter(Task.assigned_to == u.id).count()
+        completed = db.query(Task).filter(
+            Task.assigned_to == u.id,
+            Task.status == TaskStatus.COMPLETED
+        ).count()
+        in_progress = db.query(Task).filter(
+            Task.assigned_to == u.id,
+            Task.status == TaskStatus.IN_PROGRESS
+        ).count()
+        blocked = db.query(Task).filter(
+            Task.assigned_to == u.id,
+            Task.status == TaskStatus.BLOCKED
+        ).count()
+        
+        if total > 0:
+            completion_rate = (completed / total * 100)
+            result.append({
+                "user_id": u.id,
+                "user_name": u.full_name,
+                "user_avatar": None,
+                "total_tasks": total,
+                "completed_tasks": completed,
+                "in_progress_tasks": in_progress,
+                "blocked_tasks": blocked,
+                "completion_rate": round(completion_rate, 2)
+            })
+    
+    # Sort by completion rate descending
+    result.sort(key=lambda x: x["completion_rate"], reverse=True)
+    return result[:limit]
+
+
+def get_progress_over_time(
+    db: Session,
+    user: Optional[User] = None,
+    days: int = 30
+) -> List[Dict]:
+    """Get daily progress data for the last N days"""
+    result = []
+    now = datetime.utcnow()
+    
+    for i in range(days, -1, -1):
+        date = now - timedelta(days=i)
+        date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        date_end = date_start + timedelta(days=1)
+        
+        query_created = db.query(Task).filter(
+            Task.created_at.between(date_start, date_end)
+        )
+        query_completed = db.query(Task).filter(
+            Task.status == TaskStatus.COMPLETED,
+            Task.updated_at.between(date_start, date_end)
+        )
+        
+        if user:
+            if user.role == UserRole.EMPLOYEE:
+                query_created = query_created.filter(Task.assigned_to == user.id)
+                query_completed = query_completed.filter(Task.assigned_to == user.id)
+            elif user.role == UserRole.TEAM_LEADER:
+                query_created = query_created.join(Event).filter(Event.team_id == user.team_id)
+                query_completed = query_completed.join(Event).filter(Event.team_id == user.team_id)
+        
+        result.append({
+            "date": date_start.strftime("%Y-%m-%d"),
+            "created": query_created.count(),
+            "completed": query_completed.count(),
+            "cumulative_completed": 0  # Will calculate below
+        })
+    
+    # Calculate cumulative
+    cumulative = 0
+    for item in result:
+        cumulative += item["completed"]
+        item["cumulative_completed"] = cumulative
+    
+    return result
+backend/app/api/v1/dashboard.py - Dashboard API endpoints:
+
+python
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from app.api.deps import get_current_active_user
+from app.core.database import get_db
+from app.crud import dashboard as dashboard_crud
+from app.models.user import User
+from app.schemas.dashboard import (
+    DashboardResponse, DashboardStats, TaskDistribution,
+    PriorityDistribution, UpcomingDeadline, BlockerInfo,
+    ActivityItem, TeamPerformance, EmployeePerformance,
+    ProgressOverTime
+)
+
+router = APIRouter()
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def get_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get dashboard statistics"""
+    return dashboard_crud.get_dashboard_stats(db, current_user)
+
+
+@router.get("/task-distribution", response_model=TaskDistribution)
+async def get_task_distribution(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get task count by status"""
+    return dashboard_crud.get_task_distribution(db, current_user)
+
+
+@router.get("/priority-distribution", response_model=PriorityDistribution)
+async def get_priority_distribution(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get task count by priority"""
+    return dashboard_crud.get_priority_distribution(db, current_user)
+
+
+@router.get("/upcoming-deadlines", response_model=list[UpcomingDeadline])
+async def get_upcoming_deadlines(
+    days: int = Query(7, ge=1, le=90),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get tasks due in next N days"""
+    return dashboard_crud.get_upcoming_deadlines(db, current_user, days, limit)
+
+
+@router.get("/blockers", response_model=list[BlockerInfo])
+async def get_blockers(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all blocked tasks"""
+    return dashboard_crud.get_blockers(db, current_user, limit)
+
+
+@router.get("/recent-activity", response_model=list[ActivityItem])
+async def get_recent_activity(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get recent activity logs"""
+    return dashboard_crud.get_recent_activity(db, current_user, limit)
+
+
+@router.get("/team-performance", response_model=list[TeamPerformance])
+async def get_team_performance(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get team performance metrics"""
+    return dashboard_crud.get_team_performance(db, current_user, limit)
+
+
+@router.get("/top-performers", response_model=list[EmployeePerformance])
+async def get_top_performers(
+    limit: int = Query(5, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get top performing employees"""
+    return dashboard_crud.get_top_performers(db, current_user, limit)
+
+
+@router.get("/progress-over-time", response_model=list[ProgressOverTime])
+async def get_progress_over_time(
+    days: int = Query(30, ge=7, le=90),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get progress data over time"""
+    return dashboard_crud.get_progress_over_time(db, current_user, days)
+
+
+@router.get("/", response_model=DashboardResponse)
+async def get_full_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get all dashboard data in a single request.
+    This is optimized for the initial dashboard load.
+    """
+    is_manager = current_user.role.value == "EVENT_MANAGER"
+    is_leader = current_user.role.value == "TEAM_LEADER"
+    
+    return {
+        "stats": dashboard_crud.get_dashboard_stats(db, current_user),
+        "task_distribution": dashboard_crud.get_task_distribution(db, current_user),
+        "priority_distribution": dashboard_crud.get_priority_distribution(db, current_user),
+        "upcoming_deadlines": dashboard_crud.get_upcoming_deadlines(db, current_user, 7, 10),
+        "blockers": dashboard_crud.get_blockers(db, current_user, 10),
+        "recent_activity": dashboard_crud.get_recent_activity(db, current_user, 20),
+        "team_performance": dashboard_crud.get_team_performance(db, current_user) if (is_manager or is_leader) else None,
+        "top_performers": dashboard_crud.get_top_performers(db, current_user) if (is_manager or is_leader) else None,
+        "progress_over_time": dashboard_crud.get_progress_over_time(db, current_user, 30)
+    }
+Update backend/app/main.py - Include dashboard router:
+
+python
+from app.api.v1 import dashboard
+
+app.include_router(
+    dashboard.router,
+    prefix="/api/v1/dashboard",
+    tags=["Dashboard"]
+)
+Requirements:
+
+Role-based filtering on all endpoints
+
+Efficient database queries (avoid N+1)
+
+Return empty lists instead of errors for missing data
+
+Comprehensive schemas with proper types
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 6.2: Frontend Dashboard Service & Store
+
+### 🤖 Complete Prompt for Step 6.2:
+Now create the frontend dashboard service and store.
+
+Install Recharts first:
+
+Run in terminal:
+
+bash
+cd frontend
+npm install recharts
+npm install date-fns
+Create these files:
+
+frontend/src/types/dashboard.ts - Dashboard types:
+
+typescript
+export interface DashboardStats {
+    total_events: number
+    active_events: number
+    total_tasks: number
+    completed_tasks: number
+    in_progress_tasks: number
+    blocked_tasks: number
+    not_started_tasks: number
+    overdue_tasks: number
+    completion_rate: number
+    total_teams: number
+    total_users: number
+}
+
+export interface TaskDistribution {
+    not_started: number
+    in_progress: number
+    blocked: number
+    completed: number
+}
+
+export interface PriorityDistribution {
+    high: number
+    medium: number
+    low: number
+}
+
+export interface UpcomingDeadline {
+    id: string
+    title: string
+    due_date: string
+    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+    status: string
+    event_name: string | null
+    assignee_name: string | null
+    days_until_due: number
+    is_overdue: boolean
+}
+
+export interface BlockerInfo {
+    id: string
+    title: string
+    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+    event_name: string | null
+    assignee_name: string | null
+    due_date: string | null
+    days_blocked: number
+    latest_comment: string | null
+}
+
+export interface ActivityItem {
+    id: string
+    action: string
+    details: any
+    user_name: string
+    user_avatar: string | null
+    timestamp: string
+    related_task_id: string | null
+    related_event_id: string | null
+}
+
+export interface TeamPerformance {
+    team_id: string
+    team_name: string
+    member_count: number
+    total_tasks: number
+    completed_tasks: number
+    blocked_tasks: number
+    completion_rate: number
+}
+
+export interface EmployeePerformance {
+    user_id: string
+    user_name: string
+    user_avatar: string | null
+    total_tasks: number
+    completed_tasks: number
+    in_progress_tasks: number
+    blocked_tasks: number
+    completion_rate: number
+}
+
+export interface ProgressOverTime {
+    date: string
+    completed: number
+    created: number
+    cumulative_completed: number
+}
+
+export interface DashboardResponse {
+    stats: DashboardStats
+    task_distribution: TaskDistribution
+    priority_distribution: PriorityDistribution
+    upcoming_deadlines: UpcomingDeadline[]
+    blockers: BlockerInfo[]
+    recent_activity: ActivityItem[]
+    team_performance: TeamPerformance[] | null
+    top_performers: EmployeePerformance[] | null
+    progress_over_time: ProgressOverTime[] | null
+}
+frontend/src/services/dashboardService.ts:
+
+typescript
+import api from './api'
+import { 
+    DashboardResponse, DashboardStats, TaskDistribution,
+    PriorityDistribution, UpcomingDeadline, BlockerInfo,
+    ActivityItem, TeamPerformance, EmployeePerformance,
+    ProgressOverTime
+} from '../types/dashboard'
+
+export const dashboardService = {
+    // Get complete dashboard in one request
+    getDashboard: async () => {
+        const response = await api.get('/dashboard/')
+        return response.data as DashboardResponse
+    },
+    
+    // Individual endpoints
+    getStats: async () => {
+        const response = await api.get('/dashboard/stats')
+        return response.data as DashboardStats
+    },
+    
+    getTaskDistribution: async () => {
+        const response = await api.get('/dashboard/task-distribution')
+        return response.data as TaskDistribution
+    },
+    
+    getPriorityDistribution: async () => {
+        const response = await api.get('/dashboard/priority-distribution')
+        return response.data as PriorityDistribution
+    },
+    
+    getUpcomingDeadlines: async (days: number = 7, limit: number = 10) => {
+        const response = await api.get('/dashboard/upcoming-deadlines', {
+            params: { days, limit }
+        })
+        return response.data as UpcomingDeadline[]
+    },
+    
+    getBlockers: async (limit: number = 10) => {
+        const response = await api.get('/dashboard/blockers', {
+            params: { limit }
+        })
+        return response.data as BlockerInfo[]
+    },
+    
+    getRecentActivity: async (limit: number = 20) => {
+        const response = await api.get('/dashboard/recent-activity', {
+            params: { limit }
+        })
+        return response.data as ActivityItem[]
+    },
+    
+    getTeamPerformance: async (limit: number = 10) => {
+        const response = await api.get('/dashboard/team-performance', {
+            params: { limit }
+        })
+        return response.data as TeamPerformance[]
+    },
+    
+    getTopPerformers: async (limit: number = 5) => {
+        const response = await api.get('/dashboard/top-performers', {
+            params: { limit }
+        })
+        return response.data as EmployeePerformance[]
+    },
+    
+    getProgressOverTime: async (days: number = 30) => {
+        const response = await api.get('/dashboard/progress-over-time', {
+            params: { days }
+        })
+        return response.data as ProgressOverTime[]
+    }
+}
+frontend/src/stores/dashboardStore.ts:
+
+typescript
+import { create } from 'zustand'
+import { dashboardService } from '../services/dashboardService'
+import {
+    DashboardStats, TaskDistribution, PriorityDistribution,
+    UpcomingDeadline, BlockerInfo, ActivityItem,
+    TeamPerformance, EmployeePerformance, ProgressOverTime
+} from '../types/dashboard'
+
+interface DashboardState {
+    // State
+    stats: DashboardStats | null
+    taskDistribution: TaskDistribution | null
+    priorityDistribution: PriorityDistribution | null
+    upcomingDeadlines: UpcomingDeadline[]
+    blockers: BlockerInfo[]
+    recentActivity: ActivityItem[]
+    teamPerformance: TeamPerformance[]
+    topPerformers: EmployeePerformance[]
+    progressOverTime: ProgressOverTime[]
+    isLoading: boolean
+    error: string | null
+    lastUpdated: Date | null
+    
+    // Actions
+    fetchDashboard: () => Promise<void>
+    refreshDashboard: () => Promise<void>
+    fetchStats: () => Promise<void>
+    fetchUpcomingDeadlines: (days?: number) => Promise<void>
+    fetchBlockers: () => Promise<void>
+    fetchRecentActivity: () => Promise<void>
+    clearError: () => void
+}
+
+export const useDashboardStore = create<DashboardState>((set, get) => ({
+    stats: null,
+    taskDistribution: null,
+    priorityDistribution: null,
+    upcomingDeadlines: [],
+    blockers: [],
+    recentActivity: [],
+    teamPerformance: [],
+    topPerformers: [],
+    progressOverTime: [],
+    isLoading: false,
+    error: null,
+    lastUpdated: null,
+    
+    fetchDashboard: async () => {
+        set({ isLoading: true, error: null })
+        try {
+            const data = await dashboardService.getDashboard()
+            set({
+                stats: data.stats,
+                taskDistribution: data.task_distribution,
+                priorityDistribution: data.priority_distribution,
+                upcomingDeadlines: data.upcoming_deadlines,
+                blockers: data.blockers,
+                recentActivity: data.recent_activity,
+                teamPerformance: data.team_performance || [],
+                topPerformers: data.top_performers || [],
+                progressOverTime: data.progress_over_time || [],
+                isLoading: false,
+                lastUpdated: new Date()
+            })
+        } catch (error: any) {
+            set({ 
+                error: error.response?.data?.detail || 'Failed to load dashboard', 
+                isLoading: false 
+            })
+        }
+    },
+    
+    refreshDashboard: async () => {
+        // Silent refresh (no loading state change)
+        try {
+            const data = await dashboardService.getDashboard()
+            set({
+                stats: data.stats,
+                taskDistribution: data.task_distribution,
+                priorityDistribution: data.priority_distribution,
+                upcomingDeadlines: data.upcoming_deadlines,
+                blockers: data.blockers,
+                recentActivity: data.recent_activity,
+                teamPerformance: data.team_performance || [],
+                topPerformers: data.top_performers || [],
+                progressOverTime: data.progress_over_time || [],
+                lastUpdated: new Date()
+            })
+        } catch (error) {
+            // Silent fail on refresh
+            console.error('Dashboard refresh failed', error)
+        }
+    },
+    
+    fetchStats: async () => {
+        try {
+            const stats = await dashboardService.getStats()
+            set({ stats })
+        } catch (error: any) {
+            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+        }
+    },
+    
+    fetchUpcomingDeadlines: async (days = 7) => {
+        try {
+            const deadlines = await dashboardService.getUpcomingDeadlines(days)
+            set({ upcomingDeadlines: deadlines })
+        } catch (error: any) {
+            set({ error: error.response?.data?.detail || 'Failed to fetch deadlines' })
+        }
+    },
+    
+    fetchBlockers: async () => {
+        try {
+            const blockers = await dashboardService.getBlockers()
+            set({ blockers })
+        } catch (error: any) {
+            set({ error: error.response?.data?.detail || 'Failed to fetch blockers' })
+        }
+    },
+    
+    fetchRecentActivity: async () => {
+        try {
+            const activity = await dashboardService.getRecentActivity()
+            set({ recentActivity: activity })
+        } catch (error: any) {
+            set({ error: error.response?.data?.detail || 'Failed to fetch activity' })
+        }
+    },
+    
+    clearError: () => set({ error: null })
+}))
+frontend/src/hooks/useDashboard.ts - Custom hooks:
+
+typescript
+import { useEffect, useRef } from 'react'
+import { useDashboardStore } from '../stores/dashboardStore'
+
+/**
+ * Fetch dashboard data on mount
+ */
+export const useDashboard = () => {
+    const { 
+        stats, taskDistribution, priorityDistribution,
+        upcomingDeadlines, blockers, recentActivity,
+        teamPerformance, topPerformers, progressOverTime,
+        isLoading, error, fetchDashboard 
+    } = useDashboardStore()
+    
+    useEffect(() => {
+        fetchDashboard()
+    }, [])
+    
+    return {
+        stats, taskDistribution, priorityDistribution,
+        upcomingDeadlines, blockers, recentActivity,
+        teamPerformance, topPerformers, progressOverTime,
+        isLoading, error,
+        refresh: () => useDashboardStore.getState().refreshDashboard()
+    }
+}
+
+/**
+ * Auto-refresh dashboard every N seconds
+ */
+export const useAutoRefreshDashboard = (intervalMs: number = 30000) => {
+    const refreshDashboard = useDashboardStore(state => state.refreshDashboard)
+    const intervalRef = useRef<NodeJS.Timeout>()
+    
+    useEffect(() => {
+        intervalRef.current = setInterval(() => {
+            refreshDashboard()
+        }, intervalMs)
+        
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current)
+            }
+        }
+    }, [intervalMs, refreshDashboard])
+}
+Requirements:
+
+Complete type safety
+
+Efficient refresh (silent for auto-refresh)
+
+Loading and error states
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 6.3: Dashboard Components (Stats & Charts)
+
+### 🤖 Complete Prompt for Step 6.3:
+Now create all dashboard UI components. Use Recharts for charts.
+
+Create these files:
+
+frontend/src/components/dashboard/DashboardStats.tsx - Stats cards:
+
+typescript
+import { Link } from 'react-router-dom'
+import { DashboardStats as StatsType } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+
+interface DashboardStatsProps {
+    stats: StatsType | null
+    isLoading?: boolean
+}
+
+export const DashboardStats = ({ stats, isLoading }: DashboardStatsProps) => {
+    if (isLoading || !stats) {
+        return <StatsSkeleton />
+    }
+    
+    const statCards = [
+        {
+            label: 'Total Tasks',
+            value: stats.total_tasks,
+            subtitle: `${stats.completed_tasks} completed`,
+            color: 'text-blue-600',
+            bgColor: 'bg-blue-50',
+            icon: '📋',
+            link: '/tasks'
+        },
+        {
+            label: 'In Progress',
+            value: stats.in_progress_tasks,
+            subtitle: 'Being worked on',
+            color: 'text-yellow-600',
+            bgColor: 'bg-yellow-50',
+            icon: '⚡',
+            link: '/tasks?status=IN_PROGRESS'
+        },
+        {
+            label: 'Blocked',
+            value: stats.blocked_tasks,
+            subtitle: 'Needs attention',
+            color: 'text-red-600',
+            bgColor: 'bg-red-50',
+            icon: '🚫',
+            link: '/tasks?status=BLOCKED',
+            highlight: stats.blocked_tasks > 0
+        },
+        {
+            label: 'Overdue',
+            value: stats.overdue_tasks,
+            subtitle: 'Past due date',
+            color: 'text-orange-600',
+            bgColor: 'bg-orange-50',
+            icon: '⏰',
+            link: '/tasks?overdue=true',
+            highlight: stats.overdue_tasks > 0
+        }
+    ]
+    
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {statCards.map(card => (
+                <Link key={card.label} to={card.link}>
+                    <Card className={`hover:shadow-lg transition-all cursor-pointer ${card.highlight ? 'ring-2 ring-red-200' : ''}`}>
+                        <div className="p-5">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="text-sm text-gray-500">{card.label}</p>
+                                    <p className={`text-3xl font-bold mt-1 ${card.color}`}>
+                                        {card.value}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {card.subtitle}
+                                    </p>
+                                </div>
+                                <div className={`text-2xl ${card.bgColor} p-3 rounded-lg`}>
+                                    {card.icon}
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </Link>
+            ))}
+        </div>
+    )
+}
+
+const StatsSkeleton = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+                <div className="p-5 animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-20 mb-3" />
+                    <div className="h-8 bg-gray-200 rounded w-16 mb-2" />
+                    <div className="h-3 bg-gray-200 rounded w-24" />
+                </div>
+            </Card>
+        ))}
+    </div>
+)
+frontend/src/components/dashboard/TaskDistributionChart.tsx - Pie chart:
+
+typescript
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+import { TaskDistribution } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+
+interface TaskDistributionChartProps {
+    data: TaskDistribution | null
+    isLoading?: boolean
+}
+
+const COLORS = {
+    not_started: '#94a3b8',   // gray
+    in_progress: '#3b82f6',   // blue
+    blocked: '#ef4444',        // red
+    completed: '#22c55e'       // green
+}
+
+export const TaskDistributionChart = ({ data, isLoading }: TaskDistributionChartProps) => {
+    if (isLoading || !data) {
+        return <ChartSkeleton title="Task Distribution" />
+    }
+    
+    const total = data.not_started + data.in_progress + data.blocked + data.completed
+    
+    if (total === 0) {
+        return (
+            <Card>
+                <div className="p-6">
+                    <h3 className="font-semibold mb-4">Task Distribution</h3>
+                    <div className="h-64 flex items-center justify-center text-gray-400">
+                        No tasks yet
+                    </div>
+                </div>
+            </Card>
+        )
+    }
+    
+    const chartData = [
+        { name: 'Not Started', value: data.not_started, color: COLORS.not_started },
+        { name: 'In Progress', value: data.in_progress, color: COLORS.in_progress },
+        { name: 'Blocked', value: data.blocked, color: COLORS.blocked },
+        { name: 'Completed', value: data.completed, color: COLORS.completed }
+    ].filter(item => item.value > 0)
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">Task Distribution</h3>
+                    <span className="text-sm text-gray-500">{total} total</span>
+                </div>
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                            <Pie
+                                data={chartData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={60}
+                                outerRadius={80}
+                                paddingAngle={2}
+                                dataKey="value"
+                            >
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                        </PieChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </Card>
+    )
+}
+
+const ChartSkeleton = ({ title }: { title: string }) => (
+    <Card>
+        <div className="p-6">
+            <h3 className="font-semibold mb-4">{title}</h3>
+            <div className="h-64 bg-gray-100 rounded animate-pulse" />
+        </div>
+    </Card>
+)
+frontend/src/components/dashboard/PriorityChart.tsx - Bar chart for priorities:
+
+typescript
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { PriorityDistribution } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+
+interface PriorityChartProps {
+    data: PriorityDistribution | null
+    isLoading?: boolean
+}
+
+const PRIORITY_COLORS = {
+    high: '#ef4444',
+    medium: '#f59e0b',
+    low: '#10b981'
+}
+
+export const PriorityChart = ({ data, isLoading }: PriorityChartProps) => {
+    if (isLoading || !data) {
+        return (
+            <Card>
+                <div className="p-6">
+                    <h3 className="font-semibold mb-4">Tasks by Priority</h3>
+                    <div className="h-64 bg-gray-100 rounded animate-pulse" />
+                </div>
+            </Card>
+        )
+    }
+    
+    const chartData = [
+        { priority: 'High', count: data.high, color: PRIORITY_COLORS.high },
+        { priority: 'Medium', count: data.medium, color: PRIORITY_COLORS.medium },
+        { priority: 'Low', count: data.low, color: PRIORITY_COLORS.low }
+    ]
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <h3 className="font-semibold mb-4">Tasks by Priority</h3>
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="priority" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </Card>
+    )
+}
+frontend/src/components/dashboard/ProgressChart.tsx - Line chart over time:
+
+typescript
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { ProgressOverTime } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+import { format } from 'date-fns'
+
+interface ProgressChartProps {
+    data: ProgressOverTime[] | null
+    isLoading?: boolean
+}
+
+export const ProgressChart = ({ data, isLoading }: ProgressChartProps) => {
+    if (isLoading || !data || data.length === 0) {
+        return (
+            <Card>
+                <div className="p-6">
+                    <h3 className="font-semibold mb-4">Progress Over Time</h3>
+                    <div className="h-64 bg-gray-100 rounded animate-pulse" />
+                </div>
+            </Card>
+        )
+    }
+    
+    const chartData = data.map(item => ({
+        date: format(new Date(item.date), 'MMM dd'),
+        created: item.created,
+        completed: item.completed,
+        cumulative: item.cumulative_completed
+    }))
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">Progress Over Time</h3>
+                    <span className="text-sm text-gray-500">Last 30 days</span>
+                </div>
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="date" fontSize={11} />
+                            <YAxis allowDecimals={false} fontSize={11} />
+                            <Tooltip />
+                            <Legend />
+                            <Line 
+                                type="monotone" 
+                                dataKey="created" 
+                                stroke="#3b82f6" 
+                                strokeWidth={2}
+                                name="Created"
+                            />
+                            <Line 
+                                type="monotone" 
+                                dataKey="completed" 
+                                stroke="#22c55e" 
+                                strokeWidth={2}
+                                name="Completed"
+                            />
+                            <Line 
+                                type="monotone" 
+                                dataKey="cumulative" 
+                                stroke="#8b5cf6" 
+                                strokeWidth={2}
+                                strokeDasharray="5 5"
+                                name="Total Completed"
+                            />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </Card>
+    )
+}
+frontend/src/components/dashboard/WelcomeBanner.tsx:
+
+typescript
+import { useAuth } from '../../hooks/useAuth'
+import { format } from 'date-fns'
+
+export const WelcomeBanner = () => {
+    const { user } = useAuth()
+    
+    const getGreeting = () => {
+        const hour = new Date().getHours()
+        if (hour < 12) return 'Good morning'
+        if (hour < 18) return 'Good afternoon'
+        return 'Good evening'
+    }
+    
+    return (
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg p-6 text-white">
+            <div className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        {getGreeting()}, {user?.full_name?.split(' ')[0]}! 👋
+                    </h1>
+                    <p className="text-blue-100 mt-1">
+                        Here's what's happening with your events today.
+                    </p>
+                </div>
+                <div className="text-right text-sm text-blue-100">
+                    <p>{format(new Date(), 'EEEE')}</p>
+                    <p className="font-semibold text-white">
+                        {format(new Date(), 'MMMM dd, yyyy')}
+                    </p>
+                </div>
+            </div>
+        </div>
+    )
+}
+Requirements:
+
+All charts use Recharts
+
+Empty states with helpful messages
+
+Loading skeletons
+
+Responsive design
+
+Proper TypeScript types
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 6.4: Dashboard Lists (Deadlines, Blockers, Activity)
+
+### 🤖 Complete Prompt for Step 6.4:
+Now create the dashboard list components.
+
+Create these files:
+
+frontend/src/components/dashboard/UpcomingDeadlines.tsx:
+
+typescript
+import { Link } from 'react-router-dom'
+import { UpcomingDeadline } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { EmptyState } from '../ui/EmptyState'
+import { format, isToday, isTomorrow } from 'date-fns'
+
+interface UpcomingDeadlinesProps {
+    deadlines: UpcomingDeadline[]
+    isLoading?: boolean
+}
+
+export const UpcomingDeadlines = ({ deadlines, isLoading }: UpcomingDeadlinesProps) => {
+    if (isLoading) {
+        return <ListSkeleton title="Upcoming Deadlines" />
+    }
+    
+    const formatDueDate = (deadline: UpcomingDeadline) => {
+        if (deadline.days_until_due === 0) return 'Due today'
+        if (deadline.days_until_due === 1) return 'Due tomorrow'
+        if (deadline.days_until_due < 0) return `Overdue by ${Math.abs(deadline.days_until_due)} days`
+        return `Due in ${deadline.days_until_due} days`
+    }
+    
+    const getDueDateColor = (deadline: UpcomingDeadline) => {
+        if (deadline.days_until_due <= 0) return 'text-red-600 font-semibold'
+        if (deadline.days_until_due <= 1) return 'text-orange-600 font-semibold'
+        if (deadline.days_until_due <= 3) return 'text-yellow-600'
+        return 'text-gray-500'
+    }
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">⏰ Upcoming Deadlines</h3>
+                    <Link to="/tasks" className="text-sm text-blue-600 hover:underline">
+                        View all
+                    </Link>
+                </div>
+                
+                {deadlines.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                        No upcoming deadlines in the next 7 days 🎉
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {deadlines.map(deadline => (
+                            <Link 
+                                key={deadline.id} 
+                                to={`/tasks/${deadline.id}`}
+                                className="block p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <div className="flex justify-between items-start gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-sm truncate">
+                                            {deadline.title}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                                            {deadline.event_name && (
+                                                <span className="truncate">📅 {deadline.event_name}</span>
+                                            )}
+                                            {deadline.assignee_name && (
+                                                <span className="truncate">👤 {deadline.assignee_name}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <Badge 
+                                            variant={
+                                                deadline.priority === 'HIGH' ? 'danger' :
+                                                deadline.priority === 'MEDIUM' ? 'warning' : 'default'
+                                            } 
+                                            size="sm"
+                                        >
+                                            {deadline.priority}
+                                        </Badge>
+                                        <p className={`text-xs mt-1 ${getDueDateColor(deadline)}`}>
+                                            {formatDueDate(deadline)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </Card>
+    )
+}
+
+const ListSkeleton = ({ title }: { title: string }) => (
+    <Card>
+        <div className="p-6">
+            <h3 className="font-semibold mb-4">{title}</h3>
+            <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    </Card>
+)
+frontend/src/components/dashboard/BlockersList.tsx:
+
+typescript
+import { Link } from 'react-router-dom'
+import { BlockerInfo } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+
+interface BlockersListProps {
+    blockers: BlockerInfo[]
+    isLoading?: boolean
+}
+
+export const BlockersList = ({ blockers, isLoading }: BlockersListProps) => {
+    if (isLoading) {
+        return <ListSkeleton title="🚫 Blockers" />
+    }
+    
+    if (blockers.length === 0) {
+        return (
+            <Card>
+                <div className="p-6">
+                    <h3 className="font-semibold mb-4">🚫 Blockers</h3>
+                    <div className="text-center py-8 text-green-600 text-sm">
+                        ✅ No blockers! Everything is running smoothly.
+                    </div>
+                </div>
+            </Card>
+        )
+    }
+    
+    return (
+        <Card className="border-red-200">
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">🚫 Blockers</h3>
+                        <Badge variant="danger" size="sm">{blockers.length}</Badge>
+                    </div>
+                    <Link to="/tasks?status=BLOCKED" className="text-sm text-blue-600 hover:underline">
+                        View all
+                    </Link>
+                </div>
+                
+                <div className="space-y-3">
+                    {blockers.slice(0, 5).map(blocker => (
+                        <Link 
+                            key={blocker.id} 
+                            to={`/tasks/${blocker.id}`}
+                            className="block p-3 rounded-lg bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+                        >
+                            <div className="flex justify-between items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-sm truncate">
+                                        {blocker.title}
+                                    </p>
+                                    {blocker.latest_comment && (
+                                        <p className="text-xs text-gray-600 mt-1 line-clamp-2 italic">
+                                            "{blocker.latest_comment}"
+                                        </p>
+                                    )}
+                                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                                        {blocker.event_name && <span>📅 {blocker.event_name}</span>}
+                                        {blocker.assignee_name && <span>👤 {blocker.assignee_name}</span>}
+                                    </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                    <Badge 
+                                        variant={
+                                            blocker.priority === 'HIGH' ? 'danger' :
+                                            blocker.priority === 'MEDIUM' ? 'warning' : 'default'
+                                        } 
+                                        size="sm"
+                                    >
+                                        {blocker.priority}
+                                    </Badge>
+                                    {blocker.days_blocked > 0 && (
+                                        <p className="text-xs text-red-600 mt-1">
+                                            Blocked {blocker.days_blocked}d
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </Link>
+                    ))}
+                    
+                    {blockers.length > 5 && (
+                        <p className="text-xs text-gray-500 text-center pt-2">
+                            +{blockers.length - 5} more blockers
+                        </p>
+                    )}
+                </div>
+            </div>
+        </Card>
+    )
+}
+
+const ListSkeleton = ({ title }: { title: string }) => (
+    <Card>
+        <div className="p-6">
+            <h3 className="font-semibold mb-4">{title}</h3>
+            <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    </Card>
+)
+frontend/src/components/dashboard/RecentActivity.tsx:
+
+typescript
+import { Link } from 'react-router-dom'
+import { ActivityItem } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+import { Avatar } from '../ui/Avatar'
+import { formatDistanceToNow } from 'date-fns'
+
+interface RecentActivityProps {
+    activities: ActivityItem[]
+    isLoading?: boolean
+}
+
+const actionIcons: Record<string, string> = {
+    'TASK_CREATED': '➕',
+    'TASK_UPDATED': '✏️',
+    'TASK_STATUS_CHANGED': '🔄',
+    'TASK_COMPLETED': '✅',
+    'TASK_ASSIGNED': '👤',
+    'TASK_BLOCKED': '🚫',
+    'COMMENT_ADDED': '💬',
+    'EVENT_CREATED': '📅',
+    'EVENT_UPDATED': '📝',
+    'TEAM_CREATED': '👥',
+    'USER_REGISTERED': '🎉',
+    'DEPENDENCY_ADDED': '🔗'
+}
+
+const actionMessages: Record<string, string> = {
+    'TASK_CREATED': 'created task',
+    'TASK_UPDATED': 'updated task',
+    'TASK_STATUS_CHANGED': 'changed status of',
+    'TASK_COMPLETED': 'completed task',
+    'TASK_ASSIGNED': 'was assigned',
+    'TASK_BLOCKED': 'blocked task',
+    'COMMENT_ADDED': 'commented on',
+    'EVENT_CREATED': 'created event',
+    'EVENT_UPDATED': 'updated event',
+    'TEAM_CREATED': 'created team',
+    'USER_REGISTERED': 'joined',
+    'DEPENDENCY_ADDED': 'added dependency to'
+}
+
+export const RecentActivity = ({ activities, isLoading }: RecentActivityProps) => {
+    if (isLoading) {
+        return <ListSkeleton title="📊 Recent Activity" />
+    }
+    
+    if (activities.length === 0) {
+        return (
+            <Card>
+                <div className="p-6">
+                    <h3 className="font-semibold mb-4">📊 Recent Activity</h3>
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                        No recent activity
+                    </div>
+                </div>
+            </Card>
+        )
+    }
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <h3 className="font-semibold mb-4">📊 Recent Activity</h3>
+                
+                <div className="space-y-4">
+                    {activities.slice(0, 10).map(activity => {
+                        const icon = actionIcons[activity.action] || '📌'
+                        const message = actionMessages[activity.action] || activity.action.toLowerCase()
+                        const taskId = activity.related_task_id
+                        const eventId = activity.related_event_id
+                        
+                        const linkTo = taskId ? `/tasks/${taskId}` : eventId ? `/events/${eventId}` : null
+                        
+                        const content = (
+                            <div className="flex gap-3">
+                                <div className="flex-shrink-0">
+                                    <Avatar name={activity.user_name} size="sm" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm">
+                                        <span className="font-medium">{activity.user_name}</span>
+                                        {' '}
+                                        <span className="text-gray-600">{message}</span>
+                                        {activity.details?.task_title && (
+                                            <span className="font-medium"> "{activity.details.task_title}"</span>
+                                        )}
+                                        {activity.details?.event_name && (
+                                            <span className="font-medium"> "{activity.details.event_name}"</span>
+                                        )}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {icon} {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                                    </p>
+                                </div>
+                            </div>
+                        )
+                        
+                        return linkTo ? (
+                            <Link 
+                                key={activity.id} 
+                                to={linkTo}
+                                className="block p-2 rounded hover:bg-gray-50 transition-colors"
+                            >
+                                {content}
+                            </Link>
+                        ) : (
+                            <div key={activity.id} className="p-2">
+                                {content}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        </Card>
+    )
+}
+
+const ListSkeleton = ({ title }: { title: string }) => (
+    <Card>
+        <div className="p-6">
+            <h3 className="font-semibold mb-4">{title}</h3>
+            <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                    <div key={i} className="animate-pulse flex gap-3">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full" />
+                        <div className="flex-1">
+                            <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
+                            <div className="h-2 bg-gray-200 rounded w-1/3" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </Card>
+)
+frontend/src/components/dashboard/TeamPerformance.tsx:
+
+typescript
+import { Link } from 'react-router-dom'
+import { TeamPerformance as TeamPerfType } from '../../types/dashboard'
+import { Card } from '../ui/Card'
+import { ProgressBar } from '../ui/ProgressBar'
+
+interface TeamPerformanceProps {
+    teams: TeamPerfType[]
+    isLoading?: boolean
+}
+
+export const TeamPerformance = ({ teams, isLoading }: TeamPerformanceProps) => {
+    if (isLoading) {
+        return <ListSkeleton title="👥 Team Performance" />
+    }
+    
+    if (teams.length === 0) return null
+    
+    return (
+        <Card>
+            <div className="p-6">
+                <h3 className="font-semibold mb-4">👥 Team Performance</h3>
+                
+                <div className="space-y-4">
+                    {teams.map(team => (
+                        <Link 
+                            key={team.team_id} 
+                            to={`/teams/${team.team_id}`}
+                            className="block p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <p className="font-medium text-sm">{team.team_name}</p>
+                                    <p className="text-xs text-gray-500">
+                                        {team.member_count} members · {team.total_tasks} tasks
+                                    </p>
+                                </div>
+                                <span className="text-sm font-semibold text-blue-600">
+                                    {team.completion_rate}%
+                                </span>
+                            </div>
+                            <ProgressBar 
+                                value={team.completion_rate} 
+                                showLabel={false}
+                                variant={
+                                    team.blocked_tasks > 0 ? 'warning' :
+                                    team.completion_rate >= 75 ? 'success' : 'default'
+                                }
+                            />
+                            <div className="flex gap-3 mt-2 text-xs text-gray-500">
+                                <span>✅ {team.completed_tasks} done</span>
+                                {team.blocked_tasks > 0 && (
+                                    <span className="text-red-600">🚫 {team.blocked_tasks} blocked</span>
+                                )}
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            </div>
+        </Card>
+    )
+}
+
+const ListSkeleton = ({ title }: { title: string }) => (
+    <Card>
+        <div className="p-6">
+            <h3 className="font-semibold mb-4">{title}</h3>
+            <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+                        <div className="h-2 bg-gray-200 rounded w-full mb-2" />
+                        <div className="h-3 bg-gray-200 rounded w-1/3" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    </Card>
+)
+Requirements:
+
+Link to relevant details
+
+Empty states
+
+Loading skeletons
+
+Responsive
+
+TypeScript types
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 6.5: Dashboard Page & Routes
+
+### 🤖 Complete Prompt for Step 6.5:
+Now create the main DashboardPage that brings everything together.
+
+Create these files:
+
+frontend/src/pages/DashboardPage.tsx:
+
+typescript
+import { Link } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+import { useDashboard, useAutoRefreshDashboard } from '../hooks/useDashboard'
+import { WelcomeBanner } from '../components/dashboard/WelcomeBanner'
+import { DashboardStats } from '../components/dashboard/DashboardStats'
+import { TaskDistributionChart } from '../components/dashboard/TaskDistributionChart'
+import { PriorityChart } from '../components/dashboard/PriorityChart'
+import { ProgressChart } from '../components/dashboard/ProgressChart'
+import { UpcomingDeadlines } from '../components/dashboard/UpcomingDeadlines'
+import { BlockersList } from '../components/dashboard/BlockersList'
+import { RecentActivity } from '../components/dashboard/RecentActivity'
+import { TeamPerformance } from '../components/dashboard/TeamPerformance'
+import { Button } from '../components/ui/Button'
+
+export const DashboardPage = () => {
+    const { user } = useAuth()
+    const {
+        stats,
+        taskDistribution,
+        priorityDistribution,
+        upcomingDeadlines,
+        blockers,
+        recentActivity,
+        teamPerformance,
+        progressOverTime,
+        isLoading,
+        refresh
+    } = useDashboard()
+    
+    // Auto-refresh every 30 seconds
+    useAutoRefreshDashboard(30000)
+    
+    const isManager = user?.role === 'EVENT_MANAGER'
+    const isLeader = user?.role === 'TEAM_LEADER'
+    const canSeeTeamPerformance = isManager || isLeader
+    
+    return (
+        <div className="space-y-6">
+            {/* Welcome Banner */}
+            <WelcomeBanner />
+            
+            {/* Quick Actions */}
+            <div className="flex flex-wrap gap-2">
+                <Link to="/events/new">
+                    <Button size="sm">+ New Event</Button>
+                </Link>
+                <Link to="/tasks/new">
+                    <Button variant="secondary" size="sm">+ New Task</Button>
+                </Link>
+                <Link to="/teams/new">
+                    <Button variant="secondary" size="sm">+ New Team</Button>
+                </Link>
+                <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    onClick={refresh}
+                    disabled={isLoading}
+                >
+                    🔄 Refresh
+                </Button>
+            </div>
+            
+            {/* Stats Cards */}
+            <DashboardStats stats={stats} isLoading={isLoading} />
+            
+            {/* Blockers (highlighted if any) */}
+            {blockers.length > 0 && (
+                <BlockersList blockers={blockers} isLoading={isLoading} />
+            )}
+            
+            {/* Charts Row 1 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <TaskDistributionChart data={taskDistribution} isLoading={isLoading} />
+                <PriorityChart data={priorityDistribution} isLoading={isLoading} />
+            </div>
+            
+            {/* Progress Over Time */}
+            <ProgressChart data={progressOverTime} isLoading={isLoading} />
+            
+            {/* Lists Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <UpcomingDeadlines deadlines={upcomingDeadlines} isLoading={isLoading} />
+                <RecentActivity activities={recentActivity} isLoading={isLoading} />
+            </div>
+            
+            {/* Team Performance (Managers and Leaders only) */}
+            {canSeeTeamPerformance && teamPerformance.length > 0 && (
+                <TeamPerformance teams={teamPerformance} isLoading={isLoading} />
+            )}
+        </div>
+    )
+}
+Update frontend/src/App.tsx:
+
+typescript
+import { DashboardPage } from './pages/DashboardPage'
+
+// Inside protected routes:
+<Route path="/" element={<Navigate to="/dashboard" replace />} />
+<Route path="/dashboard" element={<DashboardPage />} />
+Update Sidebar - Make Dashboard the first item:
+
+typescript
+const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+    { name: 'Events', href: '/events', icon: CalendarIcon },
+    { name: 'My Tasks', href: '/tasks/my', icon: CheckCircleIcon },
+    { name: 'All Tasks', href: '/tasks', icon: ClipboardDocumentListIcon },
+    { name: 'Teams', href: '/teams', icon: UsersIcon },
+]
+Requirements:
+
+Clean layout with proper spacing
+
+Role-based visibility (team performance only for managers/leaders)
+
+Auto-refresh every 30 seconds
+
+Manual refresh button
+
+Quick action buttons
+
+Responsive grid
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 🎯 Phase 6 Completion Checklist
+
+### ✅ Backend
+- [ ] Dashboard schemas (all types)
+- [ ] Dashboard CRUD with role-based filtering
+- [ ] Dashboard API endpoints (stats, distribution, deadlines, blockers, activity, performance)
+- [ ] Router registered in main.py
+- [ ] Efficient queries (avoid N+1)
+
+### ✅ Frontend Types & Services
+- [ ] Dashboard types (dashboard.ts)
+- [ ] Dashboard service (all endpoints)
+- [ ] Dashboard store (Zustand)
+- [ ] Custom hooks (useDashboard, useAutoRefreshDashboard)
+
+### ✅ Dashboard Components
+- [ ] WelcomeBanner
+- [ ] DashboardStats (4 cards)
+- [ ] TaskDistributionChart (pie)
+- [ ] PriorityChart (bar)
+- [ ] ProgressChart (line)
+- [ ] UpcomingDeadlines
+- [ ] BlockersList
+- [ ] RecentActivity
+- [ ] TeamPerformance
+
+### ✅ Dashboard Page
+- [ ] DashboardPage with full layout
+- [ ] Routes added
+- [ ] Sidebar updated
+- [ ] Auto-refresh working
+
+---
+
+## 📋 What You Should Be Able to Test After Phase 6
+
+### 1. 🏠 Dashboard Home
+| Test | Expected |
+|------|----------|
+| Login | Redirect to /dashboard |
+| See welcome banner | Greeting with your name |
+| See 4 stat cards | Total, In Progress, Blocked, Overdue |
+| Click on stat card | Navigate to filtered view |
+| See charts | Pie, bar, line charts |
+| See lists | Deadlines, blockers, activity |
+| Wait 30 seconds | Data auto-refreshes |
+| Click Refresh button | Data refreshes immediately |
+
+### 2. 📊 Stats Accuracy
+| Test | Expected |
+|------|----------|
+| Create 5 tasks | Total: 5 in stats |
+| Complete 2 tasks | Completed: 2, Total still 5 |
+| Block 1 task | Blocked: 1 (highlighted red) |
+| Add task due yesterday | Overdue: 1 |
+
+### 3. 📈 Charts
+| Test | Expected |
+|------|----------|
+| Task distribution | Shows all 4 statuses |
+| Priority distribution | Shows H/M/L counts |
+| Progress over time | Line chart with 3 lines |
+| Hover over chart | Tooltip shows values |
+
+### 4. ⏰ Upcoming Deadlines
+| Test | Expected |
+|------|----------|
+| Task due tomorrow | "Due tomorrow" |
+| Task due today | "Due today" |
+| Task due in 5 days | "Due in 5 days" |
+| No deadlines | Empty state message |
+
+### 5. 🚫 Blockers
+| Test | Expected |
+|------|----------|
+| Block a task | Appears in blockers list |
+| With comment | Latest comment shown |
+| Days blocked | Calculated correctly |
+| No blockers | Green success message |
+
+### 6. 📊 Activity Feed
+| Test | Expected |
+|------|----------|
+| Create a task | Appears in activity |
+| Update status | Appears in activity |
+| Add comment | Appears in activity |
+| Click activity | Navigate to task |
+| Time ago | "2 minutes ago" |
+
+### 7. 👥 Team Performance (Manager only)
+| Test | Expected |
+|------|----------|
+| Manager login | See team performance |
+| Employee login | Don't see team performance |
+| Multiple teams | All teams shown |
+| Click team | Navigate to team detail |
+| Progress bars | Show completion rate |
+
+### 8. 🎯 Role-Based Views
+| Role | Should See |
+|------|-----------|
+| EVENT_MANAGER | All stats, all teams, all tasks |
+| TEAM_LEADER | Team stats, team performance |
+| EMPLOYEE | Only their tasks, no team performance |
+
+---
+
+## 🎬 Quick Test Flow (5 Minutes)
+
+### Step 1: Login and View Dashboard
+1. Login
+2. ✅ Auto-redirect to /dashboard
+3. ✅ See welcome with your name
+4. ✅ See 4 stat cards
+
+### Step 2: Create Data to Populate Dashboard
+1. Create 2 events
+2. Create 5 tasks (various statuses, priorities, due dates)
+3. Block one task with reason
+4. Complete another task
+
+### Step 3: Refresh Dashboard
+1. Click **🔄 Refresh**
+2. ✅ Stats updated
+3. ✅ Charts show data
+4. ✅ Blockers list has the blocked task
+5. ✅ Deadlines shows upcoming tasks
+6. ✅ Activity feed shows recent actions
+
+### Step 4: Test Charts
+1. Look at Task Distribution pie
+2. ✅ See slices for each status
+3. Hover over slices
+4. ✅ See tooltips with counts
+
+### Step 5: Test Auto-Refresh
+1. Keep dashboard open
+2. In another tab, create a task
+3. Wait 30 seconds
+4. ✅ Dashboard updates automatically
+
+### Step 6: Test Interactions
+1. Click a stat card → ✅ Navigate to filtered tasks
+2. Click a deadline → ✅ Navigate to task
+3. Click a blocker → ✅ Navigate to task
+4. Click activity item → ✅ Navigate to related item
+
+---
+
+## 🚨 Common Issues & Fixes
+
+### Issue 1: Charts don't render
+**Cause:** Recharts not installed
+**Fix:**
+```bash
+docker-compose exec frontend npm install recharts
+docker-compose restart frontend
+Issue 2: Dashboard is empty
+Cause: No data in database
+Fix: Create events, tasks, teams first
+
+Issue 3: "Failed to fetch" error
+Cause: Backend endpoint issue
+Fix:
+
+bash
+docker-compose logs backend
+# Check for errors
+Issue 4: Slow dashboard load
+Cause: Too many DB queries
+Fix: Already optimized in CRUD — check indexes exist
+
+Issue 5: Auto-refresh not working
+Cause: Hook not mounted
+Fix: Check useAutoRefreshDashboard is called in DashboardPage
+
+Issue 6: Team performance not showing
+Cause: Not a manager/leader OR no teams
+Fix: Login as manager, create teams first

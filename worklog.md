@@ -608,3 +608,27 @@ Stage Summary:
 - All 6 reported issues fixed and browser-verified in both light & dark themes, both roles, mobile + desktop widths.
 - Key artifacts: DashboardPage.tsx (PriorityRings/PriorityLegendRow), CalendarPage.tsx (goToday), api/tasks/stats (scope param), TasksPage (scoped loadStats), globals.css (pitch-black .dark + auth-fit media query), AuthLayout/Register/Login/Forgot/Reset (auth-form hooks, 2-col register top row), app/page.tsx (theme-token 404 card).
 - Risks/next: (1) Turbopack stale-chunk quirk — if CSS edits don't appear, rm -rf .next and restart dev; (2) mobile auth pages still scroll by design (44px targets) — acceptable; (3) ideas for next phase: keyboard-shortcut cheat-sheet dialog, dashboard density toggle, per-event burndown chart.
+
+---
+Task ID: 17
+Agent: Z.ai Code (main)
+Task: Dark-mode comfort pass from user feedback — (1) ugly logout hover in dark, (2) Admin "Deactivated" card icon not dark-optimized, (3) Dashboard "Blocked" card icon not dark-optimized, (4) overall dark colors too bright (red especially)
+
+Work Log:
+- ROOT CAUSE: StatCard TINT_CLASSES.red had NO dark variants (`bg-red-100 text-red-600` stayed light pastel in dark) — this single line produced BOTH the Dashboard "Blocked" and Admin "Deactivated" icon glare. Fixed: `dark:bg-red-500/15 dark:text-red-300` (matches existing emerald/amber pattern).
+- LOGOUT HOVER (both spots in Layout.tsx): desktop dropdown item was `focus:bg-red-50` (near-white pink block on black!) → added `dark:text-red-400 dark:focus:bg-red-500/10 dark:focus:text-red-300`; mobile sheet button got `dark:text-red-400 dark:hover:text-red-300`. Verified: hover now = soft translucent red wash (computed: overridden red-500 @10% alpha) + muted red text; LIGHT mode hover unchanged (red-50 bg / red-700 text verified).
+- SYSTEMIC PALETTE SOFTENING (the big one): Tailwind v4 compiles utilities to `var(--color-*)` (verified in .next chunks), so `.dark` in globals.css now overrides the stock palette for every hue the app uses — red/amber/emerald (50–900), teal/orange (100–700), rose/lime (partial): chroma dropped ~35–45% so saturated hues stop glowing on pure black, and the light 50/100/200 steps become dark tinted surfaces so ANY spot missing an explicit dark: variant reads as muted surface instead of pastel glare (e.g. TasksPage "12d overdue" chip now computes to lab L=11.5 dark surface + muted red-700 text). Also softened: --destructive (0.19→0.14 C), --chart-1..5, --primary/--ring/--sidebar-ring (0.15→0.12 C). Light mode untouched (overrides scoped to .dark).
+- CHART HEXES THEME-AWARE: STATUS_CHART_COLORS/PRIORITY_CHART_COLORS are now `{light,dark}` maps + new `useChartScheme()` hook (next-themes resolvedTheme, light default pre-mount). Dark values #cf6f66 (soft red) / #d3a04c (soft amber) / #31af8c (soft emerald) chosen to match the .dark palette; applied to priority rings arcs, legend dots/bars and status bar Cells. Verified computed fills in both themes.
+- EDGE CASE FOUND + FIXED: shadcn ToastClose `group-[.destructive]:hover:text-red-50` would hover to invisible-on-dark after the palette shift → added `dark:group-[.destructive]:hover:text-red-200`.
+- OPS: hit the known Turbopack stale-CSS quirk (palette override not picked up) → `rm -rf .next` + clean `bun run dev` restart (setsid-detached subshell — note: plain `nohup &` did NOT survive the tool-call session boundary). Also hit a phantom `DashboardPage.tsx:36:10 Ecmascript error` in agent-browser console — proven stale: source has exactly 1 useTheme import, served module is clean (2 textual useTheme = import+call), dev.log 0 errors, `console clear` doesn't purge CLI history (16 stale errors readable right after clear with no navigation).
+
+Verification (agent-browser, :81):
+- DARK: Dashboard "Blocked" chip = oklch(0.65 0.13 26)@15% bg + muted red icon; Admin "Deactivated" identical (same component); priority rings stroke #cf6f66/#d3a04c/#a8a29e; bar fills rgb(211,160,76)/rgb(207,111,102)/rgb(49,175,140); logout hover = red-500/10 wash + red-300/400 text (desktop dropdown + mobile sheet); Events/Tasks/Admin sweep all read muted-on-black.
+- LIGHT: chip bg lab(92.2,10.3,3.8)=red-100 pastel + icon stock red-600; bar fills rgb(245,158,11)/rgb(239,68,68)/rgb(16,185,129) — originals byte-identical; logout hover red-50/red-700 intact.
+- All 8 routes render (admin), lint 0 problems, tsc clean on src/, dev.log free of errors/500s.
+- Screenshots: .qa/qa-dashboard-dark-desktop.png (Blocked card + softened charts), qa-logout-hover-dark.png (menu open, hover state), qa-admin-deactivated-dark.png, qa-events-dark-v2.png.
+
+Stage Summary:
+- All 4 reported dark-mode issues fixed; the palette override makes the fix SYSTEMIC (future color usage automatically lands soft in dark) instead of whack-a-mole dark: variants.
+- Key artifacts: globals.css (.dark palette overrides), StatCard.tsx (red tint), Layout.tsx (2 logout spots), DashboardPage.tsx (useChartScheme + light/dark chart hex maps), ui/toast.tsx (destructive close hover).
+- Risks/next: (1) Turbopack stale-chunk quirk — if CSS/TSX edits don't appear, rm -rf .next AND restart via `(setsid bun run dev > dev.log 2>&1 < /dev/null &)`; plain nohup dies with the tool session. (2) agent-browser console keeps stale error history — verify via dev.log + served modules, not console alone. (3) Ideas: per-page accent-density toggle, user-tunable "contrast" setting (soft/standard), reduce-transparency mode.
