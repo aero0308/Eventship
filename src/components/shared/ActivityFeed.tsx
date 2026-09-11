@@ -15,6 +15,7 @@ import {
   MonitorSmartphone,
   Pencil,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   ShieldOff,
   ShieldQuestion,
@@ -61,6 +62,7 @@ export const ACTIVITY_META: Record<string, { icon: LucideIcon; classes: string }
   TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
   TASK_STATUS_CHANGED: { icon: ArrowRightLeft, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
   TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
+  TASK_BLOCKED: { icon: ShieldAlert, classes: 'bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300' },
   COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300' },
 }
 

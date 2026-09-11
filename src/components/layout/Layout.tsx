@@ -22,7 +22,6 @@ import {
   Settings2,
   ShieldCheck,
   User,
-  UserCheck,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -39,6 +38,7 @@ import {
   setRealtimeUser,
 } from '@/lib/realtime-client'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
+import { useShortcutModifier } from '@/hooks/use-platform'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -88,12 +88,13 @@ interface NavItem {
   icon: LucideIcon
 }
 
+// "My Tasks" intentionally lives as a tab inside the Tasks page (not a separate
+// nav entry) to keep the navbar uncluttered.
 const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
   { path: ROUTES.EVENTS, label: 'Events', icon: CalendarDays },
   { path: ROUTES.CALENDAR, label: 'Calendar', icon: CalendarRange },
   { path: ROUTES.TASKS, label: 'Tasks', icon: CheckSquare },
-  { path: ROUTES.MY_TASKS, label: 'My Tasks', icon: UserCheck },
   { path: ROUTES.TEAMS, label: 'Teams', icon: Users },
   { path: ROUTES.ACTIVITY, label: 'Activity', icon: History },
 ]
@@ -132,6 +133,7 @@ export function Layout({ children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [prefsOpen, setPrefsOpen] = useState(false)
+  const shortcutMod = useShortcutModifier()
 
   const initials = useMemo(() => (user ? initialsOf(user.fullName) : ''), [user])
   const navItems = useMemo(
@@ -231,7 +233,7 @@ export function Layout({ children }: LayoutProps) {
               <span className="text-lg font-bold tracking-tight text-foreground">EventFlow</span>
             </button>
 
-            <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Primary">
+            <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Primary">
               {navItems.map((item) => (
                 <button
                   key={item.path}
@@ -239,7 +241,7 @@ export function Layout({ children }: LayoutProps) {
                   onClick={() => handleNavigate(item.path)}
                   aria-current={isActive(item.path) ? 'page' : undefined}
                   className={cn(
-                    'inline-flex h-10 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-colors min-[1400px]:px-4',
+                    'inline-flex h-10 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-colors min-[1400px]:px-3',
                     isActive(item.path)
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -247,7 +249,7 @@ export function Layout({ children }: LayoutProps) {
                   title={item.label}
                 >
                   <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span className="hidden min-[1400px]:inline" aria-hidden="true">{item.label}</span>
+                  <span className="hidden whitespace-nowrap min-[1400px]:inline" aria-hidden="true">{item.label}</span>
                   <span className="sr-only">{item.label}</span>
                 </button>
               ))}
@@ -260,14 +262,19 @@ export function Layout({ children }: LayoutProps) {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden h-10 items-center gap-2 rounded-full border border-border bg-muted/50 pl-3 pr-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
+              className="hidden h-10 w-48 items-center gap-2 rounded-full border border-border bg-muted/50 pl-3.5 pr-2 text-sm text-muted-foreground transition-colors hover:border-emerald-300/70 hover:bg-accent hover:text-foreground dark:hover:border-emerald-500/40 lg:inline-flex"
               aria-label="Open search (Command K)"
             >
-              <Search className="h-4 w-4" aria-hidden="true" />
-              <span>Search…</span>
-              <kbd className="pointer-events-none ml-4 inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                ⌘K
-              </kbd>
+              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">Search…</span>
+              <span className="ml-auto flex shrink-0 items-center gap-1" aria-hidden="true">
+                <kbd className="inline-flex h-5 min-w-6 select-none items-center justify-center rounded-md border border-border border-b-2 bg-background px-1.5 font-sans text-[10px] font-semibold text-muted-foreground shadow-sm">
+                  {shortcutMod}
+                </kbd>
+                <kbd className="inline-flex h-5 min-w-5 select-none items-center justify-center rounded-md border border-border border-b-2 bg-background px-1.5 font-sans text-[10px] font-semibold text-muted-foreground shadow-sm">
+                  K
+                </kbd>
+              </span>
             </button>
             <Button
               variant="ghost"

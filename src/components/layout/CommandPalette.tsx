@@ -24,6 +24,7 @@ import type { SearchResultDTO } from '@/types'
 import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_LABELS, ROUTES, ROLE_LABELS } from '@/lib/constants'
 import { api } from '@/lib/api-client'
 import { navigate } from '@/hooks/use-hash-route'
+import { useShortcutModifier } from '@/hooks/use-platform'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import {
@@ -53,6 +54,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const { resolvedTheme, setTheme } = useTheme()
+  // Platform-aware hint in the input placeholder (⌘K vs Ctrl+K); 'Ctrl' during SSR.
+  const shortcutMod = useShortcutModifier()
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResultDTO | null>(null)
@@ -156,14 +159,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>Search EventFlow</DialogTitle>
-        <DialogDescription>Jump to a page or search across events, tasks, teams and people.</DialogDescription>
-      </DialogHeader>
       <DialogContent className="overflow-hidden p-0 sm:max-w-xl" showCloseButton={false}>
-        <span className="sr-only">Jump to a page or search across events, tasks, teams and people.</span>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Search EventFlow</DialogTitle>
+          <DialogDescription>Jump to a page or search across events, tasks, teams and people.</DialogDescription>
+        </DialogHeader>
         <Command shouldFilter={false} className="[&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4">
-          <CommandInput placeholder="Search events, tasks, teams, people… (⌘K)" value={query} onValueChange={setQuery} />
+          <CommandInput placeholder={`Search events, tasks, teams, people… (${shortcutMod === '⌘' ? '⌘K' : 'Ctrl+K'})`} value={query} onValueChange={setQuery} />
           <CommandList className="max-h-[26rem]">
             {query.trim().length >= 2 && !hasResults ? (
               searching ? (

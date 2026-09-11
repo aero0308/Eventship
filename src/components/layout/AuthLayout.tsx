@@ -1,8 +1,9 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { CalendarRange } from 'lucide-react'
-import { APP_NAME, APP_TAGLINE } from '@/lib/constants'
+import { CalendarRange, X } from 'lucide-react'
+import { APP_NAME, APP_TAGLINE, ROUTES } from '@/lib/constants'
+import { navigate } from '@/hooks/use-hash-route'
 import { Card, CardContent } from '@/components/ui/card'
 
 interface AuthLayoutProps {
@@ -15,6 +16,17 @@ interface AuthLayoutProps {
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-muted/50 px-4 py-10">
+      {/* Close → back to landing page (top-right, thumb-friendly 44px target) */}
+      <button
+        type="button"
+        onClick={() => navigate(ROUTES.HOME)}
+        aria-label="Close and return to home page"
+        title="Back to home"
+        className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground shadow-sm backdrop-blur transition-all hover:rotate-90 hover:border-emerald-300/70 hover:bg-accent hover:text-foreground motion-reduce:hover:rotate-0 dark:hover:border-emerald-500/40 sm:right-6 sm:top-6"
+      >
+        <X className="h-5 w-5" aria-hidden="true" />
+      </button>
+
       {/* Layered emerald/teal radial gradients */}
       <div
         aria-hidden="true"

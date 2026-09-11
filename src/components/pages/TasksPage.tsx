@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Trash2,
   TrendingUp,
+  UserCheck,
   X,
 } from 'lucide-react'
 import { differenceInCalendarDays, format, formatDistanceToNow, isSameDay } from 'date-fns'
@@ -34,6 +35,7 @@ import {
   PRIORITY_LABELS,
   ROLE_BADGE_CLASSES,
   ROLE_LABELS,
+  ROUTES,
   TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_CLASSES,
@@ -53,7 +55,7 @@ import {
 import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
 import { DependencyChain } from '@/components/shared/DependencyChain'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
-import { useHashRoute } from '@/hooks/use-hash-route'
+import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -1533,6 +1535,50 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
           </>
         }
       />
+
+      {/* Scope tabs — All tasks / My tasks (lives here instead of a separate navbar entry). */}
+      <div role="tablist" aria-label="Task scope" className="mb-5 flex items-center gap-1 overflow-x-auto border-b border-border">
+        <button
+          role="tab"
+          type="button"
+          aria-selected={scope === 'all'}
+          onClick={() => {
+            if (scope !== 'all') navigate(ROUTES.TASKS)
+          }}
+          className={cn(
+            'relative inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap px-3.5 text-sm font-medium transition-colors sm:px-4',
+            scope === 'all'
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <ListTodo className="h-4 w-4" aria-hidden="true" />
+          All tasks
+          {scope === 'all' ? (
+            <span aria-hidden="true" className="absolute inset-x-2 bottom-0 h-0.5 rounded-t-full bg-emerald-600 dark:bg-emerald-400" />
+          ) : null}
+        </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={scope === 'mine'}
+          onClick={() => {
+            if (scope !== 'mine') navigate(ROUTES.MY_TASKS)
+          }}
+          className={cn(
+            'relative inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap px-3.5 text-sm font-medium transition-colors sm:px-4',
+            scope === 'mine'
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <UserCheck className="h-4 w-4" aria-hidden="true" />
+          My tasks
+          {scope === 'mine' ? (
+            <span aria-hidden="true" className="absolute inset-x-2 bottom-0 h-0.5 rounded-t-full bg-emerald-600 dark:bg-emerald-400" />
+          ) : null}
+        </button>
+      </div>
 
       {/* Phase 5 stats strip — role-scoped totals with completion rate. */}
       {stats && stats.total > 0 ? (

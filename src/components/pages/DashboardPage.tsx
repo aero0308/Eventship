@@ -5,21 +5,18 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity as ActivityIcon,
   AlertTriangle,
+  ArrowRight,
+  ArrowUpRight,
   CalendarDays,
-  CalendarPlus,
   CalendarRange,
   CheckCircle2,
   ChevronDown,
   Clock,
-  ListPlus,
   ListTodo,
-  LogIn,
   MapPin,
-  MessageSquare,
   RefreshCw,
   Sparkles,
   UserCheck,
-  UserPlus,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -49,7 +46,7 @@ import { api } from '@/lib/api-client'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -57,6 +54,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
+import { ActivityItem } from '@/components/shared/ActivityFeed'
 import { initialsOf } from '@/components/layout/Layout'
 
 const STATUS_CHART_COLORS: Record<string, string> = {
@@ -72,34 +70,27 @@ const PRIORITY_CHART_COLORS: Record<string, string> = {
   LOW: '#a8a29e', // stone-400
 }
 
-const ACTIVITY_ICONS: Record<string, { icon: LucideIcon; classes: string }> = {
-  USER_REGISTERED: { icon: UserPlus, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
-  USER_LOGIN: { icon: LogIn, classes: 'bg-muted text-muted-foreground' },
-  TEAM_CREATED: { icon: Users, classes: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
-  TEAM_UPDATED: { icon: Users, classes: 'bg-muted text-muted-foreground' },
-  EVENT_CREATED: { icon: CalendarPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-  EVENT_UPDATED: { icon: CalendarDays, classes: 'bg-muted text-muted-foreground' },
-  EVENT_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  TASK_CREATED: { icon: ListPlus, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-  TASK_ASSIGNED: { icon: UserPlus, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  TASK_STATUS_CHANGED: { icon: RefreshCw, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  TASK_COMPLETED: { icon: CheckCircle2, classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-  COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-muted text-muted-foreground' },
+/** Deterministic avatar tone per team name (stable across renders/visits). */
+const TEAM_TONES = [
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+  'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+  'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300',
+]
+
+function teamTone(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 997
+  return TEAM_TONES[hash % TEAM_TONES.length]
 }
 
-const ACTIVITY_TEXT: Record<string, string> = {
-  USER_REGISTERED: 'joined the workspace',
-  USER_LOGIN: 'signed in',
-  TEAM_CREATED: 'created a team',
-  TEAM_UPDATED: 'updated a team',
-  EVENT_CREATED: 'created an event',
-  EVENT_UPDATED: 'updated an event',
-  EVENT_STATUS_CHANGED: 'changed an event status',
-  TASK_CREATED: 'created a task',
-  TASK_ASSIGNED: 'assigned a task',
-  TASK_STATUS_CHANGED: 'changed a task status',
-  TASK_COMPLETED: 'completed a task',
-  COMMENT_ADDED: 'added a comment',
+/** Completion pill tone: emerald when mostly done, amber when started, neutral at 0. */
+function completionPill(percent: number): string {
+  if (percent >= 75) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+  if (percent > 0) return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+  return 'bg-muted text-muted-foreground'
 }
 
 function greeting(): string {
@@ -642,37 +633,91 @@ export function DashboardPage() {
       {/* ============ Team workload & activity ============ */}
       <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Team workload and activity">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Team workload</CardTitle>
+          <CardHeader className="gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base">Team workload</CardTitle>
+              <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground" aria-hidden="true">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Done
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" />
+                  Open
+                </span>
+              </div>
+            </div>
+            <CardDescription>Completed vs. open task share for every team.</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full rounded-lg" />
+                  <Skeleton key={i} className="h-[86px] w-full rounded-xl" />
                 ))}
               </div>
             ) : !stats || stats.teamWorkload.length === 0 ? (
               <EmptyState icon={Users} title="No team data" hint="Create teams and assign tasks to see workload." />
             ) : (
-              <ul className="space-y-4">
+              <ul className="space-y-3">
                 {stats.teamWorkload.map((team) => {
                   const total = team.openTasks + team.completedTasks
-                  const donePercent = total > 0 ? (team.completedTasks / total) * 100 : 0
+                  const donePercent = total > 0 ? Math.round((team.completedTasks / total) * 100) : 0
+                  const openPercent = 100 - donePercent
                   return (
                     <li key={team.teamId}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="truncate font-medium text-foreground">{team.teamName}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          <span className="font-semibold text-amber-700">{team.openTasks} open</span>
-                          {' · '}
-                          <span className="font-semibold text-emerald-700">{team.completedTasks} done</span>
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex h-2.5 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={`${team.teamName}: ${team.openTasks} open, ${team.completedTasks} completed`}>
-                        <div className="h-full bg-amber-400" style={{ width: `${100 - donePercent}%` }} />
-                        <div className="h-full bg-emerald-500" style={{ width: `${donePercent}%` }} />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(ROUTES.TEAMS)}
+                        title={`Open ${team.teamName} in Teams`}
+                        className="group w-full rounded-xl border border-border bg-card p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-600/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:hover:border-emerald-500/40"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold',
+                              teamTone(team.teamName)
+                            )}
+                            aria-hidden="true"
+                          >
+                            {initialsOf(team.teamName)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-foreground">{team.teamName}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              <span className="font-semibold text-emerald-700 dark:text-emerald-300">{team.completedTasks} done</span>
+                              {' · '}
+                              <span className="font-semibold text-amber-700 dark:text-amber-300">{team.openTasks} open</span>
+                              {' · '}
+                              {total} total
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums',
+                              completionPill(donePercent)
+                            )}
+                          >
+                            {donePercent}%
+                          </span>
+                          <ArrowUpRight
+                            className="h-4 w-4 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100"
+                            aria-hidden="true"
+                          />
+                        </div>
+                        <div
+                          className="mt-3 flex h-2 gap-0.5"
+                          role="img"
+                          aria-label={`${team.teamName}: ${donePercent}% complete — ${team.completedTasks} done, ${team.openTasks} open`}
+                        >
+                          {total > 0 ? (
+                            <>
+                              <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${donePercent}%` }} />
+                              <div className="h-full rounded-full bg-amber-400/90 transition-all duration-500" style={{ width: `${openPercent}%` }} />
+                            </>
+                          ) : null}
+                        </div>
+                      </button>
                     </li>
                   )
                 })}
@@ -683,9 +728,20 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ActivityIcon className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-              Recent activity
+            <CardTitle className="flex items-center justify-between gap-2 text-base">
+              <span className="flex items-center gap-2">
+                <ActivityIcon className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                Recent activity
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1 px-2 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                onClick={() => navigate(ROUTES.ACTIVITY)}
+              >
+                View all
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -698,28 +754,10 @@ export function DashboardPage() {
             ) : !stats || stats.recentActivity.length === 0 ? (
               <EmptyState icon={ActivityIcon} title="No activity yet" hint="Actions across the workspace will appear here." />
             ) : (
-              <ul className="scrollbar-thin max-h-72 space-y-3 overflow-y-auto pr-1">
-                {stats.recentActivity.map((activity: ActivityLogDTO) => {
-                  const style = ACTIVITY_ICONS[activity.action] ?? ACTIVITY_ICONS.USER_LOGIN
-                  const Icon = style.icon
-                  return (
-                    <li key={activity.id} className="flex items-start gap-3">
-                      <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', style.classes)}>
-                        <Icon className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm leading-snug text-foreground">
-                          <span className="font-semibold text-foreground">{activity.user?.fullName ?? 'Someone'}</span>{' '}
-                          {ACTIVITY_TEXT[activity.action] ?? activity.action.toLowerCase().replace(/_/g, ' ')}
-                          {activity.details ? <span className="text-muted-foreground"> — {activity.details}</span> : null}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground/70">
-                          {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                        </p>
-                      </div>
-                    </li>
-                  )
-                })}
+              <ul className="scrollbar-thin max-h-80 overflow-y-auto pr-1">
+                {stats.recentActivity.map((activity: ActivityLogDTO) => (
+                  <ActivityItem key={activity.id} activity={activity} />
+                ))}
               </ul>
             )}
           </CardContent>
