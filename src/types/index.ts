@@ -66,6 +66,19 @@ export interface TeamStatsDTO {
   completionRate: number
 }
 
+/** Role-scoped task statistics (Phase 5 get_task_stats, GET /api/tasks/stats). */
+export interface TaskStatsDTO {
+  total: number
+  notStarted: number
+  inProgress: number
+  blocked: number
+  completed: number
+  /** status ≠ COMPLETED and dueDate in the past. */
+  overdue: number
+  /** 0–100, rounded. */
+  completionRate: number
+}
+
 export interface EventDTO {
   id: string
   name: string
@@ -291,6 +304,8 @@ export interface CreateTaskPayload {
 export interface UpdateTaskPayload extends Partial<CreateTaskPayload> {
   actualHours?: number | null
   dependsOnTaskIds?: string[]
+  /** Optional note attached to a status change — becomes a task comment. */
+  statusNote?: string
 }
 
 export interface CreateTeamPayload {

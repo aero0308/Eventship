@@ -29,6 +29,7 @@ const PROTECTED_PATHS: readonly string[] = [
   ROUTES.DASHBOARD,
   ROUTES.EVENTS,
   ROUTES.TASKS,
+  ROUTES.MY_TASKS,
   ROUTES.TEAMS,
   ROUTES.CALENDAR,
   ROUTES.ACTIVITY,
@@ -96,6 +97,7 @@ export default function Page() {
   const path = useHashRoute()
   const pathname = path.split('?')[0] || '/'
   const eventDetailId = pathname.match(/^\/events\/([^/]+)$/)?.[1] ?? null
+  const isMyTasks = pathname === ROUTES.MY_TASKS
   const user = useAuthStore((s) => s.user)
   const initialized = useAuthStore((s) => s.initialized)
   const bootstrap = useAuthStore((s) => s.bootstrap)
@@ -169,7 +171,8 @@ export default function Page() {
             {eventDetailId !== null && <EventDetailPage eventId={eventDetailId} />}
             {eventDetailId === null && pathname === ROUTES.DASHBOARD && <DashboardPage />}
             {eventDetailId === null && pathname === ROUTES.EVENTS && <EventsPage />}
-            {eventDetailId === null && pathname === ROUTES.TASKS && <TasksPage />}
+            {eventDetailId === null && pathname === ROUTES.TASKS && <TasksPage scope="all" />}
+            {eventDetailId === null && isMyTasks && <TasksPage scope="mine" key="my-tasks" />}
             {eventDetailId === null && pathname === ROUTES.TEAMS && <TeamsPage />}
             {eventDetailId === null && pathname === ROUTES.CALENDAR && <CalendarPage />}
             {eventDetailId === null && pathname === ROUTES.ACTIVITY && <ActivityPage />}

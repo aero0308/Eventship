@@ -2,6 +2,7 @@
  * Shared serializers + include shapes for task API routes.
  * Only imported by server route handlers.
  */
+import { db } from '@/lib/db'
 import type { Prisma } from '@prisma/client'
 
 // ============ list shape ============
@@ -136,4 +137,38 @@ export function serializeTaskDetail(task: TaskWithComments) {
       createdAt: comment.createdAt.toISOString(),
     })),
   }
+}
+
+// ============ dependency graph helpers ============
+
+/**
+ * Would adding the edge `taskId → dependsOnTaskId` close a cycle?
+ *
+ * Walks forward from `dependsOnTaskId` along existing dependency edges
+ * (BFS); reaching `taskId` means the new edge would loop back to itself
+ * (Phase 5 circular-dependency check). Safe to call per new edge before a
+ * replace-all write: a path from X back to taskId can never traverse
+ * taskId's own outgoing edges, because the walk stops the moment it
+ * arrives at taskId.
+ */
+export async function wouldCreateCycle(taskId: string, dependsOnTaskId: string): Promise<boolean> {
+  const visited = new Set<string>([taskId])
+  let frontier = [dependsOnTaskId]
+
+  while (frontier.length > 0) {
+    const edges = await db.taskDependency.findMany({
+      where: { taskId: { in: frontier } },
+      select: { taskId: true, dependsOnTaskId: true },
+    })
+    const next: string[] = []
+    for (const edge of edges) {
+      if (edge.dependsOnTaskId === taskId) return true
+      if (!visited.has(edge.dependsOnTaskId)) {
+        visited.add(edge.dependsOnTaskId)
+        next.push(edge.dependsOnTaskId)
+      }
+    }
+    frontier = next
+  }
+  return false
 }

@@ -1,0 +1,2002 @@
+     1→     1→PHASE 5: Task Management - Step-by-Step AI Prompts
+     2→     2→📋 How This Works
+     3→     3→For Phase 5, we'll build the complete task management system using the Feature-First Approach. This is the CORE FEATURE of your entire application!
+     4→     4→
+     5→     5→Order of work:
+     6→     6→
+     7→     7→First: Frontend types + UI components
+     8→     8→
+     9→     9→Then: Backend schemas + CRUD + APIs
+    10→    10→
+    11→    11→Then: Frontend services + store
+    12→    12→
+    13→    13→Then: Task Board (Kanban) with drag & drop
+    14→    14→
+    15→    15→Then: Task detail with comments and dependencies
+    16→    16→
+    17→    17→Then: Test everything manually
+    18→    18→
+    19→    19→What You'll See by End of Phase 5:
+    20→    20→
+    21→    21→✅ Task list page with filters
+    22→    22→
+    23→    23→✅ Task Board (Kanban) with drag & drop between columns
+    24→    24→
+    25→    25→✅ Create/edit task form
+    26→    26→
+    27→    27→✅ Task detail page with comments
+    28→    28→
+    29→    29→✅ My Tasks page (for employees)
+    30→    30→
+    31→    31→✅ Task assignment
+    32→    32→
+    33→    33→✅ Task status updates (Not Started → In Progress → Blocked → Completed)
+    34→    34→
+    35→    35→✅ Task priorities (High, Medium, Low)
+    36→    36→
+    37→    37→✅ Comments on tasks (blocker reporting)
+    38→    38→
+    39→    39→✅ Task dependencies
+    40→    40→
+    41→    41→✅ Task statistics
+    42→    42→
+    43→    43→📌 Step 5.1: Frontend Task Types & UI Components
+    44→    44→🤖 Complete Prompt for Step 5.1:
+    45→    45→text
+    46→    46→We're starting Phase 5 - Task Management (the CORE feature). First create frontend types and reusable components.
+    47→    47→
+    48→    48→**Create these files:**
+    49→    49→
+    50→    50→1. **frontend/src/types/task.ts** - Task types:
+    51→    51→```typescript
+    52→    52→export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED'
+    53→    53→export type TaskPriority = 'HIGH' | 'MEDIUM' | 'LOW'
+    54→    54→
+    55→    55→export interface Task {
+    56→    56→    id: string
+    57→    57→    title: string
+    58→    58→    description: string | null
+    59→    59→    priority: TaskPriority
+    60→    60→    status: TaskStatus
+    61→    61→    event_id: string
+    62→    62→    event_name?: string
+    63→    63→    assigned_to: string | null
+    64→    64→    assignee_name?: string
+    65→    65→    assignee_avatar?: string
+    66→    66→    created_by: string
+    67→    67→    creator_name?: string
+    68→    68→    due_date: string | null
+    69→    69→    estimated_hours: number | null
+    70→    70→    actual_hours: number | null
+    71→    71→    comments_count: number
+    72→    72→    attachments_count: number
+    73→    73→    dependencies_count: number
+    74→    74→    is_blocked_by_dependency?: boolean
+    75→    75→    created_at: string
+    76→    76→    updated_at: string
+    77→    77→}
+    78→    78→
+    79→    79→export interface TaskCreate {
+    80→    80→    title: string
+    81→    81→    description?: string
+    82→    82→    priority: TaskPriority
+    83→    83→    status?: TaskStatus
+    84→    84→    event_id: string
+    85→    85→    assigned_to?: string
+    86→    86→    due_date?: string
+    87→    87→    estimated_hours?: number
+    88→    88→}
+    89→    89→
+    90→    90→export interface TaskUpdate {
+    91→    91→    title?: string
+    92→    92→    description?: string
+    93→    93→    priority?: TaskPriority
+    94→    94→    status?: TaskStatus
+    95→    95→    assigned_to?: string
+    96→    96→    due_date?: string
+    97→    97→    estimated_hours?: number
+    98→    98→    actual_hours?: number
+    99→    99→}
+   100→   100→
+   101→   101→export interface TaskStatusUpdate {
+   102→   102→    status: TaskStatus
+   103→   103→    comment?: string
+   104→   104→}
+   105→   105→
+   106→   106→export interface TaskComment {
+   107→   107→    id: string
+   108→   108→    content: string
+   109→   109→    task_id: string
+   110→   110→    user_id: string
+   111→   111→    user_name: string
+   112→   112→    user_avatar?: string
+   113→   113→    created_at: string
+   114→   114→    updated_at: string
+   115→   115→}
+   116→   116→
+   117→   117→export interface CommentCreate {
+   118→   118→    content: string
+   119→   119→}
+   120→   120→
+   121→   121→export interface TaskDependency {
+   122→   122→    id: string
+   123→   123→    task_id: string
+   124→   124→    depends_on_task_id: string
+   125→   125→    depends_on_task_title: string
+   126→   126→    depends_on_task_status: TaskStatus
+   127→   127→}
+   128→   128→
+   129→   129→export interface DependencyCreate {
+   130→   130→    depends_on_task_id: string
+   131→   131→}
+   132→   132→
+   133→   133→export interface TaskFilters {
+   134→   134→    status?: TaskStatus
+   135→   135→    priority?: TaskPriority
+   136→   136→    assigned_to?: string
+   137→   137→    event_id?: string
+   138→   138→    search?: string
+   139→   139→    due_date_from?: string
+   140→   140→    due_date_to?: string
+   141→   141→    overdue_only?: boolean
+   142→   142→}
+   143→   143→
+   144→   144→export interface TaskStats {
+   145→   145→    total: number
+   146→   146→    not_started: number
+   147→   147→    in_progress: number
+   148→   148→    blocked: number
+   149→   149→    completed: number
+   150→   150→    overdue: number
+   151→   151→    completion_rate: number
+   152→   152→}
+   153→   153→frontend/src/components/ui/Dropdown.tsx - Reusable dropdown menu:
+   154→   154→
+   155→   155→typescript
+   156→   156→import { useState, useRef, useEffect } from 'react'
+   157→   157→
+   158→   158→interface DropdownItem {
+   159→   159→    label: string
+   160→   160→    onClick: () => void
+   161→   161→    icon?: React.ReactNode
+   162→   162→    variant?: 'default' | 'danger'
+   163→   163→    disabled?: boolean
+   164→   164→}
+   165→   165→
+   166→   166→interface DropdownProps {
+   167→   167→    trigger: React.ReactNode
+   168→   168→    items: DropdownItem[]
+   169→   169→    align?: 'left' | 'right'
+   170→   170→}
+   171→   171→
+   172→   172→export const Dropdown = ({ trigger, items, align = 'right' }: DropdownProps) => {
+   173→   173→    const [isOpen, setIsOpen] = useState(false)
+   174→   174→    const dropdownRef = useRef<HTMLDivElement>(null)
+   175→   175→    
+   176→   176→    useEffect(() => {
+   177→   177→        const handleClickOutside = (e: MouseEvent) => {
+   178→   178→            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+   179→   179→                setIsOpen(false)
+   180→   180→            }
+   181→   181→        }
+   182→   182→        document.addEventListener('mousedown', handleClickOutside)
+   183→   183→        return () => document.removeEventListener('mousedown', handleClickOutside)
+   184→   184→    }, [])
+   185→   185→    
+   186→   186→    return (
+   187→   187→        <div className="relative" ref={dropdownRef}>
+   188→   188→            <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
+   189→   189→            {isOpen && (
+   190→   190→                <div className={`absolute z-50 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 ${align === 'right' ? 'right-0' : 'left-0'}`}>
+   191→   191→                    {items.map((item, idx) => (
+   192→   192→                        <button
+   193→   193→                            key={idx}
+   194→   194→                            onClick={() => { item.onClick(); setIsOpen(false) }}
+   195→   195→                            disabled={item.disabled}
+   196→   196→                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50 ${item.variant === 'danger' ? 'text-red-600' : 'text-gray-700'}`}
+   197→   197→                        >
+   198→   198→                            {item.icon && <span className="mr-2">{item.icon}</span>}
+   199→   199→                            {item.label}
+   200→   200→                        </button>
+   201→   201→                    ))}
+   202→   202→                </div>
+   203→   203→            )}
+   204→   204→        </div>
+   205→   205→    )
+   206→   206→}
+   207→   207→frontend/src/components/tasks/TaskStatusBadge.tsx:
+   208→   208→
+   209→   209→typescript
+   210→   210→import { TaskStatus } from '../../types/task'
+   211→   211→import { Badge } from '../ui/Badge'
+   212→   212→
+   213→   213→interface TaskStatusBadgeProps {
+   214→   214→    status: TaskStatus
+   215→   215→    size?: 'sm' | 'md'
+   216→   216→}
+   217→   217→
+   218→   218→const statusConfig: Record<TaskStatus, { label: string; variant: any }> = {
+   219→   219→    NOT_STARTED: { label: 'Not Started', variant: 'default' },
+   220→   220→    IN_PROGRESS: { label: 'In Progress', variant: 'info' },
+   221→   221→    BLOCKED: { label: 'Blocked', variant: 'danger' },
+   222→   222→    COMPLETED: { label: 'Completed', variant: 'success' }
+   223→   223→}
+   224→   224→
+   225→   225→export const TaskStatusBadge = ({ status, size = 'md' }: TaskStatusBadgeProps) => {
+   226→   226→    const config = statusConfig[status]
+   227→   227→    return <Badge variant={config.variant} size={size}>{config.label}</Badge>
+   228→   228→}
+   229→   229→frontend/src/components/tasks/TaskPriorityBadge.tsx:
+   230→   230→
+   231→   231→typescript
+   232→   232→import { TaskPriority } from '../../types/task'
+   233→   233→import { Badge } from '../ui/Badge'
+   234→   234→
+   235→   235→interface TaskPriorityBadgeProps {
+   236→   236→    priority: TaskPriority
+   237→   237→    size?: 'sm' | 'md'
+   238→   238→}
+   239→   239→
+   240→   240→const priorityConfig: Record<TaskPriority, { label: string; variant: any; icon: string }> = {
+   241→   241→    HIGH: { label: 'High', variant: 'danger', icon: '🔴' },
+   242→   242→    MEDIUM: { label: 'Medium', variant: 'warning', icon: '🟡' },
+   243→   243→    LOW: { label: 'Low', variant: 'default', icon: '🟢' }
+   244→   244→}
+   245→   245→
+   246→   246→export const TaskPriorityBadge = ({ priority, size = 'md' }: TaskPriorityBadgeProps) => {
+   247→   247→    const config = priorityConfig[priority]
+   248→   248→    return (
+   249→   249→        <Badge variant={config.variant} size={size}>
+   250→   250→            {config.icon} {config.label}
+   251→   251→        </Badge>
+   252→   252→    )
+   253→   253→}
+   254→   254→frontend/src/components/tasks/TaskFilters.tsx - Comprehensive filters:
+   255→   255→
+   256→   256→typescript
+   257→   257→import { TaskFilters as TaskFiltersType, TaskStatus, TaskPriority } from '../../types/task'
+   258→   258→import { Event } from '../../types/event'
+   259→   259→import { User } from '../../types/user'
+   260→   260→import { Input } from '../ui/Input'
+   261→   261→import { Select } from '../ui/Select'
+   262→   262→import { Button } from '../ui/Button'
+   263→   263→
+   264→   264→interface TaskFiltersProps {
+   265→   265→    filters: TaskFiltersType
+   266→   266→    events?: Event[]
+   267→   267→    users?: User[]
+   268→   268→    onChange: (filters: TaskFiltersType) => void
+   269→   269→    onClear: () => void
+   270→   270→    showEventFilter?: boolean
+   271→   271→}
+   272→   272→
+   273→   273→export const TaskFilters = ({ 
+   274→   274→    filters, 
+   275→   275→    events = [], 
+   276→   276→    users = [], 
+   277→   277→    onChange, 
+   278→   278→    onClear,
+   279→   279→    showEventFilter = true 
+   280→   280→}: TaskFiltersProps) => {
+   281→   281→    return (
+   282→   282→        <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4">
+   283→   283→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+   284→   284→                <Input
+   285→   285→                    placeholder="Search tasks..."
+   286→   286→                    value={filters.search || ''}
+   287→   287→                    onChange={(e) => onChange({ ...filters, search: e.target.value })}
+   288→   288→                />
+   289→   289→                
+   290→   290→                <Select
+   291→   291→                    value={filters.status || ''}
+   292→   292→                    onChange={(e) => onChange({ ...filters, status: e.target.value as TaskStatus || undefined })}
+   293→   293→                    options={[
+   294→   294→                        { value: '', label: 'All Statuses' },
+   295→   295→                        { value: 'NOT_STARTED', label: 'Not Started' },
+   296→   296→                        { value: 'IN_PROGRESS', label: 'In Progress' },
+   297→   297→                        { value: 'BLOCKED', label: 'Blocked' },
+   298→   298→                        { value: 'COMPLETED', label: 'Completed' }
+   299→   299→                    ]}
+   300→   300→                />
+   301→   301→                
+   302→   302→                <Select
+   303→   303→                    value={filters.priority || ''}
+   304→   304→                    onChange={(e) => onChange({ ...filters, priority: e.target.value as TaskPriority || undefined })}
+   305→   305→                    options={[
+   306→   306→                        { value: '', label: 'All Priorities' },
+   307→   307→                        { value: 'HIGH', label: '🔴 High' },
+   308→   308→                        { value: 'MEDIUM', label: '🟡 Medium' },
+   309→   309→                        { value: 'LOW', label: '🟢 Low' }
+   310→   310→                    ]}
+   311→   311→                />
+   312→   312→                
+   313→   313→                {showEventFilter && events.length > 0 && (
+   314→   314→                    <Select
+   315→   315→                        value={filters.event_id || ''}
+   316→   316→                        onChange={(e) => onChange({ ...filters, event_id: e.target.value || undefined })}
+   317→   317→                        options={[
+   318→   318→                            { value: '', label: 'All Events' },
+   319→   319→                            ...events.map(e => ({ value: e.id, label: e.name }))
+   320→   320→                        ]}
+   321→   321→                    />
+   322→   322→                )}
+   323→   323→            </div>
+   324→   324→            
+   325→   325→            <div className="flex justify-between items-center">
+   326→   326→                <label className="flex items-center gap-2 text-sm">
+   327→   327→                    <input
+   328→   328→                        type="checkbox"
+   329→   329→                        checked={filters.overdue_only || false}
+   330→   330→                        onChange={(e) => onChange({ ...filters, overdue_only: e.target.checked })}
+   331→   331→                        className="rounded border-gray-300"
+   332→   332→                    />
+   333→   333→                    Show only overdue
+   334→   334→                </label>
+   335→   335→                <Button variant="secondary" size="sm" onClick={onClear}>
+   336→   336→                    Clear Filters
+   337→   337→                </Button>
+   338→   338→            </div>
+   339→   339→        </div>
+   340→   340→    )
+   341→   341→}
+   342→   342→frontend/src/components/tasks/TaskCard.tsx - Draggable task card:
+   343→   343→
+   344→   344→typescript
+   345→   345→import { Link } from 'react-router-dom'
+   346→   346→import { Task } from '../../types/task'
+   347→   347→import { TaskStatusBadge } from './TaskStatusBadge'
+   348→   348→import { TaskPriorityBadge } from './TaskPriorityBadge'
+   349→   349→import { Avatar } from '../ui/Avatar'
+   350→   350→import { Badge } from '../ui/Badge'
+   351→   351→import { Dropdown } from '../ui/Dropdown'
+   352→   352→import { format, isPast, isToday, isTomorrow } from 'date-fns'
+   353→   353→
+   354→   354→interface TaskCardProps {
+   355→   355→    task: Task
+   356→   356→    isDragging?: boolean
+   357→   357→    onStatusChange?: (status: any) => void
+   358→   358→    onEdit?: () => void
+   359→   359→    onDelete?: () => void
+   360→   360→}
+   361→   361→
+   362→   362→export const TaskCard = ({ 
+   363→   363→    task, 
+   364→   364→    isDragging, 
+   365→   365→    onStatusChange, 
+   366→   366→    onEdit, 
+   367→   367→    onDelete 
+   368→   368→}: TaskCardProps) => {
+   369→   369→    const getDueDateColor = () => {
+   370→   370→        if (!task.due_date) return 'text-gray-500'
+   371→   371→        const dueDate = new Date(task.due_date)
+   372→   372→        if (task.status === 'COMPLETED') return 'text-gray-400'
+   373→   373→        if (isPast(dueDate) && !isToday(dueDate)) return 'text-red-600 font-semibold'
+   374→   374→        if (isToday(dueDate)) return 'text-orange-600 font-semibold'
+   375→   375→        if (isTomorrow(dueDate)) return 'text-yellow-600'
+   376→   376→        return 'text-gray-500'
+   377→   377→    }
+   378→   378→    
+   379→   379→    const formatDueDate = () => {
+   380→   380→        if (!task.due_date) return null
+   381→   381→        const dueDate = new Date(task.due_date)
+   382→   382→        if (isToday(dueDate)) return 'Due today'
+   383→   383→        if (isTomorrow(dueDate)) return 'Due tomorrow'
+   384→   384→        if (isPast(dueDate)) return `Overdue: ${format(dueDate, 'MMM dd')}`
+   385→   385→        return `Due ${format(dueDate, 'MMM dd')}`
+   386→   386→    }
+   387→   387→    
+   388→   388→    return (
+   389→   389→        <div className={`bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow ${isDragging ? 'opacity-50 rotate-2' : ''}`}>
+   390→   390→            {/* Header */}
+   391→   391→            <div className="flex justify-between items-start gap-2">
+   392→   392→                <Link to={`/tasks/${task.id}`} className="flex-1">
+   393→   393→                    <h4 className="font-medium text-gray-900 hover:text-blue-600 line-clamp-2">
+   394→   394→                        {task.title}
+   395→   395→                    </h4>
+   396→   396→                </Link>
+   397→   397→                {(onEdit || onDelete || onStatusChange) && (
+   398→   398→                    <Dropdown
+   399→   399→                        trigger={
+   400→   400→                            <button className="text-gray-400 hover:text-gray-600 p-1">
+   401→   401→                                ⋮
+   402→   402→                            </button>
+   403→   403→                        }
+   404→   404→                        items={[
+   405→   405→                            { label: 'View Details', onClick: () => window.location.href = `/tasks/${task.id}` },
+   406→   406→                            ...(onEdit ? [{ label: 'Edit', onClick: onEdit }] : []),
+   407→   407→                            ...(onDelete ? [{ label: 'Delete', onClick: onDelete, variant: 'danger' as const }] : [])
+   408→   408→                        ]}
+   409→   409→                    />
+   410→   410→                )}
+   411→   411→            </div>
+   412→   412→            
+   413→   413→            {/* Description preview */}
+   414→   414→            {task.description && (
+   415→   415→                <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+   416→   416→                    {task.description}
+   417→   417→                </p>
+   418→   418→            )}
+   419→   419→            
+   420→   420→            {/* Event name */}
+   421→   421→            {task.event_name && (
+   422→   422→                <p className="text-xs text-gray-500 mt-2">
+   423→   423→                    📅 {task.event_name}
+   424→   424→                </p>
+   425→   425→            )}
+   426→   426→            
+   427→   427→            {/* Badges */}
+   428→   428→            <div className="flex flex-wrap gap-2 mt-3">
+   429→   429→                <TaskPriorityBadge priority={task.priority} size="sm" />
+   430→   430→                {task.is_blocked_by_dependency && (
+   431→   431→                    <Badge variant="warning" size="sm">⚠️ Blocked by dependency</Badge>
+   432→   432→                )}
+   433→   433→            </div>
+   434→   434→            
+   435→   435→            {/* Footer */}
+   436→   436→            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+   437→   437→                <div className="flex items-center gap-2">
+   438→   438→                    {task.assignee_name ? (
+   439→   439→                        <>
+   440→   440→                            <Avatar name={task.assignee_name} size="sm" />
+   441→   441→                            <span className="text-xs text-gray-600">{task.assignee_name}</span>
+   442→   442→                        </>
+   443→   443→                    ) : (
+   444→   444→                        <span className="text-xs text-gray-400 italic">Unassigned</span>
+   445→   445→                    )}
+   446→   446→                </div>
+   447→   447→                
+   448→   448→                {task.due_date && (
+   449→   449→                    <span className={`text-xs ${getDueDateColor()}`}>
+   450→   450→                        {formatDueDate()}
+   451→   451→                    </span>
+   452→   452→                )}
+   453→   453→            </div>
+   454→   454→            
+   455→   455→            {/* Counts */}
+   456→   456→            <div className="flex gap-3 mt-2 text-xs text-gray-500">
+   457→   457→                {task.comments_count > 0 && <span>💬 {task.comments_count}</span>}
+   458→   458→                {task.dependencies_count > 0 && <span>🔗 {task.dependencies_count}</span>}
+   459→   459→            </div>
+   460→   460→        </div>
+   461→   461→    )
+   462→   462→}
+   463→   463→Requirements:
+   464→   464→
+   465→   465→All components use Tailwind CSS
+   466→   466→
+   467→   467→Full TypeScript types
+   468→   468→
+   469→   469→Responsive design
+   470→   470→
+   471→   471→Accessible (keyboard navigation, ARIA labels)
+   472→   472→
+   473→   473→Generate ALL complete files.
+   474→   474→
+   475→   475→text
+   476→   476→
+   477→   477→---
+   478→   478→
+   479→   479→## 📌 Step 5.2: Backend Task Schemas, CRUD & APIs
+   480→   480→
+   481→   481→### 🤖 Complete Prompt for Step 5.2:
+   482→   482→Now build the backend task management system.
+   483→   483→
+   484→   484→Create these files:
+   485→   485→
+   486→   486→backend/app/schemas/task.py - Task schemas:
+   487→   487→
+   488→   488→python
+   489→   489→from pydantic import BaseModel, Field, validator
+   490→   490→from typing import Optional, List
+   491→   491→from datetime import datetime
+   492→   492→from uuid import UUID
+   493→   493→from enum import Enum
+   494→   494→
+   495→   495→class TaskStatus(str, Enum):
+   496→   496→    NOT_STARTED = "NOT_STARTED"
+   497→   497→    IN_PROGRESS = "IN_PROGRESS"
+   498→   498→    BLOCKED = "BLOCKED"
+   499→   499→    COMPLETED = "COMPLETED"
+   500→   500→
+   501→   501→class TaskPriority(str, Enum):
+   502→   502→    HIGH = "HIGH"
+   503→   503→    MEDIUM = "MEDIUM"
+   504→   504→    LOW = "LOW"
+   505→   505→
+   506→   506→class TaskBase(BaseModel):
+   507→   507→    title: str = Field(..., min_length=3, max_length=200)
+   508→   508→    description: Optional[str] = Field(None, max_length=2000)
+   509→   509→    priority: TaskPriority = TaskPriority.MEDIUM
+   510→   510→    status: TaskStatus = TaskStatus.NOT_STARTED
+   511→   511→    event_id: UUID
+   512→   512→    assigned_to: Optional[UUID] = None
+   513→   513→    due_date: Optional[datetime] = None
+   514→   514→    estimated_hours: Optional[float] = Field(None, ge=0)
+   515→   515→
+   516→   516→class TaskCreate(TaskBase):
+   517→   517→    pass
+   518→   518→
+   519→   519→class TaskUpdate(BaseModel):
+   520→   520→    title: Optional[str] = Field(None, min_length=3, max_length=200)
+   521→   521→    description: Optional[str] = Field(None, max_length=2000)
+   522→   522→    priority: Optional[TaskPriority] = None
+   523→   523→    status: Optional[TaskStatus] = None
+   524→   524→    assigned_to: Optional[UUID] = None
+   525→   525→    due_date: Optional[datetime] = None
+   526→   526→    estimated_hours: Optional[float] = Field(None, ge=0)
+   527→   527→    actual_hours: Optional[float] = Field(None, ge=0)
+   528→   528→
+   529→   529→class TaskStatusUpdate(BaseModel):
+   530→   530→    status: TaskStatus
+   531→   531→    comment: Optional[str] = Field(None, max_length=500)
+   532→   532→
+   533→   533→class TaskResponse(BaseModel):
+   534→   534→    id: UUID
+   535→   535→    title: str
+   536→   536→    description: Optional[str]
+   537→   537→    priority: TaskPriority
+   538→   538→    status: TaskStatus
+   539→   539→    event_id: UUID
+   540→   540→    event_name: Optional[str] = None
+   541→   541→    assigned_to: Optional[UUID]
+   542→   542→    assignee_name: Optional[str] = None
+   543→   543→    created_by: UUID
+   544→   544→    creator_name: Optional[str] = None
+   545→   545→    due_date: Optional[datetime]
+   546→   546→    estimated_hours: Optional[float]
+   547→   547→    actual_hours: Optional[float]
+   548→   548→    comments_count: int = 0
+   549→   549→    attachments_count: int = 0
+   550→   550→    dependencies_count: int = 0
+   551→   551→    is_blocked_by_dependency: bool = False
+   552→   552→    created_at: datetime
+   553→   553→    updated_at: Optional[datetime]
+   554→   554→
+   555→   555→    class Config:
+   556→   556→        from_attributes = True
+   557→   557→
+   558→   558→class CommentCreate(BaseModel):
+   559→   559→    content: str = Field(..., min_length=1, max_length=1000)
+   560→   560→
+   561→   561→class CommentResponse(BaseModel):
+   562→   562→    id: UUID
+   563→   563→    content: str
+   564→   564→    task_id: UUID
+   565→   565→    user_id: UUID
+   566→   566→    user_name: str
+   567→   567→    user_avatar: Optional[str] = None
+   568→   568→    created_at: datetime
+   569→   569→    updated_at: Optional[datetime]
+   570→   570→
+   571→   571→    class Config:
+   572→   572→        from_attributes = True
+   573→   573→
+   574→   574→class DependencyCreate(BaseModel):
+   575→   575→    depends_on_task_id: UUID
+   576→   576→
+   577→   577→class DependencyResponse(BaseModel):
+   578→   578→    id: UUID
+   579→   579→    task_id: UUID
+   580→   580→    depends_on_task_id: UUID
+   581→   581→    depends_on_task_title: str
+   582→   582→    depends_on_task_status: TaskStatus
+   583→   583→
+   584→   584→    class Config:
+   585→   585→        from_attributes = True
+   586→   586→
+   587→   587→class TaskStats(BaseModel):
+   588→   588→    total: int
+   589→   589→    not_started: int
+   590→   590→    in_progress: int
+   591→   591→    blocked: int
+   592→   592→    completed: int
+   593→   593→    overdue: int
+   594→   594→    completion_rate: float
+   595→   595→backend/app/crud/task.py - Task CRUD operations:
+   596→   596→
+   597→   597→python
+   598→   598→from sqlalchemy.orm import Session, joinedload
+   599→   599→from sqlalchemy import func, and_, or_
+   600→   600→from typing import List, Optional
+   601→   601→from uuid import UUID
+   602→   602→from datetime import datetime
+   603→   603→from fastapi import HTTPException, status
+   604→   604→
+   605→   605→from app.models.task import Task, TaskStatus, TaskPriority, TaskComment, TaskDependency
+   606→   606→from app.models.event import Event
+   607→   607→from app.models.user import User
+   608→   608→from app.schemas.task import TaskCreate, TaskUpdate, TaskStatusUpdate, CommentCreate
+   609→   609→
+   610→   610→def get_task(db: Session, task_id: UUID) -> Optional[Task]:
+   611→   611→    """Get task by ID with all relationships loaded"""
+   612→   612→    return db.query(Task).options(
+   613→   613→        joinedload(Task.event),
+   614→   614→        joinedload(Task.assignee),
+   615→   615→        joinedload(Task.creator)
+   616→   616→    ).filter(Task.id == task_id).first()
+   617→   617→
+   618→   618→def get_tasks(
+   619→   619→    db: Session,
+   620→   620→    skip: int = 0,
+   621→   621→    limit: int = 100,
+   622→   622→    search: Optional[str] = None,
+   623→   623→    status: Optional[str] = None,
+   624→   624→    priority: Optional[str] = None,
+   625→   625→    assigned_to: Optional[UUID] = None,
+   626→   626→    event_id: Optional[UUID] = None,
+   627→   627→    due_date_from: Optional[datetime] = None,
+   628→   628→    due_date_to: Optional[datetime] = None,
+   629→   629→    overdue_only: bool = False,
+   630→   630→    user: Optional[User] = None
+   631→   631→) -> List[Task]:
+   632→   632→    """Get tasks with comprehensive filters and authorization"""
+   633→   633→    query = db.query(Task).options(
+   634→   634→        joinedload(Task.event),
+   635→   635→        joinedload(Task.assignee),
+   636→   636→        joinedload(Task.creator)
+   637→   637→    )
+   638→   638→    
+   639→   639→    # Authorization based on role
+   640→   640→    if user:
+   641→   641→        if user.role == "EMPLOYEE":
+   642→   642→            # Only tasks assigned to user or in their team
+   643→   643→            query = query.filter(Task.assigned_to == user.id)
+   644→   644→        elif user.role == "TEAM_LEADER":
+   645→   645→            # Tasks in user's team events
+   646→   646→            query = query.join(Event).filter(Event.team_id == user.team_id)
+   647→   647→        # EVENT_MANAGER: all tasks
+   648→   648→    
+   649→   649→    # Apply filters
+   650→   650→    if search:
+   651→   651→        query = query.filter(or_(
+   652→   652→            Task.title.ilike(f"%{search}%"),
+   653→   653→            Task.description.ilike(f"%{search}%")
+   654→   654→        ))
+   655→   655→    if status:
+   656→   656→        query = query.filter(Task.status == status)
+   657→   657→    if priority:
+   658→   658→        query = query.filter(Task.priority == priority)
+   659→   659→    if assigned_to:
+   660→   660→        query = query.filter(Task.assigned_to == assigned_to)
+   661→   661→    if event_id:
+   662→   662→        query = query.filter(Task.event_id == event_id)
+   663→   663→    if due_date_from:
+   664→   664→        query = query.filter(Task.due_date >= due_date_from)
+   665→   665→    if due_date_to:
+   666→   666→        query = query.filter(Task.due_date <= due_date_to)
+   667→   667→    if overdue_only:
+   668→   668→        query = query.filter(
+   669→   669→            Task.due_date < datetime.utcnow(),
+   670→   670→            Task.status != TaskStatus.COMPLETED
+   671→   671→        )
+   672→   672→    
+   673→   673→    return query.order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
+   674→   674→
+   675→   675→def get_my_tasks(
+   676→   676→    db: Session,
+   677→   677→    user_id: UUID,
+   678→   678→    status: Optional[str] = None
+   679→   679→) -> List[Task]:
+   680→   680→    """Get tasks assigned to current user"""
+   681→   681→    query = db.query(Task).options(
+   682→   682→        joinedload(Task.event),
+   683→   683→        joinedload(Task.creator)
+   684→   684→    ).filter(Task.assigned_to == user_id)
+   685→   685→    
+   686→   686→    if status:
+   687→   687→        query = query.filter(Task.status == status)
+   688→   688→    
+   689→   689→    return query.order_by(Task.due_date.asc().nullslast()).all()
+   690→   690→
+   691→   691→def create_task(db: Session, task_data: TaskCreate, user_id: UUID) -> Task:
+   692→   692→    """Create new task"""
+   693→   693→    # Verify event exists
+   694→   694→    event = db.query(Event).filter(Event.id == task_data.event_id).first()
+   695→   695→    if not event:
+   696→   696→        raise HTTPException(status_code=404, detail="Event not found")
+   697→   697→    
+   698→   698→    # Verify assignee exists if provided
+   699→   699→    if task_data.assigned_to:
+   700→   700→        assignee = db.query(User).filter(User.id == task_data.assigned_to).first()
+   701→   701→        if not assignee:
+   702→   702→            raise HTTPException(status_code=404, detail="Assignee not found")
+   703→   703→    
+   704→   704→    task = Task(
+   705→   705→        **task_data.dict(),
+   706→   706→        created_by=user_id
+   707→   707→    )
+   708→   708→    db.add(task)
+   709→   709→    db.commit()
+   710→   710→    db.refresh(task)
+   711→   711→    return task
+   712→   712→
+   713→   713→def update_task(db: Session, task_id: UUID, task_data: TaskUpdate) -> Task:
+   714→   714→    """Update task"""
+   715→   715→    task = get_task(db, task_id)
+   716→   716→    if not task:
+   717→   717→        raise HTTPException(status_code=404, detail="Task not found")
+   718→   718→    
+   719→   719→    update_dict = task_data.dict(exclude_unset=True)
+   720→   720→    for key, value in update_dict.items():
+   721→   721→        setattr(task, key, value)
+   722→   722→    
+   723→   723→    task.updated_at = datetime.utcnow()
+   724→   724→    db.commit()
+   725→   725→    db.refresh(task)
+   726→   726→    return task
+   727→   727→
+   728→   728→def delete_task(db: Session, task_id: UUID) -> bool:
+   729→   729→    """Delete task"""
+   730→   730→    task = get_task(db, task_id)
+   731→   731→    if not task:
+   732→   732→        raise HTTPException(status_code=404, detail="Task not found")
+   733→   733→    
+   734→   734→    db.delete(task)
+   735→   735→    db.commit()
+   736→   736→    return True
+   737→   737→
+   738→   738→def update_task_status(
+   739→   739→    db: Session,
+   740→   740→    task_id: UUID,
+   741→   741→    status_data: TaskStatusUpdate,
+   742→   742→    user_id: UUID
+   743→   743→) -> Task:
+   744→   744→    """Update task status and optionally add a comment"""
+   745→   745→    task = get_task(db, task_id)
+   746→   746→    if not task:
+   747→   747→        raise HTTPException(status_code=404, detail="Task not found")
+   748→   748→    
+   749→   749→    # If marking as completed, check dependencies
+   750→   750→    if status_data.status == TaskStatus.COMPLETED:
+   751→   751→        incomplete_deps = db.query(TaskDependency).join(
+   752→   752→            Task, TaskDependency.depends_on_task_id == Task.id
+   753→   753→        ).filter(
+   754→   754→            TaskDependency.task_id == task_id,
+   755→   755→            Task.status != TaskStatus.COMPLETED
+   756→   756→        ).count()
+   757→   757→        
+   758→   758→        if incomplete_deps > 0:
+   759→   759→            raise HTTPException(
+   760→   760→                status_code=400,
+   761→   761→                detail=f"Cannot complete task. {incomplete_deps} dependencies are not completed."
+   762→   762→            )
+   763→   763→    
+   764→   764→    task.status = status_data.status
+   765→   765→    task.updated_at = datetime.utcnow()
+   766→   766→    
+   767→   767→    # Add comment if provided (for blocker reporting)
+   768→   768→    if status_data.comment:
+   769→   769→        comment = TaskComment(
+   770→   770→            content=status_data.comment,
+   771→   771→            task_id=task_id,
+   772→   772→            user_id=user_id
+   773→   773→        )
+   774→   774→        db.add(comment)
+   775→   775→    
+   776→   776→    db.commit()
+   777→   777→    db.refresh(task)
+   778→   778→    return task
+   779→   779→
+   780→   780→def assign_task(db: Session, task_id: UUID, assignee_id: UUID) -> Task:
+   781→   781→    """Assign or reassign task"""
+   782→   782→    task = get_task(db, task_id)
+   783→   783→    if not task:
+   784→   784→        raise HTTPException(status_code=404, detail="Task not found")
+   785→   785→    
+   786→   786→    assignee = db.query(User).filter(User.id == assignee_id).first()
+   787→   787→    if not assignee:
+   788→   788→        raise HTTPException(status_code=404, detail="User not found")
+   789→   789→    
+   790→   790→    task.assigned_to = assignee_id
+   791→   791→    task.updated_at = datetime.utcnow()
+   792→   792→    db.commit()
+   793→   793→    db.refresh(task)
+   794→   794→    return task
+   795→   795→
+   796→   796→def get_task_comments(db: Session, task_id: UUID) -> List[TaskComment]:
+   797→   797→    """Get all comments for a task"""
+   798→   798→    return db.query(TaskComment).options(
+   799→   799→        joinedload(TaskComment.user)
+   800→   800→    ).filter(
+   801→   801→        TaskComment.task_id == task_id
+   802→   802→    ).order_by(TaskComment.created_at.desc()).all()
+   803→   803→
+   804→   804→def add_comment(
+   805→   805→    db: Session,
+   806→   806→    task_id: UUID,
+   807→   807→    comment_data: CommentCreate,
+   808→   808→    user_id: UUID
+   809→   809→) -> TaskComment:
+   810→   810→    """Add comment to task (used for reporting blockers)"""
+   811→   811→    task = get_task(db, task_id)
+   812→   812→    if not task:
+   813→   813→        raise HTTPException(status_code=404, detail="Task not found")
+   814→   814→    
+   815→   815→    comment = TaskComment(
+   816→   816→        content=comment_data.content,
+   817→   817→        task_id=task_id,
+   818→   818→        user_id=user_id
+   819→   819→    )
+   820→   820→    db.add(comment)
+   821→   821→    db.commit()
+   822→   822→    db.refresh(comment)
+   823→   823→    return comment
+   824→   824→
+   825→   825→def delete_comment(db: Session, comment_id: UUID, user_id: UUID) -> bool:
+   826→   826→    """Delete comment (only owner)"""
+   827→   827→    comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+   828→   828→    if not comment:
+   829→   829→        raise HTTPException(status_code=404, detail="Comment not found")
+   830→   830→    
+   831→   831→    if comment.user_id != user_id:
+   832→   832→        raise HTTPException(status_code=403, detail="Not authorized")
+   833→   833→    
+   834→   834→    db.delete(comment)
+   835→   835→    db.commit()
+   836→   836→    return True
+   837→   837→
+   838→   838→def get_task_dependencies(db: Session, task_id: UUID) -> List[TaskDependency]:
+   839→   839→    """Get dependencies for a task"""
+   840→   840→    return db.query(TaskDependency).options(
+   841→   841→        joinedload(TaskDependency.depends_on_task)
+   842→   842→    ).filter(TaskDependency.task_id == task_id).all()
+   843→   843→
+   844→   844→def add_dependency(
+   845→   845→    db: Session,
+   846→   846→    task_id: UUID,
+   847→   847→    depends_on_task_id: UUID
+   848→   848→) -> TaskDependency:
+   849→   849→    """Add dependency (task depends on another task)"""
+   850→   850→    if task_id == depends_on_task_id:
+   851→   851→        raise HTTPException(status_code=400, detail="Task cannot depend on itself")
+   852→   852→    
+   853→   853→    # Check both tasks exist
+   854→   854→    task = get_task(db, task_id)
+   855→   855→    depends_on = get_task(db, depends_on_task_id)
+   856→   856→    if not task or not depends_on:
+   857→   857→        raise HTTPException(status_code=404, detail="Task not found")
+   858→   858→    
+   859→   859→    # Check for circular dependency
+   860→   860→    if _has_circular_dependency(db, task_id, depends_on_task_id):
+   861→   861→        raise HTTPException(status_code=400, detail="Circular dependency detected")
+   862→   862→    
+   863→   863→    # Check if dependency already exists
+   864→   864→    existing = db.query(TaskDependency).filter(
+   865→   865→        TaskDependency.task_id == task_id,
+   866→   866→        TaskDependency.depends_on_task_id == depends_on_task_id
+   867→   867→    ).first()
+   868→   868→    if existing:
+   869→   869→        raise HTTPException(status_code=400, detail="Dependency already exists")
+   870→   870→    
+   871→   871→    dependency = TaskDependency(
+   872→   872→        task_id=task_id,
+   873→   873→        depends_on_task_id=depends_on_task_id
+   874→   874→    )
+   875→   875→    db.add(dependency)
+   876→   876→    db.commit()
+   877→   877→    db.refresh(dependency)
+   878→   878→    return dependency
+   879→   879→
+   880→   880→def _has_circular_dependency(db: Session, task_id: UUID, depends_on_id: UUID) -> bool:
+   881→   881→    """Check if adding this dependency creates a cycle"""
+   882→   882→    visited = set()
+   883→   883→    to_visit = [depends_on_id]
+   884→   884→    
+   885→   885→    while to_visit:
+   886→   886→        current = to_visit.pop()
+   887→   887→        if current == task_id:
+   888→   888→            return True
+   889→   889→        if current in visited:
+   890→   890→            continue
+   891→   891→        visited.add(current)
+   892→   892→        
+   893→   893→        deps = db.query(TaskDependency).filter(
+   894→   894→            TaskDependency.task_id == current
+   895→   895→        ).all()
+   896→   896→        to_visit.extend([d.depends_on_task_id for d in deps])
+   897→   897→    
+   898→   898→    return False
+   899→   899→
+   900→   900→def remove_dependency(
+   901→   901→    db: Session,
+   902→   902→    task_id: UUID,
+   903→   903→    depends_on_task_id: UUID
+   904→   904→) -> bool:
+   905→   905→    """Remove dependency"""
+   906→   906→    dep = db.query(TaskDependency).filter(
+   907→   907→        TaskDependency.task_id == task_id,
+   908→   908→        TaskDependency.depends_on_task_id == depends_on_task_id
+   909→   909→    ).first()
+   910→   910→    
+   911→   911→    if not dep:
+   912→   912→        raise HTTPException(status_code=404, detail="Dependency not found")
+   913→   913→    
+   914→   914→    db.delete(dep)
+   915→   915→    db.commit()
+   916→   916→    return True
+   917→   917→
+   918→   918→def get_task_stats(db: Session, user: Optional[User] = None) -> dict:
+   919→   919→    """Get overall task statistics"""
+   920→   920→    query = db.query(Task)
+   921→   921→    
+   922→   922→    if user and user.role == "EMPLOYEE":
+   923→   923→        query = query.filter(Task.assigned_to == user.id)
+   924→   924→    
+   925→   925→    total = query.count()
+   926→   926→    not_started = query.filter(Task.status == TaskStatus.NOT_STARTED).count()
+   927→   927→    in_progress = query.filter(Task.status == TaskStatus.IN_PROGRESS).count()
+   928→   928→    blocked = query.filter(Task.status == TaskStatus.BLOCKED).count()
+   929→   929→    completed = query.filter(Task.status == TaskStatus.COMPLETED).count()
+   930→   930→    overdue = query.filter(
+   931→   931→        Task.due_date < datetime.utcnow(),
+   932→   932→        Task.status != TaskStatus.COMPLETED
+   933→   933→    ).count()
+   934→   934→    
+   935→   935→    completion_rate = (completed / total * 100) if total > 0 else 0
+   936→   936→    
+   937→   937→    return {
+   938→   938→        "total": total,
+   939→   939→        "not_started": not_started,
+   940→   940→        "in_progress": in_progress,
+   941→   941→        "blocked": blocked,
+   942→   942→        "completed": completed,
+   943→   943→        "overdue": overdue,
+   944→   944→        "completion_rate": round(completion_rate, 2)
+   945→   945→    }
+   946→   946→backend/app/api/v1/tasks.py - Task API endpoints:
+   947→   947→
+   948→   948→python
+   949→   949→from fastapi import APIRouter, Depends, HTTPException, status, Query
+   950→   950→from sqlalchemy.orm import Session
+   951→   951→from typing import List, Optional
+   952→   952→from uuid import UUID
+   953→   953→from datetime import datetime
+   954→   954→
+   955→   955→from app.api.deps import get_current_active_user, require_roles
+   956→   956→from app.core.database import get_db
+   957→   957→from app.crud import task as task_crud
+   958→   958→from app.models.user import User, UserRole
+   959→   959→from app.schemas.task import (
+   960→   960→    TaskCreate, TaskUpdate, TaskResponse, TaskStatusUpdate,
+   961→   961→    CommentCreate, CommentResponse,
+   962→   962→    DependencyCreate, DependencyResponse,
+   963→   963→    TaskStats
+   964→   964→)
+   965→   965→
+   966→   966→router = APIRouter()
+   967→   967→
+   968→   968→@router.get("/", response_model=List[TaskResponse])
+   969→   969→async def get_tasks(
+   970→   970→    skip: int = 0,
+   971→   971→    limit: int = 100,
+   972→   972→    search: Optional[str] = None,
+   973→   973→    status: Optional[str] = None,
+   974→   974→    priority: Optional[str] = None,
+   975→   975→    assigned_to: Optional[UUID] = None,
+   976→   976→    event_id: Optional[UUID] = None,
+   977→   977→    due_date_from: Optional[datetime] = None,
+   978→   978→    due_date_to: Optional[datetime] = None,
+   979→   979→    overdue_only: bool = False,
+   980→   980→    db: Session = Depends(get_db),
+   981→   981→    current_user: User = Depends(get_current_active_user)
+   982→   982→):
+   983→   983→    """Get tasks with comprehensive filters"""
+   984→   984→    return task_crud.get_tasks(
+   985→   985→        db, skip, limit, search, status, priority,
+   986→   986→        assigned_to, event_id, due_date_from, due_date_to,
+   987→   987→        overdue_only, current_user
+   988→   988→    )
+   989→   989→
+   990→   990→@router.post("/", response_model=TaskResponse, status_code=201)
+   991→   991→async def create_task(
+   992→   992→    task_data: TaskCreate,
+   993→   993→    db: Session = Depends(get_db),
+   994→   994→    current_user: User = Depends(require_roles([
+   995→   995→        UserRole.EVENT_MANAGER, 
+   996→   996→        UserRole.TEAM_LEADER
+   997→   997→    ]))
+   998→   998→):
+   999→   999→    """Create new task (managers and team leaders only)"""
+  1000→  1000→    return task_crud.create_task(db, task_data, current_user.id)
+  1001→  1001→
+  1002→  1002→@router.get("/my-tasks", response_model=List[TaskResponse])
+  1003→  1003→async def get_my_tasks(
+  1004→  1004→    status: Optional[str] = None,
+  1005→  1005→    db: Session = Depends(get_db),
+  1006→  1006→    current_user: User = Depends(get_current_active_user)
+  1007→  1007→):
+  1008→  1008→    """Get tasks assigned to current user"""
+  1009→  1009→    return task_crud.get_my_tasks(db, current_user.id, status)
+  1010→  1010→
+  1011→  1011→@router.get("/stats", response_model=TaskStats)
+  1012→  1012→async def get_task_stats(
+  1013→  1013→    db: Session = Depends(get_db),
+  1014→  1014→    current_user: User = Depends(get_current_active_user)
+  1015→  1015→):
+  1016→  1016→    """Get task statistics"""
+  1017→  1017→    return task_crud.get_task_stats(db, current_user)
+  1018→  1018→
+  1019→  1019→@router.get("/{task_id}", response_model=TaskResponse)
+  1020→  1020→async def get_task(
+  1021→  1021→    task_id: UUID,
+  1022→  1022→    db: Session = Depends(get_db),
+  1023→  1023→    current_user: User = Depends(get_current_active_user)
+  1024→  1024→):
+  1025→  1025→    """Get task by ID"""
+  1026→  1026→    task = task_crud.get_task(db, task_id)
+  1027→  1027→    if not task:
+  1028→  1028→        raise HTTPException(status_code=404, detail="Task not found")
+  1029→  1029→    return task
+  1030→  1030→
+  1031→  1031→@router.put("/{task_id}", response_model=TaskResponse)
+  1032→  1032→async def update_task(
+  1033→  1033→    task_id: UUID,
+  1034→  1034→    task_data: TaskUpdate,
+  1035→  1035→    db: Session = Depends(get_db),
+  1036→  1036→    current_user: User = Depends(get_current_active_user)
+  1037→  1037→):
+  1038→  1038→    """Update task"""
+  1039→  1039→    return task_crud.update_task(db, task_id, task_data)
+  1040→  1040→
+  1041→  1041→@router.delete("/{task_id}", status_code=204)
+  1042→  1042→async def delete_task(
+  1043→  1043→    task_id: UUID,
+  1044→  1044→    db: Session = Depends(get_db),
+  1045→  1045→    current_user: User = Depends(require_roles([UserRole.EVENT_MANAGER]))
+  1046→  1046→):
+  1047→  1047→    """Delete task (managers only)"""
+  1048→  1048→    task_crud.delete_task(db, task_id)
+  1049→  1049→
+  1050→  1050→@router.patch("/{task_id}/status", response_model=TaskResponse)
+  1051→  1051→async def update_task_status(
+  1052→  1052→    task_id: UUID,
+  1053→  1053→    status_data: TaskStatusUpdate,
+  1054→  1054→    db: Session = Depends(get_db),
+  1055→  1055→    current_user: User = Depends(get_current_active_user)
+  1056→  1056→):
+  1057→  1057→    """Update task status (with optional blocker comment)"""
+  1058→  1058→    return task_crud.update_task_status(db, task_id, status_data, current_user.id)
+  1059→  1059→
+  1060→  1060→@router.patch("/{task_id}/assign", response_model=TaskResponse)
+  1061→  1061→async def assign_task(
+  1062→  1062→    task_id: UUID,
+  1063→  1063→    assignee_data: dict,
+  1064→  1064→    db: Session = Depends(get_db),
+  1065→  1065→    current_user: User = Depends(require_roles([
+  1066→  1066→        UserRole.EVENT_MANAGER, 
+  1067→  1067→        UserRole.TEAM_LEADER
+  1068→  1068→    ]))
+  1069→  1069→):
+  1070→  1070→    """Assign task to user"""
+  1071→  1071→    assignee_id = UUID(assignee_data["assigned_to"])
+  1072→  1072→    return task_crud.assign_task(db, task_id, assignee_id)
+  1073→  1073→
+  1074→  1074→@router.get("/{task_id}/comments", response_model=List[CommentResponse])
+  1075→  1075→async def get_task_comments(
+  1076→  1076→    task_id: UUID,
+  1077→  1077→    db: Session = Depends(get_db),
+  1078→  1078→    current_user: User = Depends(get_current_active_user)
+  1079→  1079→):
+  1080→  1080→    """Get all comments for a task"""
+  1081→  1081→    return task_crud.get_task_comments(db, task_id)
+  1082→  1082→
+  1083→  1083→@router.post("/{task_id}/comments", response_model=CommentResponse, status_code=201)
+  1084→  1084→async def add_comment(
+  1085→  1085→    task_id: UUID,
+  1086→  1086→    comment_data: CommentCreate,
+  1087→  1087→    db: Session = Depends(get_db),
+  1088→  1088→    current_user: User = Depends(get_current_active_user)
+  1089→  1089→):
+  1090→  1090→    """Add comment to task (used for blocker reporting)"""
+  1091→  1091→    return task_crud.add_comment(db, task_id, comment_data, current_user.id)
+  1092→  1092→
+  1093→  1093→@router.delete("/comments/{comment_id}", status_code=204)
+  1094→  1094→async def delete_comment(
+  1095→  1095→    comment_id: UUID,
+  1096→  1096→    db: Session = Depends(get_db),
+  1097→  1097→    current_user: User = Depends(get_current_active_user)
+  1098→  1098→):
+  1099→  1099→    """Delete comment (owner only)"""
+  1100→  1100→    task_crud.delete_comment(db, comment_id, current_user.id)
+  1101→  1101→
+  1102→  1102→@router.get("/{task_id}/dependencies", response_model=List[DependencyResponse])
+  1103→  1103→async def get_task_dependencies(
+  1104→  1104→    task_id: UUID,
+  1105→  1105→    db: Session = Depends(get_db),
+  1106→  1106→    current_user: User = Depends(get_current_active_user)
+  1107→  1107→):
+  1108→  1108→    """Get dependencies for a task"""
+  1109→  1109→    return task_crud.get_task_dependencies(db, task_id)
+  1110→  1110→
+  1111→  1111→@router.post("/{task_id}/dependencies", response_model=DependencyResponse, status_code=201)
+  1112→  1112→async def add_dependency(
+  1113→  1113→    task_id: UUID,
+  1114→  1114→    dependency_data: DependencyCreate,
+  1115→  1115→    db: Session = Depends(get_db),
+  1116→  1116→    current_user: User = Depends(get_current_active_user)
+  1117→  1117→):
+  1118→  1118→    """Add dependency (task depends on another)"""
+  1119→  1119→    return task_crud.add_dependency(db, task_id, dependency_data.depends_on_task_id)
+  1120→  1120→
+  1121→  1121→@router.delete("/{task_id}/dependencies/{depends_on_task_id}", status_code=204)
+  1122→  1122→async def remove_dependency(
+  1123→  1123→    task_id: UUID,
+  1124→  1124→    depends_on_task_id: UUID,
+  1125→  1125→    db: Session = Depends(get_db),
+  1126→  1126→    current_user: User = Depends(get_current_active_user)
+  1127→  1127→):
+  1128→  1128→    """Remove dependency"""
+  1129→  1129→    task_crud.remove_dependency(db, task_id, depends_on_task_id)
+  1130→  1130→Update backend/app/main.py - Include task router:
+  1131→  1131→
+  1132→  1132→python
+  1133→  1133→from app.api.v1 import tasks
+  1134→  1134→
+  1135→  1135→app.include_router(
+  1136→  1136→    tasks.router,
+  1137→  1137→    prefix="/api/v1/tasks",
+  1138→  1138→    tags=["Tasks"]
+  1139→  1139→)
+  1140→  1140→Update backend/app/models/task.py - Ensure proper relationships:
+  1141→  1141→
+  1142→  1142→python
+  1143→  1143→# Make sure Task model has:
+  1144→  1144→# - relationship to TaskComment (comments)
+  1145→  1145→# - relationship to TaskDependency (dependencies) 
+  1146→  1146→# - relationship to Event
+  1147→  1147→# - relationship to User (assignee, creator)
+  1148→  1148→# - relationship to User (for comments)
+  1149→  1149→
+  1150→  1150→# TaskComment should have:
+  1151→  1151→# - relationship to User
+  1152→  1152→
+  1153→  1153→# TaskDependency should have:
+  1154→  1154→# - relationship to Task (depends_on_task)
+  1155→  1155→Requirements:
+  1156→  1156→
+  1157→  1157→All endpoints need authentication
+  1158→  1158→
+  1159→  1159→Role-based access control
+  1160→  1160→
+  1161→  1161→Comprehensive filters
+  1162→  1162→
+  1163→  1163→Circular dependency detection
+  1164→  1164→
+  1165→  1165→Validation (task can't depend on itself)
+  1166→  1166→
+  1167→  1167→Check dependencies before marking complete
+  1168→  1168→
+  1169→  1169→OpenAPI docs for all endpoints
+  1170→  1170→
+  1171→  1171→Generate ALL complete files.
+  1172→  1172→
+  1173→  1173→text
+  1174→  1174→
+  1175→  1175→---
+  1176→  1176→
+  1177→  1177→## 📌 Step 5.3: Frontend Task Service & Store
+  1178→  1178→
+  1179→  1179→### 🤖 Complete Prompt for Step 5.3:
+  1180→  1180→Now create the frontend task service and store.
+  1181→  1181→
+  1182→  1182→Create these files:
+  1183→  1183→
+  1184→  1184→frontend/src/services/taskService.ts:
+  1185→  1185→
+  1186→  1186→typescript
+  1187→  1187→import api from './api'
+  1188→  1188→import { 
+  1189→  1189→    Task, TaskCreate, TaskUpdate, TaskStatusUpdate,
+  1190→  1190→    TaskComment, CommentCreate,
+  1191→  1191→    TaskDependency, DependencyCreate,
+  1192→  1192→    TaskFilters, TaskStats
+  1193→  1193→} from '../types/task'
+  1194→  1194→
+  1195→  1195→export const taskService = {
+  1196→  1196→    // Get all tasks with filters
+  1197→  1197→    getTasks: async (params?: TaskFilters & { skip?: number; limit?: number }) => {
+  1198→  1198→        const response = await api.get('/tasks', { params })
+  1199→  1199→        return response.data as Task[]
+  1200→  1200→    },
+  1201→  1201→    
+  1202→  1202→    // Get single task
+  1203→  1203→    getTask: async (id: string) => {
+  1204→  1204→        const response = await api.get(`/tasks/${id}`)
+  1205→  1205→        return response.data as Task
+  1206→  1206→    },
+  1207→  1207→    
+  1208→  1208→    // Get my tasks
+  1209→  1209→    getMyTasks: async (params?: { status?: string }) => {
+  1210→  1210→        const response = await api.get('/tasks/my-tasks', { params })
+  1211→  1211→        return response.data as Task[]
+  1212→  1212→    },
+  1213→  1213→    
+  1214→  1214→    // Get task stats
+  1215→  1215→    getStats: async () => {
+  1216→  1216→        const response = await api.get('/tasks/stats')
+  1217→  1217→        return response.data as TaskStats
+  1218→  1218→    },
+  1219→  1219→    
+  1220→  1220→    // Create task
+  1221→  1221→    createTask: async (data: TaskCreate) => {
+  1222→  1222→        const response = await api.post('/tasks', data)
+  1223→  1223→        return response.data as Task
+  1224→  1224→    },
+  1225→  1225→    
+  1226→  1226→    // Update task
+  1227→  1227→    updateTask: async (id: string, data: TaskUpdate) => {
+  1228→  1228→        const response = await api.put(`/tasks/${id}`, data)
+  1229→  1229→        return response.data as Task
+  1230→  1230→    },
+  1231→  1231→    
+  1232→  1232→    // Delete task
+  1233→  1233→    deleteTask: async (id: string) => {
+  1234→  1234→        await api.delete(`/tasks/${id}`)
+  1235→  1235→    },
+  1236→  1236→    
+  1237→  1237→    // Update status (with optional blocker comment)
+  1238→  1238→    updateStatus: async (id: string, data: TaskStatusUpdate) => {
+  1239→  1239→        const response = await api.patch(`/tasks/${id}/status`, data)
+  1240→  1240→        return response.data as Task
+  1241→  1241→    },
+  1242→  1242→    
+  1243→  1243→    // Assign task
+  1244→  1244→    assignTask: async (id: string, userId: string) => {
+  1245→  1245→        const response = await api.patch(`/tasks/${id}/assign`, { assigned_to: userId })
+  1246→  1246→        return response.data as Task
+  1247→  1247→    },
+  1248→  1248→    
+  1249→  1249→    // Comments
+  1250→  1250→    getComments: async (taskId: string) => {
+  1251→  1251→        const response = await api.get(`/tasks/${taskId}/comments`)
+  1252→  1252→        return response.data as TaskComment[]
+  1253→  1253→    },
+  1254→  1254→    
+  1255→  1255→    addComment: async (taskId: string, data: CommentCreate) => {
+  1256→  1256→        const response = await api.post(`/tasks/${taskId}/comments`, data)
+  1257→  1257→        return response.data as TaskComment
+  1258→  1258→    },
+  1259→  1259→    
+  1260→  1260→    deleteComment: async (commentId: string) => {
+  1261→  1261→        await api.delete(`/tasks/comments/${commentId}`)
+  1262→  1262→    },
+  1263→  1263→    
+  1264→  1264→    // Dependencies
+  1265→  1265→    getDependencies: async (taskId: string) => {
+  1266→  1266→        const response = await api.get(`/tasks/${taskId}/dependencies`)
+  1267→  1267→        return response.data as TaskDependency[]
+  1268→  1268→    },
+  1269→  1269→    
+  1270→  1270→    addDependency: async (taskId: string, data: DependencyCreate) => {
+  1271→  1271→        const response = await api.post(`/tasks/${taskId}/dependencies`, data)
+  1272→  1272→        return response.data as TaskDependency
+  1273→  1273→    },
+  1274→  1274→    
+  1275→  1275→    removeDependency: async (taskId: string, dependsOnId: string) => {
+  1276→  1276→        await api.delete(`/tasks/${taskId}/dependencies/${dependsOnId}`)
+  1277→  1277→    }
+  1278→  1278→}
+  1279→  1279→frontend/src/stores/taskStore.ts - Zustand store:
+  1280→  1280→
+  1281→  1281→typescript
+  1282→  1282→import { create } from 'zustand'
+  1283→  1283→import { taskService } from '../services/taskService'
+  1284→  1284→import { 
+  1285→  1285→    Task, TaskCreate, TaskUpdate, TaskStatusUpdate,
+  1286→  1286→    TaskComment, CommentCreate,
+  1287→  1287→    TaskDependency, DependencyCreate,
+  1288→  1288→    TaskFilters, TaskStats
+  1289→  1289→} from '../types/task'
+  1290→  1290→
+  1291→  1291→interface TaskState {
+  1292→  1292→    // State
+  1293→  1293→    tasks: Task[]
+  1294→  1294→    myTasks: Task[]
+  1295→  1295→    currentTask: Task | null
+  1296→  1296→    comments: TaskComment[]
+  1297→  1297→    dependencies: TaskDependency[]
+  1298→  1298→    stats: TaskStats | null
+  1299→  1299→    filters: TaskFilters
+  1300→  1300→    isLoading: boolean
+  1301→  1301→    error: string | null
+  1302→  1302→    
+  1303→  1303→    // Actions
+  1304→  1304→    fetchTasks: (params?: TaskFilters) => Promise<void>
+  1305→  1305→    fetchMyTasks: (status?: string) => Promise<void>
+  1306→  1306→    fetchTask: (id: string) => Promise<void>
+  1307→  1307→    fetchStats: () => Promise<void>
+  1308→  1308→    createTask: (data: TaskCreate) => Promise<Task>
+  1309→  1309→    updateTask: (id: string, data: TaskUpdate) => Promise<Task>
+  1310→  1310→    deleteTask: (id: string) => Promise<void>
+  1311→  1311→    updateStatus: (id: string, data: TaskStatusUpdate) => Promise<void>
+  1312→  1312→    assignTask: (id: string, userId: string) => Promise<void>
+  1313→  1313→    fetchComments: (taskId: string) => Promise<void>
+  1314→  1314→    addComment: (taskId: string, data: CommentCreate) => Promise<void>
+  1315→  1315→    deleteComment: (commentId: string) => Promise<void>
+  1316→  1316→    fetchDependencies: (taskId: string) => Promise<void>
+  1317→  1317→    addDependency: (taskId: string, dependsOnId: string) => Promise<void>
+  1318→  1318→    removeDependency: (taskId: string, dependsOnId: string) => Promise<void>
+  1319→  1319→    setFilters: (filters: TaskFilters) => void
+  1320→  1320→    clearFilters: () => void
+  1321→  1321→    clearCurrentTask: () => void
+  1322→  1322→    clearError: () => void
+  1323→  1323→    // Helper for drag and drop - optimistic update
+  1324→  1324→    updateTaskLocally: (id: string, updates: Partial<Task>) => void
+  1325→  1325→}
+  1326→  1326→
+  1327→  1327→export const useTaskStore = create<TaskState>((set, get) => ({
+  1328→  1328→    tasks: [],
+  1329→  1329→    myTasks: [],
+  1330→  1330→    currentTask: null,
+  1331→  1331→    comments: [],
+  1332→  1332→    dependencies: [],
+  1333→  1333→    stats: null,
+  1334→  1334→    filters: {},
+  1335→  1335→    isLoading: false,
+  1336→  1336→    error: null,
+  1337→  1337→    
+  1338→  1338→    fetchTasks: async (params) => {
+  1339→  1339→        set({ isLoading: true, error: null })
+  1340→  1340→        try {
+  1341→  1341→            const tasks = await taskService.getTasks(params)
+  1342→  1342→            set({ tasks, isLoading: false })
+  1343→  1343→        } catch (error: any) {
+  1344→  1344→            set({ 
+  1345→  1345→                error: error.response?.data?.detail || 'Failed to fetch tasks', 
+  1346→  1346→                isLoading: false 
+  1347→  1347→            })
+  1348→  1348→        }
+  1349→  1349→    },
+  1350→  1350→    
+  1351→  1351→    fetchMyTasks: async (status) => {
+  1352→  1352→        set({ isLoading: true, error: null })
+  1353→  1353→        try {
+  1354→  1354→            const tasks = await taskService.getMyTasks({ status })
+  1355→  1355→            set({ myTasks: tasks, isLoading: false })
+  1356→  1356→        } catch (error: any) {
+  1357→  1357→            set({ 
+  1358→  1358→                error: error.response?.data?.detail || 'Failed to fetch tasks', 
+  1359→  1359→                isLoading: false 
+  1360→  1360→            })
+  1361→  1361→        }
+  1362→  1362→    },
+  1363→  1363→    
+  1364→  1364→    fetchTask: async (id) => {
+  1365→  1365→        set({ isLoading: true, error: null })
+  1366→  1366→        try {
+  1367→  1367→            const task = await taskService.getTask(id)
+  1368→  1368→            set({ currentTask: task, isLoading: false })
+  1369→  1369→        } catch (error: any) {
+  1370→  1370→            set({ 
+  1371→  1371→                error: error.response?.data?.detail || 'Failed to fetch task', 
+  1372→  1372→                isLoading: false 
+  1373→  1373→            })
+  1374→  1374→        }
+  1375→  1375→    },
+  1376→  1376→    
+  1377→  1377→    fetchStats: async () => {
+  1378→  1378→        try {
+  1379→  1379→            const stats = await taskService.getStats()
+  1380→  1380→            set({ stats })
+  1381→  1381→        } catch (error: any) {
+  1382→  1382→            set({ error: error.response?.data?.detail || 'Failed to fetch stats' })
+  1383→  1383→        }
+  1384→  1384→    },
+  1385→  1385→    
+  1386→  1386→    createTask: async (data) => {
+  1387→  1387→        set({ isLoading: true, error: null })
+  1388→  1388→        try {
+  1389→  1389→            const task = await taskService.createTask(data)
+  1390→  1390→            set(state => ({ 
+  1391→  1391→                tasks: [task, ...state.tasks], 
+  1392→  1392→                isLoading: false 
+  1393→  1393→            }))
+  1394→  1394→            return task
+  1395→  1395→        } catch (error: any) {
+  1396→  1396→            set({ 
+  1397→  1397→                error: error.response?.data?.detail || 'Failed to create task', 
+  1398→  1398→                isLoading: false 
+  1399→  1399→            })
+  1400→  1400→            throw error
+  1401→  1401→        }
+  1402→  1402→    },
+  1403→  1403→    
+  1404→  1404→    updateTask: async (id, data) => {
+  1405→  1405→        set({ isLoading: true, error: null })
+  1406→  1406→        try {
+  1407→  1407→            const updated = await taskService.updateTask(id, data)
+  1408→  1408→            set(state => ({
+  1409→  1409→                tasks: state.tasks.map(t => t.id === id ? updated : t),
+  1410→  1410→                myTasks: state.myTasks.map(t => t.id === id ? updated : t),
+  1411→  1411→                currentTask: state.currentTask?.id === id ? updated : state.currentTask,
+  1412→  1412→                isLoading: false
+  1413→  1413→            }))
+  1414→  1414→            return updated
+  1415→  1415→        } catch (error: any) {
+  1416→  1416→            set({ 
+  1417→  1417→                error: error.response?.data?.detail || 'Failed to update task', 
+  1418→  1418→                isLoading: false 
+  1419→  1419→            })
+  1420→  1420→            throw error
+  1421→  1421→        }
+  1422→  1422→    },
+  1423→  1423→    
+  1424→  1424→    deleteTask: async (id) => {
+  1425→  1425→        set({ isLoading: true, error: null })
+  1426→  1426→        try {
+  1427→  1427→            await taskService.deleteTask(id)
+  1428→  1428→            set(state => ({
+  1429→  1429→                tasks: state.tasks.filter(t => t.id !== id),
+  1430→  1430→                myTasks: state.myTasks.filter(t => t.id !== id),
+  1431→  1431→                currentTask: state.currentTask?.id === id ? null : state.currentTask,
+  1432→  1432→                isLoading: false
+  1433→  1433→            }))
+  1434→  1434→        } catch (error: any) {
+  1435→  1435→            set({ 
+  1436→  1436→                error: error.response?.data?.detail || 'Failed to delete task', 
+  1437→  1437→                isLoading: false 
+  1438→  1438→            })
+  1439→  1439→            throw error
+  1440→  1440→        }
+  1441→  1441→    },
+  1442→  1442→    
+  1443→  1443→    updateStatus: async (id, data) => {
+  1444→  1444→        // Optimistic update
+  1445→  1445→        const previousTask = get().tasks.find(t => t.id === id)
+  1446→  1446→        if (previousTask) {
+  1447→  1447→            get().updateTaskLocally(id, { status: data.status })
+  1448→  1448→        }
+  1449→  1449→        
+  1450→  1450→        try {
+  1451→  1451→            const updated = await taskService.updateStatus(id, data)
+  1452→  1452→            set(state => ({
+  1453→  1453→                tasks: state.tasks.map(t => t.id === id ? updated : t),
+  1454→  1454→                myTasks: state.myTasks.map(t => t.id === id ? updated : t),
+  1455→  1455→                currentTask: state.currentTask?.id === id ? updated : state.currentTask
+  1456→  1456→            }))
+  1457→  1457→        } catch (error: any) {
+  1458→  1458→            // Rollback on error
+  1459→  1459→            if (previousTask) {
+  1460→  1460→                get().updateTaskLocally(id, { status: previousTask.status })
+  1461→  1461→            }
+  1462→  1462→            set({ error: error.response?.data?.detail || 'Failed to update status' })
+  1463→  1463→            throw error
+  1464→  1464→        }
+  1465→  1465→    },
+  1466→  1466→    
+  1467→  1467→    assignTask: async (id, userId) => {
+  1468→  1468→        try {
+  1469→  1469→            const updated = await taskService.assignTask(id, userId)
+  1470→  1470→            set(state => ({
+  1471→  1471→                tasks: state.tasks.map(t => t.id === id ? updated : t),
+  1472→  1472→                myTasks: state.myTasks.map(t => t.id === id ? updated : t),
+  1473→  1473→                currentTask: state.currentTask?.id === id ? updated : state.currentTask
+  1474→  1474→            }))
+  1475→  1475→        } catch (error: any) {
+  1476→  1476→            set({ error: error.response?.data?.detail || 'Failed to assign task' })
+  1477→  1477→            throw error
+  1478→  1478→        }
+  1479→  1479→    },
+  1480→  1480→    
+  1481→  1481→    fetchComments: async (taskId) => {
+  1482→  1482→        try {
+  1483→  1483→            const comments = await taskService.getComments(taskId)
+  1484→  1484→            set({ comments })
+  1485→  1485→        } catch (error: any) {
+  1486→  1486→            set({ error: error.response?.data?.detail || 'Failed to fetch comments' })
+  1487→  1487→        }
+  1488→  1488→    },
+  1489→  1489→    
+  1490→  1490→    addComment: async (taskId, data) => {
+  1491→  1491→        try {
+  1492→  1492→            const comment = await taskService.addComment(taskId, data)
+  1493→  1493→            set(state => ({ comments: [comment, ...state.comments] }))
+  1494→  1494→        } catch (error: any) {
+  1495→  1495→            set({ error: error.response?.data?.detail || 'Failed to add comment' })
+  1496→  1496→            throw error
+  1497→  1497→        }
+  1498→  1498→    },
+  1499→  1499→    
+  1500→  1500→    deleteComment: async (commentId) => {
+  1501→  1501→        try {
+  1502→  1502→            await taskService.deleteComment(commentId)
+  1503→  1503→            set(state => ({ comments: state.comments.filter(c => c.id !== commentId) }))
+  1504→  1504→        } catch (error: any) {
+  1505→  1505→            set({ error: error.response?.data?.detail || 'Failed to delete comment' })
+  1506→  1506→            throw error
+  1507→  1507→        }
+  1508→  1508→    },
+  1509→  1509→    
+  1510→  1510→    fetchDependencies: async (taskId) => {
+  1511→  1511→        try {
+  1512→  1512→            const deps = await taskService.getDependencies(taskId)
+  1513→  1513→            set({ dependencies: deps })
+  1514→  1514→        } catch (error: any) {
+  1515→  1515→            set({ error: error.response?.data?.detail || 'Failed to fetch dependencies' })
+  1516→  1516→        }
+  1517→  1517→    },
+  1518→  1518→    
+  1519→  1519→    addDependency: async (taskId, dependsOnId) => {
+  1520→  1520→        try {
+  1521→  1521→            const dep = await taskService.addDependency(taskId, { depends_on_task_id: dependsOnId })
+  1522→  1522→            set(state => ({ dependencies: [...state.dependencies, dep] }))
+  1523→  1523→        } catch (error: any) {
+  1524→  1524→            set({ error: error.response?.data?.detail || 'Failed to add dependency' })
+  1525→  1525→            throw error
+  1526→  1526→        }
+  1527→  1527→    },
+  1528→  1528→    
+  1529→  1529→    removeDependency: async (taskId, dependsOnId) => {
+  1530→  1530→        try {
+  1531→  1531→            await taskService.removeDependency(taskId, dependsOnId)
+  1532→  1532→            set(state => ({ 
+  1533→  1533→                dependencies: state.dependencies.filter(d => d.depends_on_task_id !== dependsOnId) 
+  1534→  1534→            }))
+  1535→  1535→        } catch (error: any) {
+  1536→  1536→            set({ error: error.response?.data?.detail || 'Failed to remove dependency' })
+  1537→  1537→            throw error
+  1538→  1538→        }
+  1539→  1539→    },
+  1540→  1540→    
+  1541→  1541→    setFilters: (filters) => set({ filters }),
+  1542→  1542→    clearFilters: () => set({ filters: {} }),
+  1543→  1543→    clearCurrentTask: () => set({ currentTask: null, comments: [], dependencies: [] }),
+  1544→  1544→    clearError: () => set({ error: null }),
+  1545→  1545→    
+  1546→  1546→    // Helper for optimistic drag & drop updates
+  1547→  1547→    updateTaskLocally: (id, updates) => {
+  1548→  1548→        set(state => ({
+  1549→  1549→            tasks: state.tasks.map(t => t.id === id ? { ...t, ...updates } : t),
+  1550→  1550→            myTasks: state.myTasks.map(t => t.id === id ? { ...t, ...updates } : t)
+  1551→  1551→        }))
+  1552→  1552→    }
+  1553→  1553→}))
+  1554→  1554→frontend/src/hooks/useTasks.ts:
+  1555→  1555→
+  1556→  1556→typescript
+  1557→  1557→import { useEffect } from 'react'
+  1558→  1558→import { useTaskStore } from '../stores/taskStore'
+  1559→  1559→import { TaskFilters } from '../types/task'
+  1560→  1560→
+  1561→  1561→export const useTasks = (filters?: TaskFilters) => {
+  1562→  1562→    const { tasks, isLoading, error, fetchTasks } = useTaskStore()
+  1563→  1563→    
+  1564→  1564→    useEffect(() => {
+  1565→  1565→        fetchTasks(filters)
+  1566→  1566→    }, [filters])
+  1567→  1567→    
+  1568→  1568→    return { tasks, isLoading, error, refetch: () => fetchTasks(filters) }
+  1569→  1569→}
+  1570→  1570→
+  1571→  1571→export const useMyTasks = (status?: string) => {
+  1572→  1572→    const { myTasks, isLoading, error, fetchMyTasks } = useTaskStore()
+  1573→  1573→    
+  1574→  1574→    useEffect(() => {
+  1575→  1575→        fetchMyTasks(status)
+  1576→  1576→    }, [status])
+  1577→  1577→    
+  1578→  1578→    return { tasks: myTasks, isLoading, error, refetch: () => fetchMyTasks(status) }
+  1579→  1579→}
+  1580→  1580→
+  1581→  1581→export const useTask = (id: string) => {
+  1582→  1582→    const { currentTask, isLoading, error, fetchTask } = useTaskStore()
+  1583→  1583→    
+  1584→  1584→    useEffect(() => {
+  1585→  1585→        if (id) fetchTask(id)
+  1586→  1586→    }, [id])
+  1587→  1587→    
+  1588→  1588→    return { task: currentTask, isLoading, error, refetch: () => fetchTask(id) }
+  1589→  1589→}
+  1590→  1590→
+  1591→  1591→export const useTaskStats = () => {
+  1592→  1592→    const { stats, fetchStats } = useTaskStore()
+  1593→  1593→    
+  1594→  1594→    useEffect(() => {
+  1595→  1595→        fetchStats()
+  1596→  1596→    }, [])
+  1597→  1597→    
+  1598→  1598→    return stats
+  1599→  1599→}
+  1600→  1600→Requirements:
+  1601→  1601→
+  1602→  1602→Optimistic updates for drag & drop
+  1603→  1603→
+  1604→  1604→Loading and error handling
+  1605→  1605→
+  1606→  1606→TypeScript types everywhere
+  1607→  1607→
+  1608→  1608→Generate ALL complete files.
+  1609→  1609→
+  1610→  1610→text
+  1611→  1611→
+  1612→  1612→---
+  1613→  1613→
+  1614→  1614→## 📌 Step 5.4: Task Board (Kanban) with Drag & Drop
+  1615→  1615→
+  1616→  1616→### 🤖 Complete Prompt for Step 5.4:
+  1617→  1617→Now build the Kanban board with drag & drop using @dnd-kit (modern, accessible library).
+  1618→  1618→
+  1619→  1619→First, install the library:
+  1620→  1620→
+  1621→  1621→Run in terminal:
+  1622→  1622→
+  1623→  1623→bash
+  1624→  1624→cd frontend
+  1625→  1625→npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
+  1626→  1626→Create these files:
+  1627→  1627→
+  1628→  1628→frontend/src/components/tasks/TaskColumn.tsx - Column for each status:
+  1629→  1629→
+  1630→  1630→typescript
+  1631→  1631→import { useDroppable } from '@dnd-kit/core'
+  1632→  1632→import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+  1633→  1633→import { Task, TaskStatus } from '../../types/task'
+  1634→  1634→import { TaskCard } from './TaskCard'
+  1635→  1635→import { DraggableTaskCard } from './DraggableTaskCard'
+  1636→  1636→
+  1637→  1637→interface TaskColumnProps {
+  1638→  1638→    status: TaskStatus
+  1639→  1639→    tasks: Task[]
+  1640→  1640→    onTaskStatusChange: (taskId: string, status: TaskStatus) => void
+  1641→  1641→}
+  1642→  1642→
+  1643→  1643→const columnConfig: Record<TaskStatus, { title: string; color: string; bgColor: string }> = {
+  1644→  1644→    NOT_STARTED: { title: 'Not Started', color: 'text-gray-700', bgColor: 'bg-gray-50' },
+  1645→  1645→    IN_PROGRESS: { title: 'In Progress', color: 'text-blue-700', bgColor: 'bg-blue-50' },
+  1646→  1646→    BLOCKED: { title: 'Blocked', color: 'text-red-700', bgColor: 'bg-red-50' },
+  1647→  1647→    COMPLETED: { title: 'Completed', color: 'text-green-700', bgColor: 'bg-green-50' }
+  1648→  1648→}
+  1649→  1649→
+  1650→  1650→export const TaskColumn = ({ status, tasks, onTaskStatusChange }: TaskColumnProps) => {
+  1651→  1651→    const config = columnConfig[status]
+  1652→  1652→    const { setNodeRef, isOver } = useDroppable({ id: status })
+  1653→  1653→    
+  1654→  1654→    return (
+  1655→  1655→        <div
+  1656→  1656→            ref={setNodeRef}
+  1657→  1657→            className={`flex-1 min-w-[280px] ${config.bgColor} rounded-lg p-4 ${isOver ? 'ring-2 ring-blue-400' : ''}`}
+  1658→  1658→        >
+  1659→  1659→            <div className="flex items-center justify-between mb-4">
+  1660→  1660→                <h3 className={`font-semibold ${config.color}`}>
+  1661→  1661→                    {config.title}
+  1662→  1662→                </h3>
+  1663→  1663→                <span className="text-sm text-gray-500 bg-white px-2 py-1 rounded-full">
+  1664→  1664→                    {tasks.length}
+  1665→  1665→                </span>
+  1666→  1666→            </div>
+  1667→  1667→            
+  1668→  1668→            <SortableContext 
+  1669→  1669→                items={tasks.map(t => t.id)} 
+  1670→  1670→                strategy={verticalListSortingStrategy}
+  1671→  1671→            >
+  1672→  1672→                <div className="space-y-3 min-h-[200px]">
+  1673→  1673→                    {tasks.map(task => (
+  1674→  1674→                        <DraggableTaskCard
+  1675→  1675→                            key={task.id}
+  1676→  1676→                            task={task}
+  1677→  1677→                            onStatusChange={(s) => onTaskStatusChange(task.id, s)}
+  1678→  1678→                        />
+  1679→  1679→                    ))}
+  1680→  1680→                    
+  1681→  1681→                    {tasks.length === 0 && (
+  1682→  1682→                        <div className="text-center text-gray-400 py-8 text-sm border-2 border-dashed border-gray-300 rounded-lg">
+  1683→  1683→                            Drop tasks here
+  1684→  1684→                        </div>
+  1685→  1685→                    )}
+  1686→  1686→                </div>
+  1687→  1687→            </SortableContext>
+  1688→  1688→        </div>
+  1689→  1689→    )
+  1690→  1690→}
+  1691→  1691→frontend/src/components/tasks/DraggableTaskCard.tsx - Draggable wrapper:
+  1692→  1692→
+  1693→  1693→typescript
+  1694→  1694→import { useSortable } from '@dnd-kit/sortable'
+  1695→  1695→import { CSS } from '@dnd-kit/utilities'
+  1696→  1696→import { Task, TaskStatus } from '../../types/task'
+  1697→  1697→import { TaskCard } from './TaskCard'
+  1698→  1698→
+  1699→  1699→interface DraggableTaskCardProps {
+  1700→  1700→    task: Task
+  1701→  1701→    onStatusChange: (status: TaskStatus) => void
+  1702→  1702→}
+  1703→  1703→
+  1704→  1704→export const DraggableTaskCard = ({ task, onStatusChange }: DraggableTaskCardProps) => {
+  1705→  1705→    const {
+  1706→  1706→        attributes,
+  1707→  1707→        listeners,
+  1708→  1708→        setNodeRef,
+  1709→  1709→        transform,
+  1710→  1710→        transition,
+  1711→  1711→        isDragging
+  1712→  1712→    } = useSortable({ 
+  1713→  1713→        id: task.id,
+  1714→  1714→        data: { task }
+  1715→  1715→    })
+  1716→  1716→    
+  1717→  1717→    const style = {
+  1718→  1718→        transform: CSS.Transform.toString(transform),
+  1719→  1719→        transition,
+  1720→  1720→        cursor: isDragging ? 'grabbing' : 'grab'
+  1721→  1721→    }
+  1722→  1722→    
+  1723→  1723→    return (
+  1724→  1724→        <div
+  1725→  1725→            ref={setNodeRef}
+  1726→  1726→            style={style}
+  1727→  1727→            {...attributes}
+  1728→  1728→            {...listeners}
+  1729→  1729→        >
+  1730→  1730→            <TaskCard task={task} isDragging={isDragging} />
+  1731→  1731→        </div>
+  1732→  1732→    )
+  1733→  1733→}
+  1734→  1734→frontend/src/components/tasks/TaskBoard.tsx - Main Kanban board:
+  1735→  1735→
+  1736→  1736→typescript
+  1737→  1737→import { useState } from 'react'
+  1738→  1738→import {
+  1739→  1739→    DndContext,
+  1740→  1740→    DragEndEvent,
+  1741→  1741→    DragOverlay,
+  1742→  1742→    DragStartEvent,
+  1743→  1743→    PointerSensor,
+  1744→  1744→    useSensor,
+  1745→  1745→    useSensors,
+  1746→  1746→    closestCorners
+  1747→  1747→} from '@dnd-kit/core'
+  1748→  1748→import { Task, TaskStatus } from '../../types/task'
+  1749→  1749→import { useTaskStore } from '../../stores/taskStore'
+  1750→  1750→import { TaskColumn } from './TaskColumn'
+  1751→  1751→import { TaskCard } from './TaskCard'
+  1752→  1752→import toast from 'react-hot-toast'
+  1753→  1753→
+  1754→  1754→interface TaskBoardProps {
+  1755→  1755→    tasks: Task[]
+  1756→  1756→    onTaskClick?: (task: Task) => void
+  1757→  1757→}
+  1758→  1758→
+  1759→  1759→export const TaskBoard = ({ tasks, onTaskClick }: TaskBoardProps) => {
+  1760→  1760→    const [activeTask, setActiveTask] = useState<Task | null>(null)
+  1761→  1761→    const { updateStatus } = useTaskStore()
+  1762→  1762→    
+  1763→  1763→    const sensors = useSensors(
+  1764→  1764→        useSensor(PointerSensor, {
+  1765→  1765→            activationConstraint: {
+  1766→  1766→                distance: 8 // Prevent accidental drags
+  1767→  1767→            }
+  1768→  1768→        })
+  1769→  1769→    )
+  1770→  1770→    
+  1771→  1771→    const tasksByStatus: Record<TaskStatus, Task[]> = {
+  1772→  1772→        NOT_STARTED: tasks.filter(t => t.status === 'NOT_STARTED'),
+  1773→  1773→        IN_PROGRESS: tasks.filter(t => t.status === 'IN_PROGRESS'),
+  1774→  1774→        BLOCKED: tasks.filter(t => t.status === 'BLOCKED'),
+  1775→  1775→        COMPLETED: tasks.filter(t => t.status === 'COMPLETED')
+  1776→  1776→    }
+  1777→  1777→    
+  1778→  1778→    const handleDragStart = (event: DragStartEvent) => {
+  1779→  1779→        const task = tasks.find(t => t.id === event.active.id)
+  1780→  1780→        setActiveTask(task || null)
+  1781→  1781→    }
+  1782→  1782→    
+  1783→  1783→    const handleDragEnd = async (event: DragEndEvent) => {
+  1784→  1784→        setActiveTask(null)
+  1785→  1785→        
+  1786→  1786→        const { active, over } = event
+  1787→  1787→        if (!over) return
+  1788→  1788→        
+  1789→  1789→        const taskId = active.id as string
+  1790→  1790→        const task = tasks.find(t => t.id === taskId)
+  1791→  1791→        if (!task) return
+  1792→  1792→        
+  1793→  1793→        // Determine new status
+  1794→  1794→        let newStatus: TaskStatus
+  1795→  1795→        
+  1796→  1796→        // If dropped on a column
+  1797→  1797→        if (['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'].includes(over.id as string)) {
+  1798→  1798→            newStatus = over.id as TaskStatus
+  1799→  1799→        } else {
+  1800→  1800→            // If dropped on another task, get that task's status
+  1801→  1801→            const overTask = tasks.find(t => t.id === over.id)
+  1802→  1802→            if (!overTask) return
+  1803→  1803→            newStatus = overTask.status
+  1804→  1804→        }
+  1805→  1805→        
+  1806→  1806→        // If status didn't change, do nothing
+  1807→  1807→        if (task.status === newStatus) return
+  1808→  1808→        
+  1809→  1809→        // If moving to BLOCKED, ask for reason
+  1810→  1810→        let comment: string | undefined
+  1811→  1811→        if (newStatus === 'BLOCKED') {
+  1812→  1812→            comment = window.prompt('Why is this task blocked?') || undefined
+  1813→  1813→            if (!comment) return // Cancelled
+  1814→  1814→        }
+  1815→  1815→        
+  1816→  1816→        // If moving to COMPLETED, check for incomplete dependencies
+  1817→  1817→        if (newStatus === 'COMPLETED' && task.is_blocked_by_dependency) {
+  1818→  1818→            toast.error('Cannot complete task with incomplete dependencies')
+  1819→  1819→            return
+  1820→  1820→        }
+  1821→  1821→        
+  1822→  1822→        try {
+  1823→  1823→            await updateStatus(taskId, { status: newStatus, comment })
+  1824→  1824→            
+  1825→  1825→            // Show toast
+  1826→  1826→            if (newStatus === 'BLOCKED') {
+  1827→  1827→                toast.warning('Task marked as blocked')
+  1828→  1828→            } else if (newStatus === 'COMPLETED') {
+  1829→  1829→                toast.success('Task completed!')
+  1830→  1830→            } else {
+  1831→  1831→                toast.success(`Task moved to ${newStatus.replace('_', ' ')}`)
+  1832→  1832→            }
+  1833→  1833→        } catch (error: any) {
+  1834→  1834→            toast.error(error.response?.data?.detail || 'Failed to update task')
+  1835→  1835→        }
+  1836→  1836→    }
+  1837→  1837→    
+  1838→  1838→    return (
+  1839→  1839→        <DndContext
+  1840→  1840→            sensors={sensors}
+  1841→  1841→            collisionDetection={closestCorners}
+  1842→  1842→            onDragStart={handleDragStart}
+  1843→  1843→            onDragEnd={handleDragEnd}
+  1844→  1844→        >
+  1845→  1845→            <div className="flex gap-4 overflow-x-auto pb-4">
+  1846→  1846→                <TaskColumn 
+  1847→  1847→                    status="NOT_STARTED" 
+  1848→  1848→                    tasks={tasksByStatus.NOT_STARTED}
+  1849→  1849→                    onTaskStatusChange={(id, s) => updateStatus(id, { status: s })}
+  1850→  1850→                />
+  1851→  1851→                <TaskColumn 
+  1852→  1852→                    status="IN_PROGRESS" 
+  1853→  1853→                    tasks={tasksByStatus.IN_PROGRESS}
+  1854→  1854→                    onTaskStatusChange={(id, s) => updateStatus(id, { status: s })}
+  1855→  1855→                />
+  1856→  1856→                <TaskColumn 
+  1857→  1857→                    status="BLOCKED" 
+  1858→  1858→                    tasks={tasksByStatus.BLOCKED}
+  1859→  1859→                    onTaskStatusChange={(id, s) => updateStatus(id, { status: s })}
+  1860→  1860→                />
+  1861→  1861→                <TaskColumn 
+  1862→  1862→                    status="COMPLETED" 
+  1863→  1863→                    tasks={tasksByStatus.COMPLETED}
+  1864→  1864→                    onTaskStatusChange={(id, s) => updateStatus(id, { status: s })}
+  1865→  1865→                />
+  1866→  1866→            </div>
+  1867→  1867→            
+  1868→  1868→            {/* Drag overlay - shows the card being dragged */}
+  1869→  1869→            <DragOverlay>
+  1870→  1870→                {activeTask ? (
+  1871→  1871→                    <div className="rotate-3 opacity-90">
+  1872→  1872→                        <TaskCard task={activeTask} isDragging />
+  1873→  1873→                    </div>
+  1874→  1874→                ) : null}
+  1875→  1875→            </DragOverlay>
+  1876→  1876→        </DndContext>
+  1877→  1877→    )
+  1878→  1878→}
+  1879→  1879→Requirements:
+  1880→  1880→
+  1881→  1881→Drag & drop between all 4 columns
+  1882→  1882→
+  1883→  1883→Prompt for reason when moving to BLOCKED
+  1884→  1884→
+  1885→  1885→Prevent completing tasks with incomplete dependencies
+  1886→  1886→
+  1887→  1887→Toast notifications for status changes
+  1888→  1888→
+  1889→  1889→Optimistic updates (task moves instantly)
+  1890→  1890→
+  1891→  1891→Rollback on error
+  1892→  1892→
+  1893→  1893→Generate ALL complete files.
+  1894→  1894→
+  1895→  1895→text
+  1896→  1896→
+  1897→  1897→---
+  1898→  1898→
+  1899→  1899→## 📌 Step 5.5: Task Detail Page with Comments & Dependencies
+  1900→  1900→
+  1901→  1901→### 🤖 Complete Prompt for Step 5.5:
+  1902→  1902→Now create the task detail page with comments and dependencies.
+  1903→  1903→
+  1904→  1904→Create these files:
+  1905→  1905→
+  1906→  1906→frontend/src/components/tasks/TaskComments.tsx - Comments section:
+  1907→  1907→
+  1908→  1908→typescript
+  1909→  1909→import { useState } from 'react'
+  1910→  1910→import { useTaskStore } from '../../stores/taskStore'
+  1911→  1911→import { useAuth } from '../../hooks/useAuth'
+  1912→  1912→import { CommentCreate } from '../../types/task'
+  1913→  1913→import { Button } from '../ui/Button'
+  1914→  1914→import { Textarea } from '../ui/Textarea'
+  1915→  1915→import { Avatar } from '../ui/Avatar'
+  1916→  1916→import { format } from 'date-fns'
+  1917→  1917→import toast from 'react-hot-toast'
+  1918→  1918→
+  1919→  1919→interface TaskCommentsProps {
+  1920→  1920→    taskId: string
+  1921→  1921→}
+  1922→  1922→
+  1923→  1923→export const TaskComments = ({ taskId }: TaskCommentsProps) => {
+  1924→  1924→    const { user } = useAuth()
+  1925→  1925→    const { comments, addComment, deleteComment } = useTaskStore()
+  1926→  1926→    const [content, setContent] = useState('')
+  1927→  1927→    const [isSubmitting, setIsSubmitting] = useState(false)
+  1928→  1928→    
+  1929→  1929→    const handleSubmit = async (e: React.FormEvent) => {
+  1930→  1930→        e.preventDefault()
+  1931→  1931→        if (!content.trim()) return
+  1932→  1932→        
+  1933→  1933→        setIsSubmitting(true)
+  1934→  1934→        try {
+  1935→  1935→            await addComment(taskId, { content })
+  1936→  1936→            setContent('')
+  1937→  1937→            toast.success('Comment added')
+  1938→  1938→        } catch (error) {
+  1939→  1939→            toast.error('Failed to add comment')
+  1940→  1940→        } finally {
+  1941→  1941→            setIsSubmitting(false)
+  1942→  1942→        }
+  1943→  1943→    }
+  1944→  1944→    
+  1945→  1945→    const handleDelete = async (commentId: string) => {
+  1946→  1946→        if (!confirm('Delete this comment?')) return
+  1947→  1947→        try {
+  1948→  1948→            await deleteComment(commentId)
+  1949→  1949→            toast.success('Comment deleted')
+  1950→  1950→        } catch (error) {
+  1951→  1951→            toast.error('Failed to delete comment')
+  1952→  1952→        }
+  1953→  1953→    }
+  1954→  1954→    
+  1955→  1955→    return (
+  1956→  1956→        <div className="space-y-4">
+  1957→  1957→            <h3 className="font-semibold">Comments ({comments.length})</h3>
+  1958→  1958→            
+  1959→  1959→            {/* Add comment form */}
+  1960→  1960→            <form onSubmit={handleSubmit} className="space-y-2">
+  1961→  1961→                <Textarea
+  1962→  1962→                    placeholder="Add a comment... (use this to report blockers or ask questions)"
+  1963→  1963→                    value={content}
+  1964→  1964→                    onChange={(e) => setContent(e.target.value)}
+  1965→  1965→                    rows={3}
+  1966→  1966→                />
+  1967→  1967→                <div className="flex justify-end">
+  1968→  1968→                    <Button 
+  1969→  1969→                        type="submit" 
+  1970→  1970→                        size="sm" 
+  1971→  1971→                        isLoading={isSubmitting}
+  1972→  1972→                        disabled={!content.trim()}
+  1973→  1973→                    >
+  1974→  1974→                        Post Comment
+  1975→  1975→                    </Button>
+  1976→  1976→                </div>
+  1977→  1977→            </form>
+  1978→  1978→            
+  1979→  1979→            {/* Comments list */}
+  1980→  1980→            <div className="space-y-4">
+  1981→  1981→                {comments.map(comment => (
+  1982→  1982→                    <div key={comment.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
+  1983→  1983→                        <Avatar name={comment.user_name} size="md" />
+  1984→  1984→                        <div className="flex-1">
+  1985→  1985→                            <div className="flex justify-between items-start">
+  1986→  1986→                                <div>
+  1987→  1987→                                    <p className="font-medium text-sm">{comment.user_name}</p>
+  1988→  1988→                                    <p className="text-xs text-gray-500">
+  1989→  1989→                                        {format(new Date(comment.created_at), 'PPp')}
+  1990→  1990→                                    </p>
+  1991→  1991→                                </div>
+  1992→  1992→                                {user?.id === comment.user_id && (
+  1993→  1993→                                    <button
+  1994→  1994→                                        onClick={() => handleDelete(comment.id)}
+  1995→  1995→                                        className="text-red-500 hover:text-red-700 text-xs"
+  1996→  1996→                                    >
+  1997→  1997→                                        Delete
+  1998→  1998→                                    </button>
+  1999→  1999→                                )}
+  2000→  2000→                            </div>
+
+[showing lines 1-2000 of 2002; use offset=2001 with limit to continue reading]

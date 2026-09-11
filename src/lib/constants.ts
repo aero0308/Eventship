@@ -17,6 +17,7 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   EVENTS: '/events',
   TASKS: '/tasks',
+  MY_TASKS: '/tasks/my',
   TEAMS: '/teams',
   CALENDAR: '/calendar',
   ACTIVITY: '/activity',

@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlarmClock,
   CheckCircle2,
   Clock,
+  Columns3,
   Download,
   Layers,
   Link2,
@@ -13,17 +15,19 @@ import {
   MessageSquare,
   Play,
   Plus,
+  Rows3,
   Save,
   Search,
   Send,
   ShieldAlert,
   Trash2,
+  TrendingUp,
   X,
 } from 'lucide-react'
 import { differenceInCalendarDays, format, formatDistanceToNow, isSameDay } from 'date-fns'
 import { DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import type { TaskCommentDTO, TaskDTO, TaskPriority, TaskStatus, UserDTO } from '@/types'
+import type { TaskCommentDTO, TaskDTO, TaskPriority, TaskStatsDTO, TaskStatus, UserDTO } from '@/types'
 import type { EventDTO } from '@/types'
 import {
   PRIORITY_CLASSES,
@@ -32,6 +36,7 @@ import {
   ROLE_LABELS,
   TASK_PRIORITIES,
   TASK_STATUSES,
+  TASK_STATUS_CLASSES,
   TASK_STATUS_LABELS,
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
@@ -403,9 +408,59 @@ function KanbanColumn({ status, count, children, highlight }: ColumnProps) {
   )
 }
 
+// ============ Stats cell (Phase 5 stats strip) ============
+
+const STAT_TONES: Record<string, { icon: string; value: string }> = {
+  stone: {
+    icon: 'bg-stone-100 text-stone-600 dark:bg-stone-500/15 dark:text-stone-300',
+    value: 'text-foreground',
+  },
+  amber: {
+    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+    value: 'text-amber-700 dark:text-amber-300',
+  },
+  red: {
+    icon: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+    value: 'text-red-700 dark:text-red-300',
+  },
+  orange: {
+    icon: 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+    value: 'text-orange-700 dark:text-orange-300',
+  },
+  emerald: {
+    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+    value: 'text-emerald-700 dark:text-emerald-300',
+  },
+}
+
+function StatCell({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>
+  label: string
+  value: number
+  tone: keyof typeof STAT_TONES
+}) {
+  const tones = STAT_TONES[tone] ?? STAT_TONES.stone
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', tones.icon)}>
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        {label}
+      </div>
+      <p className={cn('mt-1.5 text-2xl font-bold tabular-nums', tones.value)}>{value}</p>
+    </div>
+  )
+}
+
 // ============ Main page ============
 
-export function TasksPage() {
+export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   const path = useHashRoute()
   const { toast } = useToast()
 
@@ -423,6 +478,11 @@ export function TasksPage() {
   const [events, setEvents] = useState<EventDTO[]>([])
   const [users, setUsers] = useState<UserDTO[]>([])
   const [loading, setLoading] = useState(true)
+  // Phase 5: role-scoped task statistics for the header strip.
+  const [stats, setStats] = useState<TaskStatsDTO | null>(null)
+
+  // Board vs list presentation (Phase 5 view toggle).
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -456,36 +516,52 @@ export function TasksPage() {
   }, [queryEvent])
 
   useEffect(() => {
-    if (queryAssignee) {
+    if (scope === 'all' && queryAssignee) {
       setAssigneeFilter(queryAssignee)
     }
-  }, [queryAssignee])
+  }, [queryAssignee, scope])
 
-  const loadTasks = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoading(true)
+  const loadStats = useCallback(async () => {
     try {
-      const data = await api.get<{ tasks: TaskDTO[] }>(
-        `/tasks${qs({
-          eventId: eventFilter !== 'all' ? eventFilter : undefined,
-          status: undefined,
-          priority: priorityFilter !== 'all' ? priorityFilter : undefined,
-          assignedTo:
-            assigneeFilter !== 'all'
-              ? assigneeFilter === UNASSIGNED
-                ? 'unassigned'
-                : assigneeFilter
-              : undefined,
-          search: search.trim() || undefined,
-        })}`
-      )
-      setTasks(data.tasks)
-    } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : 'Failed to load tasks.'
-      toast({ title: 'Could not load tasks', description: message, variant: 'destructive' })
-    } finally {
-      setLoading(false)
+      const data = await api.get<{ stats: TaskStatsDTO }>('/tasks/stats')
+      setStats(data.stats)
+    } catch {
+      // Stats are supplementary — a failed refresh just keeps the last values.
     }
-  }, [eventFilter, priorityFilter, assigneeFilter, search, toast])
+  }, [])
+
+  const loadTasks = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true)
+      try {
+        const data = await api.get<{ tasks: TaskDTO[] }>(
+          `/tasks${qs({
+            eventId: eventFilter !== 'all' ? eventFilter : undefined,
+            status: undefined,
+            priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+            assignedTo:
+              scope === 'mine'
+                ? 'me'
+                : assigneeFilter !== 'all'
+                  ? assigneeFilter === UNASSIGNED
+                    ? 'unassigned'
+                    : assigneeFilter
+                  : undefined,
+            search: search.trim() || undefined,
+          })}`
+        )
+        setTasks(data.tasks)
+        // Stats ride along so every board mutation/filter round keeps them live.
+        void loadStats()
+      } catch (error) {
+        const message = error instanceof ApiClientError ? error.message : 'Failed to load tasks.'
+        toast({ title: 'Could not load tasks', description: message, variant: 'destructive' })
+      } finally {
+        setLoading(false)
+      }
+    },
+    [eventFilter, priorityFilter, assigneeFilter, search, scope, loadStats, toast]
+  )
 
   // ---- Realtime: live board updates --------------------------------------
   // Subscribe to every event room (or just the filtered one); when someone
@@ -602,8 +678,17 @@ export function TasksPage() {
   const [overColumn, setOverColumn] = useState<string | null>(null)
   const lastDragEndAt = useRef(0)
 
+  // Phase 5: moving a task to BLOCKED asks for a reason (TaskStatusUpdateModal
+  // from the spec). The pending move is held here until the modal submits.
+  // `source` distinguishes board moves (optimistic moveTask) from detail-dialog
+  // quick updates (minimal status+statusNote patch).
+  const [pendingMove, setPendingMove] = useState<{ task: TaskDTO; status: TaskStatus; source: 'board' | 'detail' } | null>(null)
+  const [moveNote, setMoveNote] = useState('')
+  const [moveNoteError, setMoveNoteError] = useState<string | null>(null)
+  const [moveNoteSaving, setMoveNoteSaving] = useState(false)
+
   const moveTask = useCallback(
-    async (task: TaskDTO, nextStatus: TaskStatus) => {
+    async (task: TaskDTO, nextStatus: TaskStatus, statusNote?: string) => {
       if (task.status === nextStatus) return
       // Strict dependency guard (client pre-check — the server 409s as well):
       // refuse to complete a task whose dependencies are unfinished.
@@ -631,7 +716,10 @@ export function TasksPage() {
         { id: task.id, status: nextStatus }
       ))
       try {
-        await api.patch(`/tasks/${task.id}`, { status: nextStatus })
+        await api.patch(`/tasks/${task.id}`, {
+          status: nextStatus,
+          ...(statusNote ? { statusNote } : {}),
+        })
         // Heads-up when completing a task that still waits on dependencies —
         // allowed, but the mover should know.
         const completingWithOpenDeps = nextStatus === 'COMPLETED' && health.blockedBy > 0
@@ -641,14 +729,42 @@ export function TasksPage() {
             ? `“${task.title}” is now Completed, but ${health.blockedBy} of its ${health.blockedBy === 1 ? 'dependency is' : 'dependencies are'} still unfinished.`
             : `“${task.title}” is now ${TASK_STATUS_LABELS[nextStatus]}.`,
         })
+        void loadStats()
       } catch (error) {
         setTasks(previous)
         const message = error instanceof ApiClientError ? error.message : 'Failed to update the task status.'
         toast({ title: 'Could not move task', description: message, variant: 'destructive' })
       }
     },
-    [tasks, user, toast]
+    [tasks, user, loadStats, toast]
   )
+
+  /** Entry point for every single-task status change — BLOCKED detours through the reason modal. */
+  const requestMove = useCallback(
+    (task: TaskDTO, nextStatus: TaskStatus) => {
+      if (task.status === nextStatus) return
+      if (nextStatus === 'BLOCKED') {
+        setMoveNote('')
+        setMoveNoteError(null)
+        setPendingMove({ task, status: nextStatus, source: 'board' })
+        return
+      }
+      void moveTask(task, nextStatus)
+    },
+    [moveTask]
+  )
+
+  /** Detail-dialog status field: picking BLOCKED opens the reason modal instead of editing the form. */
+  const handleDetailStatusChange = (nextStatus: TaskStatus) => {
+    if (!edit || edit.status === nextStatus) return
+    if (nextStatus === 'BLOCKED' && detail) {
+      setMoveNote('')
+      setMoveNoteError(null)
+      setPendingMove({ task: detail, status: nextStatus, source: 'detail' })
+      return
+    }
+    setEdit((f) => (f ? { ...f, status: nextStatus } : f))
+  }
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTask(tasks.find((t) => t.id === String(event.active.id)) ?? null)
@@ -662,7 +778,7 @@ export function TasksPage() {
     setOverColumn(null)
     if (!task || !overId) return
     if ((TASK_STATUSES as readonly string[]).includes(overId)) {
-      void moveTask(task, overId as TaskStatus)
+      requestMove(task, overId as TaskStatus)
     }
   }
 
@@ -944,6 +1060,24 @@ export function TasksPage() {
         return
       }
 
+      // Phase 5: someone removed a comment — drop it from the open dialog and
+      // keep the card counter honest.
+      if (payload.type === 'comment:deleted' && payload.taskId && payload.commentId) {
+        const taskId = payload.taskId
+        const commentId = payload.commentId
+        setDetail((prev) =>
+          prev && prev.id === taskId
+            ? { ...prev, comments: (prev.comments ?? []).filter((c) => c.id !== commentId) }
+            : prev
+        )
+        setTasks((list) =>
+          list.map((t) =>
+            t.id === taskId ? { ...t, commentCount: Math.max(0, (t.commentCount ?? 1) - 1) } : t
+          )
+        )
+        return
+      }
+
       // event:updated / unknown — refresh dropdown labels + board silently.
       scheduleRefetch()
       void loadMetaRef.current()
@@ -983,20 +1117,32 @@ export function TasksPage() {
     }
     setEditSaving(true)
     try {
-      const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
-        title: edit.title.trim(),
-        description: edit.description.trim() || null,
-        priority: edit.priority,
-        status: edit.status,
-        assignedTo: edit.assignedTo === UNASSIGNED ? null : edit.assignedTo,
-        startDate: edit.startDate ? new Date(`${edit.startDate}T09:00:00`).toISOString() : null,
-        dueDate: edit.dueDate ? new Date(`${edit.dueDate}T23:59:59`).toISOString() : null,
-        estimatedHours: edit.estimatedHours ? Number(edit.estimatedHours) : null,
-        actualHours: edit.actualHours ? Number(edit.actualHours) : null,
-      })
+      let data: { task: TaskDTO }
+      if (canDeleteTask) {
+        // Full manager: persist the whole form.
+        data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+          title: edit.title.trim(),
+          description: edit.description.trim() || null,
+          priority: edit.priority,
+          status: edit.status,
+          assignedTo: edit.assignedTo === UNASSIGNED ? null : edit.assignedTo,
+          startDate: edit.startDate ? new Date(`${edit.startDate}T09:00:00`).toISOString() : null,
+          dueDate: edit.dueDate ? new Date(`${edit.dueDate}T23:59:59`).toISOString() : null,
+          estimatedHours: edit.estimatedHours ? Number(edit.estimatedHours) : null,
+          actualHours: edit.actualHours ? Number(edit.actualHours) : null,
+        })
+      } else {
+        // Assignee-restricted editor: the server only accepts status + actualHours
+        // — sending the full form would always 403.
+        data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+          status: edit.status,
+          actualHours: edit.actualHours ? Number(edit.actualHours) : null,
+        })
+      }
       applyTaskUpdate(data.task)
       setDetail((prev) => (prev ? { ...prev, ...data.task } : prev))
       toast({ title: 'Task updated', description: `“${data.task.title}” was saved.` })
+      void loadStats()
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to save the task.'
       toast({ title: 'Save failed', description: message, variant: 'destructive' })
@@ -1024,6 +1170,156 @@ export function TasksPage() {
     }
   }
 
+  // ============ Comment deletion (Phase 5: owner-only) ============
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!detail) return
+    const previous = detail
+    // Optimistic: drop the comment and decrement the card counter immediately.
+    setDetail((prev) =>
+      prev && prev.id === detail.id
+        ? { ...prev, comments: (prev.comments ?? []).filter((c) => c.id !== commentId) }
+        : prev
+    )
+    setTasks((list) =>
+      list.map((t) =>
+        t.id === detail.id ? { ...t, commentCount: Math.max(0, (t.commentCount ?? 1) - 1) } : t
+      )
+    )
+    setDeletingCommentId(commentId)
+    try {
+      await api.del(`/tasks/${detail.id}/comments/${commentId}`)
+      toast({ title: 'Comment deleted' })
+    } catch (error) {
+      // Roll back to the pre-delete snapshot so the comment never silently vanishes.
+      setDetail((prev) => (prev && prev.id === previous.id ? previous : prev))
+      setTasks((list) =>
+        list.map((t) => (t.id === detail.id ? { ...t, commentCount: previous.commentCount ?? 0 } : t))
+      )
+      const message = error instanceof ApiClientError ? error.message : 'Failed to delete the comment.'
+      toast({ title: 'Could not delete comment', description: message, variant: 'destructive' })
+    } finally {
+      setDeletingCommentId(null)
+    }
+  }
+
+  // ============ Dependency management (Phase 5: add / remove) ============
+  const canEditDeps = Boolean(
+    user &&
+      detail &&
+      (user.role === 'EVENT_MANAGER' ||
+        (user.role === 'TEAM_LEADER' && user.teamId !== null && detail.event?.teamId === user.teamId) ||
+        detail.createdBy === user.id)
+  )
+  /** Mirrors the server's canFullyManageTask rule — hides Delete from users who would only get a 403. */
+  const canDeleteTask = canEditDeps
+  /** The assignee may still change status + actual hours (server-restricted editor). */
+  const isAssignee = Boolean(user && detail && detail.assignedTo === user.id)
+  const restrictedEditor = !canDeleteTask && isAssignee
+  /** Neither manager nor assignee — the form is informational only. */
+  const readOnlyEditor = !canDeleteTask && !isAssignee
+  const [depDialogOpen, setDepDialogOpen] = useState(false)
+  const [depCandidates, setDepCandidates] = useState<TaskDTO[] | null>(null)
+  const [depCandidatesLoading, setDepCandidatesLoading] = useState(false)
+  const [depSelected, setDepSelected] = useState('')
+  const [depSaving, setDepSaving] = useState(false)
+  const [removingDepId, setRemovingDepId] = useState<string | null>(null)
+
+  const openDepDialog = async () => {
+    if (!detail) return
+    setDepSelected('')
+    setDepDialogOpen(true)
+    setDepCandidatesLoading(true)
+    try {
+      const data = await api.get<{ tasks: TaskDTO[] }>(`/tasks${qs({ eventId: detail.eventId })}`)
+      const existing = new Set((detail.dependencies ?? []).map((dep) => dep.dependsOnTaskId))
+      setDepCandidates(data.tasks.filter((t) => t.id !== detail.id && !existing.has(t.id)))
+    } catch {
+      setDepCandidates([])
+    } finally {
+      setDepCandidatesLoading(false)
+    }
+  }
+
+  const handleAddDependency = async () => {
+    if (!detail || !depSelected) return
+    setDepSaving(true)
+    try {
+      const currentIds = (detail.dependencies ?? []).map((dep) => dep.dependsOnTaskId)
+      const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+        dependsOnTaskIds: [...currentIds, depSelected],
+      })
+      applyTaskUpdate(data.task)
+      setDetail((prev) => (prev ? { ...prev, ...data.task } : prev))
+      setDepDialogOpen(false)
+      const added = depCandidates?.find((t) => t.id === depSelected)
+      toast({ title: 'Dependency added', description: `Now waiting on “${added?.title ?? 'task'}”.` })
+    } catch (error) {
+      // Cycle / duplicate / self-dependency rejections arrive as 400s with a
+      // human message — surface them verbatim.
+      const message = error instanceof ApiClientError ? error.message : 'Failed to add the dependency.'
+      toast({ title: 'Could not add dependency', description: message, variant: 'destructive' })
+    } finally {
+      setDepSaving(false)
+    }
+  }
+
+  const handleRemoveDependency = async (dependsOnTaskId: string) => {
+    if (!detail) return
+    const previous = detail
+    const nextDeps = (detail.dependencies ?? []).filter((dep) => dep.dependsOnTaskId !== dependsOnTaskId)
+    // Optimistic removal; the response replaces the whole dependency list.
+    setDetail((prev) => (prev ? { ...prev, dependencies: nextDeps } : prev))
+    setRemovingDepId(dependsOnTaskId)
+    try {
+      const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+        dependsOnTaskIds: nextDeps.map((dep) => dep.dependsOnTaskId),
+      })
+      applyTaskUpdate(data.task)
+      setDetail((prev) => (prev ? { ...prev, ...data.task } : prev))
+      toast({ title: 'Dependency removed' })
+    } catch (error) {
+      setDetail((prev) => (prev && prev.id === previous.id ? previous : prev))
+      const message = error instanceof ApiClientError ? error.message : 'Failed to remove the dependency.'
+      toast({ title: 'Could not remove dependency', description: message, variant: 'destructive' })
+    } finally {
+      setRemovingDepId(null)
+    }
+  }
+
+  // ============ Reason-modal submit (Phase 5) ============
+  const handleMoveNoteSubmit = async () => {
+    if (!pendingMove) return
+    const note = moveNote.trim()
+    if (!note) {
+      setMoveNoteError('A reason is required when marking a task as blocked.')
+      return
+    }
+    setMoveNoteSaving(true)
+    setMoveNoteError(null)
+    try {
+      if (pendingMove.source === 'detail' && detail) {
+        // Minimal status+note patch — leaves the rest of the edit form untouched.
+        const data = await api.patch<{ task: TaskDTO }>(`/tasks/${detail.id}`, {
+          status: pendingMove.status,
+          statusNote: note,
+        })
+        applyTaskUpdate(data.task)
+        setDetail((prev) => (prev ? { ...prev, ...data.task } : prev))
+        setEdit((f) => (f ? { ...f, status: pendingMove.status } : f))
+        toast({ title: 'Task blocked', description: `“${data.task.title}” is now Blocked — reason posted as a comment.` })
+        void loadStats()
+      } else {
+        await moveTask(pendingMove.task, pendingMove.status, note)
+      }
+      setPendingMove(null)
+      setMoveNote('')
+    } finally {
+      setMoveNoteSaving(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!detail) return
     setDeleting(true)
@@ -1033,6 +1329,7 @@ export function TasksPage() {
       setDetailId(null)
       setDeleteOpen(false)
       toast({ title: 'Task deleted', description: `“${detail.title}” has been removed.` })
+      void loadStats()
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to delete the task.'
       toast({ title: 'Delete failed', description: message, variant: 'destructive' })
@@ -1124,7 +1421,7 @@ export function TasksPage() {
   const mobileStatusSelectFor = (task: TaskDTO) =>
     isDesktop ? null : (
       <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
-        <Select value={task.status} onValueChange={(value) => void moveTask(task, value as TaskStatus)}>
+        <Select value={task.status} onValueChange={(value) => requestMove(task, value as TaskStatus)}>
           <SelectTrigger size="sm" className="h-9 w-full" aria-label={`Change status of ${task.title}`}>
             <SelectValue />
           </SelectTrigger>
@@ -1139,15 +1436,52 @@ export function TasksPage() {
       </div>
     )
 
+  const canCreate = user?.role === 'EVENT_MANAGER' || user?.role === 'TEAM_LEADER'
+
   return (
     <div>
       <PageHeader
-        title="Tasks"
-        subtitle="Drag cards between columns to update status — the board is your source of truth."
+        title={scope === 'mine' ? 'My Tasks' : 'Tasks'}
+        subtitle={
+          scope === 'mine'
+            ? 'Everything assigned to you — update status inline, or drag cards between columns.'
+            : 'Drag cards between columns to update status — the board is your source of truth.'
+        }
         actions={
           <>
             <LiveBadge className="mr-1 hidden sm:inline-flex" />
-            <PresenceStack viewers={viewers} context="the tasks board" />
+            <PresenceStack viewers={viewers} context={scope === 'mine' ? 'your task list' : 'the tasks board'} />
+            {/* Phase 5 view toggle — Kanban board or grouped list. */}
+            <div className="flex items-center rounded-lg border border-border bg-muted/60 p-1" role="group" aria-label="View mode">
+              <button
+                type="button"
+                onClick={() => setViewMode('board')}
+                aria-pressed={viewMode === 'board'}
+                className={cn(
+                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-all duration-200',
+                  viewMode === 'board'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Columns3 className="h-4 w-4" aria-hidden="true" />
+                Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                aria-pressed={viewMode === 'list'}
+                className={cn(
+                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-all duration-200',
+                  viewMode === 'list'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Rows3 className="h-4 w-4" aria-hidden="true" />
+                List
+              </button>
+            </div>
             {visibleTasks.length > 0 ? (
               <Button
                 variant="outline"
@@ -1181,7 +1515,7 @@ export function TasksPage() {
                     task.commentCount ?? 0,
                   ]),
                 ]
-                downloadCsv(`eventflow-tasks-${csvDateStamp()}`, rows)
+                downloadCsv(scope === 'mine' ? `eventflow-my-tasks-${csvDateStamp()}` : `eventflow-tasks-${csvDateStamp()}`, rows)
                 toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
               }}
               disabled={tasks.length === 0}
@@ -1190,13 +1524,52 @@ export function TasksPage() {
               <Download className="mr-2 h-4 w-4" aria-hidden="true" />
               Export CSV
             </Button>
-            <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-              New Task
-            </Button>
+            {canCreate ? (
+              <Button onClick={openCreate} className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700">
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                New Task
+              </Button>
+            ) : null}
           </>
         }
       />
+
+      {/* Phase 5 stats strip — role-scoped totals with completion rate. */}
+      {stats && stats.total > 0 ? (
+        <section aria-label="Task statistics" className="mb-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <StatCell icon={ListTodo} label="Total" value={stats.total} tone="stone" />
+            <StatCell icon={Play} label="In Progress" value={stats.inProgress} tone="amber" />
+            <StatCell icon={ShieldAlert} label="Blocked" value={stats.blocked} tone="red" />
+            <StatCell icon={AlarmClock} label="Overdue" value={stats.overdue} tone="orange" />
+            <StatCell icon={CheckCircle2} label="Completed" value={stats.completed} tone="emerald" />
+            <div className="rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/40 p-4 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-transparent dark:to-emerald-500/5">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+                Completion
+              </div>
+              <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{stats.completionRate}%</p>
+              <div
+                role="progressbar"
+                aria-valuenow={stats.completionRate}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${stats.completionRate}% of tasks completed`}
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-500/15"
+              >
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${stats.completionRate}%` }}
+                  transition={{ duration: 0.7, ease: 'easeOut' }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* Filters */}
       <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Task filters">
@@ -1224,7 +1597,7 @@ export function TasksPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter} disabled={scope === 'mine'}>
           <SelectTrigger className="h-11 w-full" aria-label="Filter by assignee">
             <SelectValue placeholder="Anyone" />
           </SelectTrigger>
@@ -1297,12 +1670,118 @@ export function TasksPage() {
               : 'Adjust the filters above, or create a new task to get things moving.'
           }
           action={
-            <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-              New Task
-            </Button>
+            canCreate ? (
+              <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                New Task
+              </Button>
+            ) : undefined
           }
         />
+      ) : viewMode === 'list' ? (
+        /* ============ List view (Phase 5): grouped by status, urgency first ============ */
+        <div className="space-y-5">
+          {(['IN_PROGRESS', 'BLOCKED', 'NOT_STARTED', 'COMPLETED'] as TaskStatus[]).map((status) => {
+            const sectionTasks = byStatus.get(status) ?? []
+            if (sectionTasks.length === 0) return null
+            return (
+              <section
+                key={status}
+                aria-label={`${TASK_STATUS_LABELS[status]} tasks`}
+                className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+              >
+                <header className="flex items-center justify-between gap-2 border-b border-border/80 bg-muted/50 px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className={cn('h-2.5 w-2.5 rounded-full', COLUMN_DOT[status])} aria-hidden="true" />
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground/90">{TASK_STATUS_LABELS[status]}</h3>
+                  </div>
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ring-1',
+                      COLUMN_COUNT_PILL[status]
+                    )}
+                  >
+                    {sectionTasks.length}
+                  </span>
+                </header>
+                <ul className="divide-y divide-border/70">
+                  {sectionTasks.map((task) => {
+                    const chip = dueChip(task)
+                    return (
+                      <li
+                        key={task.id}
+                        className={cn(
+                          'group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/40',
+                          task.status === 'COMPLETED' && 'opacity-75'
+                        )}
+                      >
+                        <span
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex shrink-0"
+                        >
+                          <Checkbox
+                            checked={selectedIds.has(task.id)}
+                            onCheckedChange={(checked) => toggleTaskSelection(task.id, checked)}
+                            aria-label={`Select task ${task.title}`}
+                          />
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDetailId(task.id)}
+                          className={cn(
+                            'min-w-0 flex-1 text-left text-sm font-semibold text-foreground hover:text-emerald-700 dark:hover:text-emerald-300',
+                            task.status === 'COMPLETED' && 'line-through decoration-stone-300'
+                          )}
+                        >
+                          <span className="line-clamp-1">{task.title}</span>
+                          {task.event ? (
+                            <span className="block text-[11px] font-normal text-muted-foreground/70">{task.event.name}</span>
+                          ) : null}
+                        </button>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {chip ? (
+                            <Badge variant="outline" className={cn('gap-1 text-[10px] font-normal', chip.classes)}>
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              {chip.label}
+                            </Badge>
+                          ) : null}
+                          <StatusBadge label={PRIORITY_LABELS[task.priority] ?? task.priority} className={cn('text-[10px]', PRIORITY_CLASSES[task.priority])} />
+                          {(task.commentCount ?? 0) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                              {task.commentCount}
+                            </span>
+                          ) : null}
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className={cn('text-[9px] font-semibold', task.assignee ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
+                              {task.assignee ? initialsOf(task.assignee.fullName) : '—'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <Select value={task.status} onValueChange={(value) => requestMove(task, value as TaskStatus)}>
+                            <SelectTrigger
+                              size="sm"
+                              className="h-8 w-36"
+                              aria-label={`Change status of ${task.title}`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TASK_STATUSES.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {TASK_STATUS_LABELS[s]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            )
+          })}
+        </div>
       ) : (
         <DndContext
           sensors={sensors}
@@ -1391,7 +1870,7 @@ export function TasksPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="task-event">Event</Label>
-                <Select value={form.eventId || undefined} onValueChange={(value) => setForm((f) => ({ ...f, eventId: value }))}>
+                <Select value={form.eventId} onValueChange={(value) => setForm((f) => ({ ...f, eventId: value }))}>
                   <SelectTrigger id="task-event" className="h-11 w-full" aria-label="Event">
                     <SelectValue placeholder="Choose event" />
                   </SelectTrigger>
@@ -1521,11 +2000,14 @@ export function TasksPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="edit-title">Title</Label>
-                    <Input id="edit-title" value={edit.title} onChange={(e) => setEdit((f) => (f ? { ...f, title: e.target.value } : f))} className="h-10" />
+                    <Input id="edit-title" value={edit.title} onChange={(e) => setEdit((f) => (f ? { ...f, title: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-status">Status</Label>
-                    <Select value={edit.status} onValueChange={(value) => setEdit((f) => (f ? { ...f, status: value as TaskStatus } : f))}>
+                    <Select
+                      value={edit.status}
+                      onValueChange={(value) => handleDetailStatusChange(value as TaskStatus)}
+                    >
                       <SelectTrigger id="edit-status" className="h-10 w-full" aria-label="Status">
                         <SelectValue />
                       </SelectTrigger>
@@ -1547,13 +2029,14 @@ export function TasksPage() {
                     value={edit.description}
                     onChange={(e) => setEdit((f) => (f ? { ...f, description: e.target.value } : f))}
                     rows={2}
+                    disabled={!canDeleteTask}
                   />
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="edit-priority">Priority</Label>
-                    <Select value={edit.priority} onValueChange={(value) => setEdit((f) => (f ? { ...f, priority: value as TaskPriority } : f))}>
+                    <Select value={edit.priority} onValueChange={(value) => setEdit((f) => (f ? { ...f, priority: value as TaskPriority } : f))} disabled={!canDeleteTask}>
                       <SelectTrigger id="edit-priority" className="h-10 w-full" aria-label="Priority">
                         <SelectValue />
                       </SelectTrigger>
@@ -1568,7 +2051,7 @@ export function TasksPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-assignee">Assignee</Label>
-                    <Select value={edit.assignedTo} onValueChange={(value) => setEdit((f) => (f ? { ...f, assignedTo: value } : f))}>
+                    <Select value={edit.assignedTo} onValueChange={(value) => setEdit((f) => (f ? { ...f, assignedTo: value } : f))} disabled={!canDeleteTask}>
                       <SelectTrigger id="edit-assignee" className="h-10 w-full" aria-label="Assignee">
                         <SelectValue />
                       </SelectTrigger>
@@ -1590,24 +2073,29 @@ export function TasksPage() {
                       <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                       Start
                     </Label>
-                    <Input id="edit-start" type="date" value={edit.startDate} onChange={(e) => setEdit((f) => (f ? { ...f, startDate: e.target.value } : f))} className="h-10" />
+                    <Input id="edit-start" type="date" value={edit.startDate} onChange={(e) => setEdit((f) => (f ? { ...f, startDate: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-due">Due date</Label>
-                    <Input id="edit-due" type="date" value={edit.dueDate} onChange={(e) => setEdit((f) => (f ? { ...f, dueDate: e.target.value } : f))} className="h-10" />
+                    <Input id="edit-due" type="date" value={edit.dueDate} onChange={(e) => setEdit((f) => (f ? { ...f, dueDate: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-estimate">Est. hours</Label>
-                    <Input id="edit-estimate" type="number" min="0" step="0.5" value={edit.estimatedHours} onChange={(e) => setEdit((f) => (f ? { ...f, estimatedHours: e.target.value } : f))} className="h-10" />
+                    <Input id="edit-estimate" type="number" min="0" step="0.5" value={edit.estimatedHours} onChange={(e) => setEdit((f) => (f ? { ...f, estimatedHours: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-actual">Actual hours</Label>
-                    <Input id="edit-actual" type="number" min="0" step="0.5" value={edit.actualHours} onChange={(e) => setEdit((f) => (f ? { ...f, actualHours: e.target.value } : f))} className="h-10" />
+                    <Input id="edit-actual" type="number" min="0" step="0.5" value={edit.actualHours} onChange={(e) => setEdit((f) => (f ? { ...f, actualHours: e.target.value } : f))} className="h-10" disabled={readOnlyEditor} />
                   </div>
                 </div>
 
-                <div className="flex justify-end">
-                  <Button onClick={() => void handleEditSave()} className="min-h-10 bg-emerald-600 text-white hover:bg-emerald-700" disabled={editSaving}>
+                <div className="flex items-center justify-end gap-3">
+                  {readOnlyEditor ? (
+                    <p className="text-xs text-muted-foreground/70">Only the assignee or a manager can edit this task.</p>
+                  ) : restrictedEditor ? (
+                    <p className="text-xs text-muted-foreground/70">As the assignee you can update status and actual hours.</p>
+                  ) : null}
+                  <Button onClick={() => void handleEditSave()} className="min-h-10 bg-emerald-600 text-white hover:bg-emerald-700" disabled={editSaving || readOnlyEditor}>
                     {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
                     {editSaving ? 'Saving…' : 'Save changes'}
                   </Button>
@@ -1615,9 +2103,25 @@ export function TasksPage() {
 
                 {/* Dependencies — mini chain with nested upstream tasks */}
                 <div>
-                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Dependencies
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Dependencies
+                    </p>
+                    {canEditDeps ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                        onClick={() => void openDepDialog()}
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                        Add dependency
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="mb-2 text-[11px] text-muted-foreground/70">
+                    This task waits on its dependencies before it can be completed{user?.strictDependencyGuard ? ' (your dependency guard is on)' : ''}.
                   </p>
                   {(detail.dependencies?.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground/70">No dependencies.</p>
@@ -1626,6 +2130,8 @@ export function TasksPage() {
                       taskId={detail.id}
                       dependencies={detail.dependencies ?? []}
                       onOpenTask={(id) => setDetailId(id)}
+                      onRemove={canEditDeps ? (depId) => void handleRemoveDependency(depId) : undefined}
+                      removingDepId={removingDepId}
                     />
                   )}
                 </div>
@@ -1666,6 +2172,22 @@ export function TasksPage() {
                               <span className="ml-auto text-[10px] text-muted-foreground/70">
                                 {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
                               </span>
+                              {user && c.userId === user.id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteComment(c.id)}
+                                  disabled={deletingCommentId === c.id}
+                                  className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-500/10"
+                                  aria-label={`Delete your comment`}
+                                  title="Delete comment"
+                                >
+                                  {deletingCommentId === c.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" aria-hidden="true" />
+                                  )}
+                                </button>
+                              ) : null}
                             </div>
                             <p className="mt-1 text-sm leading-snug text-foreground">{c.content}</p>
                           </div>
@@ -1712,14 +2234,20 @@ export function TasksPage() {
               </div>
 
               <DialogFooter className="border-t border-border/60 pt-3 sm:justify-between">
-                <Button
-                  variant="outline"
-                  className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Delete task
-                </Button>
+                {canDeleteTask ? (
+                  <Button
+                    variant="outline"
+                    className="min-h-11 border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Delete task
+                  </Button>
+                ) : (
+                  <p className="max-w-[16rem] text-xs leading-snug text-muted-foreground/70">
+                    Only the creator, the owning team leader, or an event manager can delete this task.
+                  </p>
+                )}
                 <Button variant="ghost" className="min-h-11" onClick={() => setDetailId(null)}>
                   Close
                 </Button>
@@ -1754,6 +2282,180 @@ export function TasksPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ============ Phase 5: blocker-reason modal (TaskStatusUpdateModal) ============ */}
+      <Dialog
+        open={pendingMove !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingMove(null)
+            setMoveNote('')
+            setMoveNoteError(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300">
+                <ShieldAlert className="h-4 w-4" aria-hidden="true" />
+              </span>
+              Why is this task blocked?
+            </DialogTitle>
+            <DialogDescription>
+              Blocked tasks need a reason so teammates know what is wrong and who can unblock it. The note is posted as a
+              comment on the task.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pendingMove ? (
+            <div className="space-y-4">
+              {/* From → To summary */}
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+                <StatusBadge
+                  label={TASK_STATUS_LABELS[pendingMove.task.status] ?? pendingMove.task.status}
+                  className={cn('text-[10px]', TASK_STATUS_CLASSES[pendingMove.task.status])}
+                />
+                <span className="text-muted-foreground" aria-hidden="true">
+                  →
+                </span>
+                <StatusBadge
+                  label={TASK_STATUS_LABELS[pendingMove.status] ?? pendingMove.status}
+                  className={cn('text-[10px]', TASK_STATUS_CLASSES[pendingMove.status])}
+                />
+                <span className="ml-1 line-clamp-1 min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {pendingMove.task.title}
+                </span>
+              </div>
+
+              {moveNoteError ? (
+                <Alert variant="destructive" role="alert">
+                  <AlertDescription>{moveNoteError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="move-note">Reason (required)</Label>
+                  <span className={cn('text-[10px] tabular-nums', moveNote.length > 450 ? 'text-red-600' : 'text-muted-foreground/60')}>
+                    {moveNote.length}/500
+                  </span>
+                </div>
+                <Textarea
+                  id="move-note"
+                  value={moveNote}
+                  onChange={(e) => {
+                    setMoveNote(e.target.value)
+                    if (moveNoteError) setMoveNoteError(null)
+                  }}
+                  placeholder="e.g. Waiting for venue confirmation, budget not approved…"
+                  rows={4}
+                  maxLength={500}
+                  aria-invalid={Boolean(moveNoteError)}
+                  aria-describedby="move-note-hint"
+                />
+                <p id="move-note-hint" className="text-[11px] text-muted-foreground/70">
+                  Posted as a comment from you — the task creator and assignee are notified.
+                </p>
+              </div>
+
+              <DialogFooter className="gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => {
+                    setPendingMove(null)
+                    setMoveNote('')
+                    setMoveNoteError(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleMoveNoteSubmit()}
+                  disabled={moveNoteSaving || !moveNote.trim()}
+                  className="min-h-11 bg-red-600 text-white hover:bg-red-700"
+                >
+                  {moveNoteSaving ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ShieldAlert className="mr-2 h-4 w-4" aria-hidden="true" />
+                  )}
+                  {moveNoteSaving ? 'Moving…' : 'Mark as blocked'}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ Phase 5: add-dependency picker ============ */}
+      <Dialog open={depDialogOpen} onOpenChange={setDepDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add a dependency</DialogTitle>
+            <DialogDescription>
+              Pick a task from the same event that must finish first. Circular chains are rejected automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {depCandidatesLoading ? (
+              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Loading tasks in this event…
+              </div>
+            ) : (depCandidates?.length ?? 0) === 0 ? (
+              <p className="rounded-lg border border-dashed border-stone-300 px-3 py-6 text-center text-sm text-muted-foreground/70">
+                Every other task in this event is already a dependency.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="dep-select">Task this one waits on</Label>
+                <Select value={depSelected} onValueChange={setDepSelected}>
+                  <SelectTrigger id="dep-select" className="h-11 w-full" aria-label="Dependency task">
+                    <SelectValue placeholder="Choose a task…" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {depCandidates?.map((candidate) => (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        <span className="flex items-center gap-2">
+                          <span className={cn('h-2 w-2 rounded-full', COLUMN_DOT[candidate.status])} aria-hidden="true" />
+                          <span className="line-clamp-1">{candidate.title}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {depSelected ? (
+                  <p className="text-[11px] text-muted-foreground/70">
+                    “{detail?.title}” cannot be completed until the selected task is completed.
+                  </p>
+                ) : null}
+              </div>
+            )}
+            <DialogFooter className="gap-2 pt-1">
+              <Button type="button" variant="outline" className="min-h-11" onClick={() => setDepDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleAddDependency()}
+                disabled={!depSelected || depSaving}
+                className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {depSaving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Link2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                )}
+                {depSaving ? 'Adding…' : 'Add dependency'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ============ Bulk action bar ============ */}
       <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">

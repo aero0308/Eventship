@@ -22,6 +22,7 @@ import {
   Settings2,
   ShieldCheck,
   User,
+  UserCheck,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -92,6 +93,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.EVENTS, label: 'Events', icon: CalendarDays },
   { path: ROUTES.CALENDAR, label: 'Calendar', icon: CalendarRange },
   { path: ROUTES.TASKS, label: 'Tasks', icon: CheckSquare },
+  { path: ROUTES.MY_TASKS, label: 'My Tasks', icon: UserCheck },
   { path: ROUTES.TEAMS, label: 'Teams', icon: Users },
   { path: ROUTES.ACTIVITY, label: 'Activity', icon: History },
 ]

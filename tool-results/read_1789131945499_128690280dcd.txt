@@ -1,0 +1,1107 @@
+  2140→                </div>
+  2141→            </Modal>
+  2142→        </div>
+  2143→    )
+  2144→}
+  2145→frontend/src/components/tasks/TaskStatusUpdateModal.tsx - Modal for status changes with reason:
+  2146→
+  2147→typescript
+  2148→import { useState } from 'react'
+  2149→import { TaskStatus } from '../../types/task'
+  2150→import { Modal } from '../ui/Modal'
+  2151→import { Textarea } from '../ui/Textarea'
+  2152→import { Button } from '../ui/Button'
+  2153→
+  2154→interface TaskStatusUpdateModalProps {
+  2155→    isOpen: boolean
+  2156→    onClose: () => void
+  2157→    currentStatus: TaskStatus
+  2158→    newStatus: TaskStatus | null
+  2159→    onSubmit: (comment?: string) => Promise<void>
+  2160→}
+  2161→
+  2162→const statusMessages: Record<TaskStatus, string> = {
+  2163→    NOT_STARTED: 'Why is this task not started?',
+  2164→    IN_PROGRESS: 'Add a progress note (optional)',
+  2165→    BLOCKED: 'Why is this task blocked? (required)',
+  2166→    COMPLETED: 'Add a completion note (optional)'
+  2167→}
+  2168→
+  2169→export const TaskStatusUpdateModal = ({
+  2170→    isOpen,
+  2171→    onClose,
+  2172→    currentStatus,
+  2173→    newStatus,
+  2174→    onSubmit
+  2175→}: TaskStatusUpdateModalProps) => {
+  2176→    const [comment, setComment] = useState('')
+  2177→    const [isSubmitting, setIsSubmitting] = useState(false)
+  2178→    
+  2179→    if (!newStatus) return null
+  2180→    
+  2181→    const isBlockedStatus = newStatus === 'BLOCKED'
+  2182→    const isRequired = isBlockedStatus
+  2183→    
+  2184→    const handleSubmit = async () => {
+  2185→        if (isRequired && !comment.trim()) return
+  2186→        
+  2187→        setIsSubmitting(true)
+  2188→        try {
+  2189→            await onSubmit(comment.trim() || undefined)
+  2190→            setComment('')
+  2191→            onClose()
+  2192→        } finally {
+  2193→            setIsSubmitting(false)
+  2194→        }
+  2195→    }
+  2196→    
+  2197→    return (
+  2198→        <Modal isOpen={isOpen} onClose={onClose} title="Update Task Status">
+  2199→            <div className="space-y-4">
+  2200→                <p className="text-sm text-gray-600">
+  2201→                    Moving from <strong>{currentStatus.replace('_', ' ')}</strong> to{' '}
+  2202→                    <strong>{newStatus.replace('_', ' ')}</strong>
+  2203→                </p>
+  2204→                
+  2205→                <Textarea
+  2206→                    label={statusMessages[newStatus]}
+  2207→                    value={comment}
+  2208→                    onChange={(e) => setComment(e.target.value)}
+  2209→                    placeholder={isBlockedStatus 
+  2210→                        ? "e.g., Waiting for venue confirmation, budget not approved, etc." 
+  2211→                        : "Add optional notes..."
+  2212→                    }
+  2213→                    rows={4}
+  2214→                    error={isRequired && !comment.trim() ? 'Reason is required for blocked tasks' : undefined}
+  2215→                />
+  2216→                
+  2217→                <div className="flex gap-2 justify-end">
+  2218→                    <Button variant="secondary" onClick={onClose}>
+  2219→                        Cancel
+  2220→                    </Button>
+  2221→                    <Button 
+  2222→                        onClick={handleSubmit} 
+  2223→                        isLoading={isSubmitting}
+  2224→                        disabled={isRequired && !comment.trim()}
+  2225→                    >
+  2226→                        Update Status
+  2227→                    </Button>
+  2228→                </div>
+  2229→            </div>
+  2230→        </Modal>
+  2231→    )
+  2232→}
+  2233→frontend/src/pages/tasks/TaskDetailPage.tsx - Main detail page:
+  2234→
+  2235→typescript
+  2236→import { useEffect, useState } from 'react'
+  2237→import { useParams, Link, useNavigate } from 'react-router-dom'
+  2238→import { useTask } from '../../hooks/useTasks'
+  2239→import { useTaskStore } from '../../stores/taskStore'
+  2240→import { useAuth } from '../../hooks/useAuth'
+  2241→import { TaskStatusBadge } from '../../components/tasks/TaskStatusBadge'
+  2242→import { TaskPriorityBadge } from '../../components/tasks/TaskPriorityBadge'
+  2243→import { TaskComments } from '../../components/tasks/TaskComments'
+  2244→import { TaskDependencies } from '../../components/tasks/TaskDependencies'
+  2245→import { TaskStatusUpdateModal } from '../../components/tasks/TaskStatusUpdateModal'
+  2246→import { Button } from '../../components/ui/Button'
+  2247→import { Card } from '../../components/ui/Card'
+  2248→import { Avatar } from '../../components/ui/Avatar'
+  2249→import { Select } from '../../components/ui/Select'
+  2250→import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+  2251→import { TaskStatus } from '../../types/task'
+  2252→import { format } from 'date-fns'
+  2253→import toast from 'react-hot-toast'
+  2254→
+  2255→export const TaskDetailPage = () => {
+  2256→    const { id } = useParams<{ id: string }>()
+  2257→    const navigate = useNavigate()
+  2258→    const { user } = useAuth()
+  2259→    const { task, isLoading, refetch } = useTask(id!)
+  2260→    const { 
+  2261→        comments, dependencies, tasks: allTasks,
+  2262→        fetchComments, fetchDependencies, fetchTasks,
+  2263→        updateStatus, deleteTask 
+  2264→    } = useTaskStore()
+  2265→    
+  2266→    const [showStatusModal, setShowStatusModal] = useState(false)
+  2267→    const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
+  2268→    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  2269→    
+  2270→    useEffect(() => {
+  2271→        if (id) {
+  2272→            fetchComments(id)
+  2273→            fetchDependencies(id)
+  2274→            fetchTasks() // For dependency selection
+  2275→        }
+  2276→    }, [id])
+  2277→    
+  2278→    const handleStatusChange = (newStatus: TaskStatus) => {
+  2279→        // If moving to BLOCKED, show modal for reason
+  2280→        if (newStatus === 'BLOCKED') {
+  2281→            setPendingStatus(newStatus)
+  2282→            setShowStatusModal(true)
+  2283→            return
+  2284→        }
+  2285→        
+  2286→        // For other statuses, update directly
+  2287→        handleStatusSubmit(newStatus)
+  2288→    }
+  2289→    
+  2290→    const handleStatusSubmit = async (status: TaskStatus, comment?: string) => {
+  2291→        try {
+  2292→            await updateStatus(id!, { status, comment })
+  2293→            toast.success(`Status updated to ${status.replace('_', ' ')}`)
+  2294→            refetch()
+  2295→        } catch (error: any) {
+  2296→            toast.error(error.response?.data?.detail || 'Failed to update status')
+  2297→        }
+  2298→    }
+  2299→    
+  2300→    const handleDelete = async () => {
+  2301→        try {
+  2302→            await deleteTask(id!)
+  2303→            toast.success('Task deleted')
+  2304→            navigate('/tasks')
+  2305→        } catch (error: any) {
+  2306→            toast.error(error.response?.data?.detail || 'Failed to delete')
+  2307→        }
+  2308→    }
+  2309→    
+  2310→    if (isLoading) return <div className="p-6">Loading...</div>
+  2311→    if (!task) return <div className="p-6">Task not found</div>
+  2312→    
+  2313→    return (
+  2314→        <div className="space-y-6 max-w-5xl mx-auto">
+  2315→            {/* Header */}
+  2316→            <div>
+  2317→                <Link to="/tasks" className="text-blue-600 hover:underline text-sm">
+  2318→                    ← Back to Tasks
+  2319→                </Link>
+  2320→                <div className="flex justify-between items-start mt-2">
+  2321→                    <div className="flex-1">
+  2322→                        <h1 className="text-3xl font-bold">{task.title}</h1>
+  2323→                        <div className="flex items-center gap-3 mt-2">
+  2324→                            <TaskStatusBadge status={task.status} />
+  2325→                            <TaskPriorityBadge priority={task.priority} />
+  2326→                        </div>
+  2327→                        {task.event_name && (
+  2328→                            <Link 
+  2329→                                to={`/events/${task.event_id}`}
+  2330→                                className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+  2331→                            >
+  2332→                                📅 {task.event_name}
+  2333→                            </Link>
+  2334→                        )}
+  2335→                    </div>
+  2336→                    <div className="flex gap-2">
+  2337→                        <Link to={`/tasks/${id}/edit`}>
+  2338→                            <Button variant="secondary">Edit</Button>
+  2339→                        </Link>
+  2340→                        <Button variant="danger" onClick={() => setShowDeleteDialog(true)}>
+  2341→                            Delete
+  2342→                        </Button>
+  2343→                    </div>
+  2344→                </div>
+  2345→            </div>
+  2346→            
+  2347→            {/* Quick actions */}
+  2348→            <Card>
+  2349→                <div className="p-4 flex flex-wrap items-center gap-4">
+  2350→                    <div className="flex-1 min-w-[200px]">
+  2351→                        <label className="text-xs text-gray-500 block mb-1">Quick Status Update</label>
+  2352→                        <Select
+  2353→                            value={task.status}
+  2354→                            onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
+  2355→                            options={[
+  2356→                                { value: 'NOT_STARTED', label: 'Not Started' },
+  2357→                                { value: 'IN_PROGRESS', label: 'In Progress' },
+  2358→                                { value: 'BLOCKED', label: 'Blocked' },
+  2359→                                { value: 'COMPLETED', label: 'Completed' }
+  2360→                            ]}
+  2361→                        />
+  2362→                    </div>
+  2363→                    {task.due_date && (
+  2364→                        <div>
+  2365→                            <label className="text-xs text-gray-500 block mb-1">Due Date</label>
+  2366→                            <p className={`font-medium ${new Date(task.due_date) < new Date() && task.status !== 'COMPLETED' ? 'text-red-600' : ''}`}>
+  2367→                                {format(new Date(task.due_date), 'PPp')}
+  2368→                            </p>
+  2369→                        </div>
+  2370→                    )}
+  2371→                </div>
+  2372→            </Card>
+  2373→            
+  2374→            {/* Description */}
+  2375→            {task.description && (
+  2376→                <Card>
+  2377→                    <div className="p-6">
+  2378→                        <h2 className="font-semibold mb-3">Description</h2>
+  2379→                        <p className="text-gray-700 whitespace-pre-wrap">{task.description}</p>
+  2380→                    </div>
+  2381→                </Card>
+  2382→            )}
+  2383→            
+  2384→            {/* Details Grid */}
+  2385→            <Card>
+  2386→                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+  2387→                    <div>
+  2388→                        <h3 className="text-sm text-gray-500 mb-1">Assigned To</h3>
+  2389→                        {task.assignee_name ? (
+  2390→                            <div className="flex items-center gap-2">
+  2391→                                <Avatar name={task.assignee_name} size="md" />
+  2392→                                <div>
+  2393→                                    <p className="font-medium">{task.assignee_name}</p>
+  2394→                                </div>
+  2395→                            </div>
+  2396→                        ) : (
+  2397→                            <p className="text-gray-400 italic">Unassigned</p>
+  2398→                        )}
+  2399→                    </div>
+  2400→                    
+  2401→                    <div>
+  2402→                        <h3 className="text-sm text-gray-500 mb-1">Created By</h3>
+  2403→                        <p className="font-medium">{task.creator_name || 'Unknown'}</p>
+  2404→                        <p className="text-xs text-gray-500">
+  2405→                            {format(new Date(task.created_at), 'PPp')}
+  2406→                        </p>
+  2407→                    </div>
+  2408→                    
+  2409→                    {task.estimated_hours && (
+  2410→                        <div>
+  2411→                            <h3 className="text-sm text-gray-500 mb-1">Estimated Hours</h3>
+  2412→                            <p className="font-medium">{task.estimated_hours}h</p>
+  2413→                        </div>
+  2414→                    )}
+  2415→                    
+  2416→                    {task.actual_hours && (
+  2417→                        <div>
+  2418→                            <h3 className="text-sm text-gray-500 mb-1">Actual Hours</h3>
+  2419→                            <p className="font-medium">{task.actual_hours}h</p>
+  2420→                        </div>
+  2421→                    )}
+  2422→                </div>
+  2423→            </Card>
+  2424→            
+  2425→            {/* Dependencies */}
+  2426→            <Card>
+  2427→                <div className="p-6">
+  2428→                    <TaskDependencies taskId={id!} allTasks={allTasks} />
+  2429→                </div>
+  2430→            </Card>
+  2431→            
+  2432→            {/* Comments */}
+  2433→            <Card>
+  2434→                <div className="p-6">
+  2435→                    <TaskComments taskId={id!} />
+  2436→                </div>
+  2437→            </Card>
+  2438→            
+  2439→            {/* Modals */}
+  2440→            <TaskStatusUpdateModal
+  2441→                isOpen={showStatusModal}
+  2442→                onClose={() => { setShowStatusModal(false); setPendingStatus(null) }}
+  2443→                currentStatus={task.status}
+  2444→                newStatus={pendingStatus}
+  2445→                onSubmit={(comment) => handleStatusSubmit(pendingStatus!, comment)}
+  2446→            />
+  2447→            
+  2448→            <ConfirmDialog
+  2449→                isOpen={showDeleteDialog}
+  2450→                title="Delete Task"
+  2451→                message="Are you sure you want to delete this task? This cannot be undone."
+  2452→                onConfirm={handleDelete}
+  2453→                onCancel={() => setShowDeleteDialog(false)}
+  2454→            />
+  2455→        </div>
+  2456→    )
+  2457→}
+  2458→Requirements:
+  2459→
+  2460→Show all task details
+  2461→
+  2462→Quick status updates
+  2463→
+  2464→Comments section with add/delete
+  2465→
+  2466→Dependencies section with add/remove
+  2467→
+  2468→Modal for blocker reasons
+  2469→
+  2470→Proper formatting
+  2471→
+  2472→Generate ALL complete files.
+  2473→
+  2474→text
+  2475→
+  2476→---
+  2477→
+  2478→## 📌 Step 5.6: Task Pages (List, My Tasks, Create, Edit)
+  2479→
+  2480→### 🤖 Complete Prompt for Step 5.6:
+  2481→Now create the remaining task pages.
+  2482→
+  2483→Create these files:
+  2484→
+  2485→frontend/src/components/tasks/TaskStatsCards.tsx:
+  2486→
+  2487→typescript
+  2488→import { TaskStats } from '../../types/task'
+  2489→import { Card } from '../ui/Card'
+  2490→
+  2491→interface TaskStatsCardsProps {
+  2492→    stats: TaskStats | null
+  2493→}
+  2494→
+  2495→export const TaskStatsCards = ({ stats }: TaskStatsCardsProps) => {
+  2496→    if (!stats) return null
+  2497→    
+  2498→    const cards = [
+  2499→        { label: 'Total Tasks', value: stats.total, color: 'text-gray-900' },
+  2500→        { label: 'In Progress', value: stats.in_progress, color: 'text-blue-600' },
+  2501→        { label: 'Blocked', value: stats.blocked, color: 'text-red-600' },
+  2502→        { label: 'Completed', value: stats.completed, color: 'text-green-600' },
+  2503→        { label: 'Overdue', value: stats.overdue, color: 'text-orange-600' }
+  2504→    ]
+  2505→    
+  2506→    return (
+  2507→        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+  2508→            {cards.map(card => (
+  2509→                <Card key={card.label}>
+  2510→                    <div className="p-4">
+  2511→                        <p className="text-xs text-gray-500">{card.label}</p>
+  2512→                        <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
+  2513→                    </div>
+  2514→                </Card>
+  2515→            ))}
+  2516→        </div>
+  2517→    )
+  2518→}
+  2519→frontend/src/pages/tasks/TasksPage.tsx - Main tasks page:
+  2520→
+  2521→typescript
+  2522→import { useState, useEffect } from 'react'
+  2523→import { Link, useSearchParams } from 'react-router-dom'
+  2524→import { useTasks } from '../../hooks/useTasks'
+  2525→import { useTaskStore } from '../../stores/taskStore'
+  2526→import { useEventStore } from '../../stores/eventStore'
+  2527→import { useTeamStore } from '../../stores/teamStore'
+  2528→import { TaskBoard } from '../../components/tasks/TaskBoard'
+  2529→import { TaskCard } from '../../components/tasks/TaskCard'
+  2530→import { TaskFilters } from '../../components/tasks/TaskFilters'
+  2531→import { TaskStatsCards } from '../../components/tasks/TaskStatsCards'
+  2532→import { Button } from '../../components/ui/Button'
+  2533→import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+  2534→import { PageHeader } from '../../components/layout/PageHeader'
+  2535→import { TaskFilters as TaskFiltersType } from '../../types/task'
+  2536→import toast from 'react-hot-toast'
+  2537→
+  2538→export const TasksPage = () => {
+  2539→    const [searchParams, setSearchParams] = useSearchParams()
+  2540→    const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
+  2541→    const [filters, setFilters] = useState<TaskFiltersType>({
+  2542→        event_id: searchParams.get('event_id') || undefined
+  2543→    })
+  2544→    const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
+  2545→    
+  2546→    const { tasks, isLoading, refetch } = useTasks(filters)
+  2547→    const { deleteTask, stats, fetchStats } = useTaskStore()
+  2548→    const { events, fetchEvents } = useEventStore()
+  2549→    const { teams, fetchTeams } = useTeamStore()
+  2550→    
+  2551→    useEffect(() => {
+  2552→        fetchStats()
+  2553→        fetchEvents()
+  2554→        fetchTeams()
+  2555→    }, [])
+  2556→    
+  2557→    const handleDelete = async () => {
+  2558→        if (taskToDelete) {
+  2559→            try {
+  2560→                await deleteTask(taskToDelete)
+  2561→                toast.success('Task deleted')
+  2562→                setTaskToDelete(null)
+  2563→                refetch()
+  2564→                fetchStats()
+  2565→            } catch (error: any) {
+  2566→                toast.error(error.response?.data?.detail || 'Failed to delete')
+  2567→            }
+  2568→        }
+  2569→    }
+  2570→    
+  2571→    const handleStatusChange = async (taskId: string, status: any) => {
+  2572→        try {
+  2573→            await useTaskStore.getState().updateStatus(taskId, { status })
+  2574→            fetchStats()
+  2575→        } catch (error) {
+  2576→            // Error handled in store
+  2577→        }
+  2578→    }
+  2579→    
+  2580→    return (
+  2581→        <div className="space-y-6">
+  2582→            <PageHeader
+  2583→                title="Tasks"
+  2584→                description="Manage all your tasks"
+  2585→                action={
+  2586→                    <Link to="/tasks/new">
+  2587→                        <Button>Create Task</Button>
+  2588→                    </Link>
+  2589→                }
+  2590→            />
+  2591→            
+  2592→            {/* Stats */}
+  2593→            <TaskStatsCards stats={stats} />
+  2594→            
+  2595→            {/* View toggle */}
+  2596→            <div className="flex justify-between items-center">
+  2597→                <div className="flex gap-2">
+  2598→                    <Button
+  2599→                        variant={viewMode === 'board' ? 'primary' : 'secondary'}
+  2600→                        size="sm"
+  2601→                        onClick={() => setViewMode('board')}
+  2602→                    >
+  2603→                        Board View
+  2604→                    </Button>
+  2605→                    <Button
+  2606→                        variant={viewMode === 'list' ? 'primary' : 'secondary'}
+  2607→                        size="sm"
+  2608→                        onClick={() => setViewMode('list')}
+  2609→                    >
+  2610→                        List View
+  2611→                    </Button>
+  2612→                </div>
+  2613→            </div>
+  2614→            
+  2615→            {/* Filters */}
+  2616→            <TaskFilters
+  2617→                filters={filters}
+  2618→                events={events}
+  2619→                onChange={setFilters}
+  2620→                onClear={() => setFilters({})}
+  2621→            />
+  2622→            
+  2623→            {/* Content */}
+  2624→            {viewMode === 'board' ? (
+  2625→                <TaskBoard 
+  2626→                    tasks={tasks} 
+  2627→                    onTaskClick={(task) => window.location.href = `/tasks/${task.id}`}
+  2628→                />
+  2629→            ) : (
+  2630→                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  2631→                    {tasks.map(task => (
+  2632→                        <TaskCard 
+  2633→                            key={task.id} 
+  2634→                            task={task} 
+  2635→                            onDelete={() => setTaskToDelete(task.id)}
+  2636→                        />
+  2637→                    ))}
+  2638→                    {tasks.length === 0 && !isLoading && (
+  2639→                        <div className="col-span-full text-center py-12 text-gray-500">
+  2640→                            No tasks found. Create your first task!
+  2641→                        </div>
+  2642→                    )}
+  2643→                </div>
+  2644→            )}
+  2645→            
+  2646→            <ConfirmDialog
+  2647→                isOpen={!!taskToDelete}
+  2648→                title="Delete Task"
+  2649→                message="Are you sure you want to delete this task?"
+  2650→                onConfirm={handleDelete}
+  2651→                onCancel={() => setTaskToDelete(null)}
+  2652→            />
+  2653→        </div>
+  2654→    )
+  2655→}
+  2656→frontend/src/pages/tasks/MyTasksPage.tsx - My tasks page:
+  2657→
+  2658→typescript
+  2659→import { useState } from 'react'
+  2660→import { Link } from 'react-router-dom'
+  2661→import { useMyTasks } from '../../hooks/useTasks'
+  2662→import { useTaskStore } from '../../stores/taskStore'
+  2663→import { TaskCard } from '../../components/tasks/TaskCard'
+  2664→import { Button } from '../../components/ui/Button'
+  2665→import { Select } from '../../components/ui/Select'
+  2666→import { PageHeader } from '../../components/layout/PageHeader'
+  2667→import { TaskStatus } from '../../types/task'
+  2668→import toast from 'react-hot-toast'
+  2669→
+  2670→export const MyTasksPage = () => {
+  2671→    const [statusFilter, setStatusFilter] = useState<string>('')
+  2672→    const { tasks, isLoading, refetch } = useMyTasks(statusFilter || undefined)
+  2673→    const { updateStatus } = useTaskStore()
+  2674→    
+  2675→    const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+  2676→        try {
+  2677→            await updateStatus(taskId, { status })
+  2678→            toast.success('Status updated')
+  2679→            refetch()
+  2680→        } catch (error) {
+  2681→            toast.error('Failed to update')
+  2682→        }
+  2683→    }
+  2684→    
+  2685→    // Group by status for better display
+  2686→    const groupedTasks = {
+  2687→        IN_PROGRESS: tasks.filter(t => t.status === 'IN_PROGRESS'),
+  2688→        NOT_STARTED: tasks.filter(t => t.status === 'NOT_STARTED'),
+  2689→        BLOCKED: tasks.filter(t => t.status === 'BLOCKED'),
+  2690→        COMPLETED: tasks.filter(t => t.status === 'COMPLETED')
+  2691→    }
+  2692→    
+  2693→    return (
+  2694→        <div className="space-y-6">
+  2695→            <PageHeader
+  2696→                title="My Tasks"
+  2697→                description="Tasks assigned to you"
+  2698→                action={
+  2699→                    <Link to="/tasks">
+  2700→                        <Button variant="secondary">All Tasks</Button>
+  2701→                    </Link>
+  2702→                }
+  2703→            />
+  2704→            
+  2705→            {/* Filter */}
+  2706→            <div className="max-w-xs">
+  2707→                <Select
+  2708→                    value={statusFilter}
+  2709→                    onChange={(e) => setStatusFilter(e.target.value)}
+  2710→                    options={[
+  2711→                        { value: '', label: 'All Statuses' },
+  2712→                        { value: 'NOT_STARTED', label: 'Not Started' },
+  2713→                        { value: 'IN_PROGRESS', label: 'In Progress' },
+  2714→                        { value: 'BLOCKED', label: 'Blocked' },
+  2715→                        { value: 'COMPLETED', label: 'Completed' }
+  2716→                    ]}
+  2717→                />
+  2718→            </div>
+  2719→            
+  2720→            {/* In Progress first (most important) */}
+  2721→            {groupedTasks.IN_PROGRESS.length > 0 && (
+  2722→                <Section title="In Progress" tasks={groupedTasks.IN_PROGRESS} onStatusChange={handleStatusChange} />
+  2723→            )}
+  2724→            
+  2725→            {/* Blocked (needs attention) */}
+  2726→            {groupedTasks.BLOCKED.length > 0 && (
+  2727→                <Section title="Blocked" tasks={groupedTasks.BLOCKED} onStatusChange={handleStatusChange} />
+  2728→            )}
+  2729→            
+  2730→            {/* Not Started */}
+  2731→            {groupedTasks.NOT_STARTED.length > 0 && (
+  2732→                <Section title="Not Started" tasks={groupedTasks.NOT_STARTED} onStatusChange={handleStatusChange} />
+  2733→            )}
+  2734→            
+  2735→            {/* Completed */}
+  2736→            {groupedTasks.COMPLETED.length > 0 && (
+  2737→                <Section title="Completed" tasks={groupedTasks.COMPLETED} onStatusChange={handleStatusChange} />
+  2738→            )}
+  2739→            
+  2740→            {tasks.length === 0 && !isLoading && (
+  2741→                <div className="text-center py-12 text-gray-500">
+  2742→                    No tasks assigned to you yet.
+  2743→                </div>
+  2744→            )}
+  2745→        </div>
+  2746→    )
+  2747→}
+  2748→
+  2749→const Section = ({ title, tasks, onStatusChange }: any) => (
+  2750→    <div>
+  2751→        <h2 className="text-lg font-semibold mb-3">{title} ({tasks.length})</h2>
+  2752→        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  2753→            {tasks.map((task: any) => (
+  2754→                <TaskCard key={task.id} task={task} />
+  2755→            ))}
+  2756→        </div>
+  2757→    </div>
+  2758→)
+  2759→frontend/src/pages/tasks/TaskCreatePage.tsx:
+  2760→
+  2761→typescript
+  2762→import { useEffect, useState } from 'react'
+  2763→import { useNavigate, useSearchParams } from 'react-router-dom'
+  2764→import { useTaskStore } from '../../stores/taskStore'
+  2765→import { useEventStore } from '../../stores/eventStore'
+  2766→import { useTeamStore } from '../../stores/teamStore'
+  2767→import { useAuth } from '../../hooks/useAuth'
+  2768→import { TaskForm } from '../../components/tasks/TaskForm'
+  2769→import { Card } from '../../components/ui/Card'
+  2770→import { PageHeader } from '../../components/layout/PageHeader'
+  2771→import toast from 'react-hot-toast'
+  2772→
+  2773→export const TaskCreatePage = () => {
+  2774→    const navigate = useNavigate()
+  2775→    const [searchParams] = useSearchParams()
+  2776→    const { user } = useAuth()
+  2777→    const { createTask, isLoading } = useTaskStore()
+  2778→    const { events, fetchEvents } = useEventStore()
+  2779→    const { teams, fetchTeams } = useTeamStore()
+  2780→    
+  2781→    useEffect(() => {
+  2782→        fetchEvents()
+  2783→        fetchTeams()
+  2784→    }, [])
+  2785→    
+  2786→    const handleSubmit = async (data: any) => {
+  2787→        try {
+  2788→            const task = await createTask(data)
+  2789→            toast.success('Task created successfully!')
+  2790→            navigate(`/tasks/${task.id}`)
+  2791→        } catch (error: any) {
+  2792→            toast.error(error.response?.data?.detail || 'Failed to create task')
+  2793→        }
+  2794→    }
+  2795→    
+  2796→    return (
+  2797→        <div className="max-w-3xl mx-auto space-y-6">
+  2798→            <PageHeader
+  2799→                title="Create Task"
+  2800→                description="Add a new task"
+  2801→            />
+  2802→            
+  2803→            <Card>
+  2804→                <div className="p-6">
+  2805→                    <TaskForm 
+  2806→                        events={events}
+  2807→                        teams={teams}
+  2808→                        onSubmit={handleSubmit}
+  2809→                        isLoading={isLoading}
+  2810→                    />
+  2811→                </div>
+  2812→            </Card>
+  2813→        </div>
+  2814→    )
+  2815→}
+  2816→frontend/src/pages/tasks/TaskEditPage.tsx:
+  2817→
+  2818→typescript
+  2819→import { useEffect } from 'react'
+  2820→import { useParams, useNavigate } from 'react-router-dom'
+  2821→import { useTask } from '../../hooks/useTasks'
+  2822→import { useTaskStore } from '../../stores/taskStore'
+  2823→import { useEventStore } from '../../stores/eventStore'
+  2824→import { useTeamStore } from '../../stores/teamStore'
+  2825→import { TaskForm } from '../../components/tasks/TaskForm'
+  2826→import { Card } from '../../components/ui/Card'
+  2827→import { PageHeader } from '../../components/layout/PageHeader'
+  2828→import toast from 'react-hot-toast'
+  2829→
+  2830→export const TaskEditPage = () => {
+  2831→    const { id } = useParams<{ id: string }>()
+  2832→    const navigate = useNavigate()
+  2833→    const { task, isLoading: taskLoading } = useTask(id!)
+  2834→    const { updateTask, isLoading } = useTaskStore()
+  2835→    const { events, fetchEvents } = useEventStore()
+  2836→    const { teams, fetchTeams } = useTeamStore()
+  2837→    
+  2838→    useEffect(() => {
+  2839→        fetchEvents()
+  2840→        fetchTeams()
+  2841→    }, [])
+  2842→    
+  2843→    const handleSubmit = async (data: any) => {
+  2844→        try {
+  2845→            await updateTask(id!, data)
+  2846→            toast.success('Task updated!')
+  2847→            navigate(`/tasks/${id}`)
+  2848→        } catch (error: any) {
+  2849→            toast.error(error.response?.data?.detail || 'Failed to update')
+  2850→        }
+  2851→    }
+  2852→    
+  2853→    if (taskLoading) return <div className="p-6">Loading...</div>
+  2854→    if (!task) return <div className="p-6">Not found</div>
+  2855→    
+  2856→    return (
+  2857→        <div className="max-w-3xl mx-auto space-y-6">
+  2858→            <PageHeader
+  2859→                title="Edit Task"
+  2860→                description={`Update ${task.title}`}
+  2861→            />
+  2862→            
+  2863→            <Card>
+  2864→                <div className="p-6">
+  2865→                    <TaskForm 
+  2866→                        task={task}
+  2867→                        events={events}
+  2868→                        teams={teams}
+  2869→                        onSubmit={handleSubmit}
+  2870→                        isLoading={isLoading}
+  2871→                    />
+  2872→                </div>
+  2873→            </Card>
+  2874→        </div>
+  2875→    )
+  2876→}
+  2877→frontend/src/components/tasks/TaskForm.tsx - Task create/edit form:
+  2878→
+  2879→typescript
+  2880→import { useForm } from 'react-hook-form'
+  2881→import { zodResolver } from '@hookform/resolvers/zod'
+  2882→import { z } from 'zod'
+  2883→import { useState, useEffect } from 'react'
+  2884→import { Task, TaskCreate, TaskPriority, TaskStatus } from '../../types/task'
+  2885→import { Event } from '../../types/event'
+  2886→import { Team } from '../../types/team'
+  2887→import { User } from '../../types/user'
+  2888→import { Input } from '../ui/Input'
+  2889→import { Textarea } from '../ui/Textarea'
+  2890→import { Select } from '../ui/Select'
+  2891→import { DatePicker } from '../ui/DatePicker'
+  2892→import { Button } from '../ui/Button'
+  2893→import api from '../../services/api'
+  2894→
+  2895→const taskSchema = z.object({
+  2896→    title: z.string().min(3, 'Title must be at least 3 characters').max(200),
+  2897→    description: z.string().max(2000).optional(),
+  2898→    priority: z.enum(['HIGH', 'MEDIUM', 'LOW']),
+  2899→    status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED']).optional(),
+  2900→    event_id: z.string().min(1, 'Event is required'),
+  2901→    assigned_to: z.string().optional(),
+  2902→    due_date: z.string().optional(),
+  2903→    estimated_hours: z.number().min(0).optional()
+  2904→})
+  2905→
+  2906→interface TaskFormProps {
+  2907→    task?: Task
+  2908→    events: Event[]
+  2909→    teams: Team[]
+  2910→    onSubmit: (data: TaskCreate) => Promise<void>
+  2911→    isLoading?: boolean
+  2912→}
+  2913→
+  2914→export const TaskForm = ({ task, events, teams, onSubmit, isLoading }: TaskFormProps) => {
+  2915→    const [users, setUsers] = useState<User[]>([])
+  2916→    const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  2917→        resolver: zodResolver(taskSchema),
+  2918→        defaultValues: task ? {
+  2919→            title: task.title,
+  2920→            description: task.description || '',
+  2921→            priority: task.priority,
+  2922→            status: task.status,
+  2923→            event_id: task.event_id,
+  2924→            assigned_to: task.assigned_to || '',
+  2925→            due_date: task.due_date ? task.due_date.slice(0, 16) : '',
+  2926→            estimated_hours: task.estimated_hours || undefined
+  2927→        } : {
+  2928→            priority: 'MEDIUM' as TaskPriority,
+  2929→            status: 'NOT_STARTED' as TaskStatus
+  2930→        }
+  2931→    })
+  2932→    
+  2933→    const selectedEventId = watch('event_id')
+  2934→    
+  2935→    // Fetch users when event selected (users in event's team)
+  2936→    useEffect(() => {
+  2937→        if (selectedEventId) {
+  2938→            const event = events.find(e => e.id === selectedEventId)
+  2939→            if (event?.team_id) {
+  2940→                api.get('/users', { params: { team_id: event.team_id } })
+  2941→                    .then(res => setUsers(res.data))
+  2942→                    .catch(() => setUsers([]))
+  2943→            }
+  2944→        }
+  2945→    }, [selectedEventId, events])
+  2946→    
+  2947→    return (
+  2948→        <form onSubmit={handleSubmit((data) => onSubmit(data as TaskCreate))} className="space-y-6">
+  2949→            <Input
+  2950→                label="Task Title"
+  2951→                placeholder="e.g., Book conference venue"
+  2952→                error={errors.title?.message}
+  2953→                {...register('title')}
+  2954→            />
+  2955→            
+  2956→            <Textarea
+  2957→                label="Description"
+  2958→                placeholder="Describe what needs to be done..."
+  2959→                error={errors.description?.message}
+  2960→                rows={4}
+  2961→                {...register('description')}
+  2962→            />
+  2963→            
+  2964→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  2965→                <Select
+  2966→                    label="Event"
+  2967→                    error={errors.event_id?.message}
+  2968→                    placeholder="Select event..."
+  2969→                    options={events.map(e => ({ value: e.id, label: e.name }))}
+  2970→                    {...register('event_id')}
+  2971→                />
+  2972→                
+  2973→                <Select
+  2974→                    label="Assign To"
+  2975→                    error={errors.assigned_to?.message}
+  2976→                    placeholder="Unassigned"
+  2977→                    options={[
+  2978→                        { value: '', label: 'Unassigned' },
+  2979→                        ...users.map(u => ({ value: u.id, label: u.full_name }))
+  2980→                    ]}
+  2981→                    {...register('assigned_to')}
+  2982→                />
+  2983→            </div>
+  2984→            
+  2985→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  2986→                <Select
+  2987→                    label="Priority"
+  2988→                    error={errors.priority?.message}
+  2989→                    options={[
+  2990→                        { value: 'HIGH', label: '🔴 High' },
+  2991→                        { value: 'MEDIUM', label: '🟡 Medium' },
+  2992→                        { value: 'LOW', label: '🟢 Low' }
+  2993→                    ]}
+  2994→                    {...register('priority')}
+  2995→                />
+  2996→                
+  2997→                {task && (
+  2998→                    <Select
+  2999→                        label="Status"
+  3000→                        options={[
+  3001→                            { value: 'NOT_STARTED', label: 'Not Started' },
+  3002→                            { value: 'IN_PROGRESS', label: 'In Progress' },
+  3003→                            { value: 'BLOCKED', label: 'Blocked' },
+  3004→                            { value: 'COMPLETED', label: 'Completed' }
+  3005→                        ]}
+  3006→                        {...register('status')}
+  3007→                    />
+  3008→                )}
+  3009→            </div>
+  3010→            
+  3011→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  3012→                <DatePicker
+  3013→                    label="Due Date"
+  3014→                    error={errors.due_date?.message}
+  3015→                    {...register('due_date')}
+  3016→                />
+  3017→                
+  3018→                <Input
+  3019→                    label="Estimated Hours"
+  3020→                    type="number"
+  3021→                    step="0.5"
+  3022→                    min="0"
+  3023→                    placeholder="e.g., 4"
+  3024→                    error={errors.estimated_hours?.message}
+  3025→                    {...register('estimated_hours', { valueAsNumber: true })}
+  3026→                />
+  3027→            </div>
+  3028→            
+  3029→            <div className="flex gap-4">
+  3030→                <Button type="submit" isLoading={isLoading}>
+  3031→                    {task ? 'Update Task' : 'Create Task'}
+  3032→                </Button>
+  3033→                <Button type="button" variant="secondary" onClick={() => window.history.back()}>
+  3034→                    Cancel
+  3035→                </Button>
+  3036→            </div>
+  3037→        </form>
+  3038→    )
+  3039→}
+  3040→Update frontend/src/App.tsx - Add task routes:
+  3041→
+  3042→typescript
+  3043→import { TasksPage } from './pages/tasks/TasksPage'
+  3044→import { MyTasksPage } from './pages/tasks/MyTasksPage'
+  3045→import { TaskDetailPage } from './pages/tasks/TaskDetailPage'
+  3046→import { TaskCreatePage } from './pages/tasks/TaskCreatePage'
+  3047→import { TaskEditPage } from './pages/tasks/TaskEditPage'
+  3048→
+  3049→// Inside protected routes:
+  3050→<Route path="/tasks" element={<TasksPage />} />
+  3051→<Route path="/tasks/my" element={<MyTasksPage />} />
+  3052→<Route path="/tasks/new" element={<TaskCreatePage />} />
+  3053→<Route path="/tasks/:id" element={<TaskDetailPage />} />
+  3054→<Route path="/tasks/:id/edit" element={<TaskEditPage />} />
+  3055→Update Sidebar - Add Tasks link:
+  3056→
+  3057→typescript
+  3058→{
+  3059→    name: 'My Tasks',
+  3060→    href: '/tasks/my',
+  3061→    icon: CheckCircleIcon,
+  3062→},
+  3063→{
+  3064→    name: 'All Tasks',
+  3065→    href: '/tasks',
+  3066→    icon: ClipboardDocumentListIcon,
+  3067→}
+  3068→Requirements:
+  3069→
+  3070→All pages handle loading/error states
+  3071→
+  3072→Toast notifications
+  3073→
+  3074→Responsive design
+  3075→
+  3076→Proper navigation
+  3077→
+  3078→Generate ALL complete files.
+  3079→
+  3080→text
+  3081→
+  3082→---
+  3083→
+  3084→## 🎯 Phase 5 Completion Checklist
+  3085→
+  3086→### ✅ Frontend
+  3087→- [ ] Task types defined
+  3088→- [ ] Dropdown component
+  3089→- [ ] TaskStatusBadge component
+  3090→- [ ] TaskPriorityBadge component
+  3091→- [ ] TaskFilters component
+  3092→- [ ] TaskCard component
+  3093→- [ ] TaskColumn component (Kanban)
+  3094→- [ ] DraggableTaskCard component
+  3095→- [ ] TaskBoard component
+  3096→- [ ] TaskComments component
+  3097→- [ ] TaskDependencies component
+  3098→- [ ] TaskStatusUpdateModal component
+  3099→- [ ] TaskStatsCards component
+  3100→- [ ] TaskForm component
+  3101→- [ ] Task service
+  3102→- [ ] Task store
+  3103→- [ ] Custom hooks
+  3104→- [ ] TasksPage
+  3105→- [ ] MyTasksPage
+  3106→- [ ] TaskDetailPage
+  3107→- [ ] TaskCreatePage
+  3108→- [ ] TaskEditPage
+  3109→- [ ] Routes added
+  3110→
+  3111→### ✅ Backend
+  3112→- [ ] Task schemas
+  3113→- [ ] Task CRUD (with comments, dependencies)
+  3114→- [ ] Task API endpoints
+  3115→- [ ] Circular dependency detection
+  3116→- [ ] Dependency blocking validation
+  3117→- [ ] Task stats endpoint
+  3118→- [ ] Router registered
+  3119→
+  3120→### ✅ Integration
+  3121→- [ ] Create task works
+  3122→- [ ] List tasks works
+  3123→- [ ] Kanban drag & drop works
+  3124→- [ ] Status updates work
+  3125→- [ ] Comments work
+  3126→- [ ] Dependencies work
+  3127→- [ ] My tasks works
+  3128→- [ ] Task assignment works
+  3129→
+  3130→---
+  3131→
+  3132→## 📋 What You Should Be Able to Test After Phase 5
+  3133→
+  3134→### 1. 🎯 Task Board (Kanban)
+  3135→| Test | Expected |
+  3136→|------|----------|
+  3137→| Go to /tasks | See 4 columns |
+  3138→| Drag task between columns | Task moves, status updates |
+  3139→| Drop in BLOCKED | Prompt for reason |
+  3140→| Task appears in new column | Immediately (optimistic) |
+  3141→| Column counts | Update correctly |
+  3142→
+  3143→### 2. 📝 Create Task
+  3144→| Test | Expected |
+  3145→|------|----------|
+  3146→| Go to /tasks/new | See form |
+  3147→| Title validation | Min 3 chars |
+  3148→| Select event | Users appear for assignment |
+  3149→| Set due date | Date picker works |
+  3150→| Submit | Redirect to detail |
+  3151→
+  3152→### 3. 👁️ Task Detail
+  3153→| Test | Expected |
+  3154→|------|----------|
+  3155→| View task info | All fields shown |
+  3156→| Change status | Updates instantly |
+  3157→| Add comment | Appears at top |
+  3158→| Delete own comment | Removed |
+  3159→| Add dependency | Task appears in list |
+  3160→| Complete with deps | Error shown |
+  3161→
+  3162→### 4. 💼 My Tasks
+  3163→| Test | Expected |
+  3164→|------|----------|
+  3165→| Go to /tasks/my | Only your tasks |
+  3166→| Grouped by status | In Progress first |
+  3167→| Filter by status | Works |
+  3168→| Update status | Instantly reflected |
+  3169→
+  3170→### 5. 🔗 Dependencies
+  3171→| Test | Expected |
+  3172→|------|----------|
+  3173→| Add dependency | Appears in list |
+  3174→| Try circular | Error shown |
+  3175→| Try self-dep | Error shown |
+  3176→| Complete blocked task | Error shown |
+  3177→| Remove dependency | Removed |
+  3178→
+  3179→---
+  3180→
+  3181→## 🎬 Quick Test Flow (10 Minutes)
+  3182→
+  3183→### Step 1: Create Event (if not done)
+  3184→1. Go to Events → Create Event
+  3185→2. Fill and create
+  3186→
+  3187→### Step 2: Create Task
+  3188→1. Go to Tasks → Create Task
+  3189→2. Fill:
+  3190→   - Title: **Book conference venue**
+  3191→   - Description: **Find and book venue for 200 people**
+  3192→   - Priority: **High**
+  3193→   - Event: **Select your event**
+  3194→   - Assign To: **Select yourself**
+  3195→   - Due: **Next week**
+  3196→3. Click **Create Task**
+  3197→4. ✅ Redirected to detail
+  3198→
+  3199→### Step 3: Test Kanban
+  3200→1. Go to Tasks (board view)
+  3201→2. See task in **Not Started**
+  3202→3. Drag task to **In Progress**
+  3203→4. ✅ Toast: "Task moved"
+  3204→5. Drag to **Blocked**
+  3205→6. ✅ Prompt for reason, enter reason
+  3206→7. ✅ Toast: "Task marked as blocked"
+  3207→
+  3208→### Step 4: Add Comment
+  3209→1. Go to task detail
+  3210→2. Scroll to comments
+  3211→3. Type: **"Waiting for approval"**
+  3212→4. Post
+  3213→5. ✅ Appears in list
+  3214→
+  3215→### Step 5: Add Dependency
+  3216→1. Create second task
+  3217→2. Go to second task
+  3218→3. Add dependency on first task
+  3219→4. Try to complete second task
+  3220→5. ✅ Error: "Cannot complete with incomplete dependencies"
+  3221→
+  3222→### Step 6: Test My Tasks
+  3223→1. Go to My Tasks
+  3224→2. See all your tasks grouped
+  3225→3. Update a status
+  3226→4. ✅ Reflected instantly
+  3227→
+  3228→---
+  3229→
+  3230→## 🚨 Common Issues & Fixes
+  3231→
+  3232→### Issue 1: Drag & drop not working
+  3233→**Fix:** Check @dnd-kit installed:
+  3234→```bash
+  3235→docker-compose exec frontend npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
+  3236→Issue 2: Can't see assignees
+  3237→Cause: No users in event's team
+  3238→Fix: Add users to team in Phase 3
+  3239→
+  3240→Issue 3: Circular dependency error
+  3241→Cause: Task A depends on B, B depends on A
+  3242→Fix: This is intentional validation
+  3243→
+  3244→Issue 4: "Cannot complete" error
+  3245→Cause: Task has incomplete dependencies
+  3246→Fix: Complete dependencies first

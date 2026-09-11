@@ -15,6 +15,7 @@ import { emitBoardChange } from '@/lib/realtime'
 import {
   serializeTaskDetail,
   taskDetailInclude,
+  wouldCreateCycle,
   type TaskWithComments,
 } from '../../_lib/tasks'
 import type { Prisma } from '@prisma/client'
@@ -60,7 +61,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (!fullManager) {
       const restricted = Object.keys(body).filter(
-        (key) => key !== 'status' && key !== 'actualHours'
+        (key) => key !== 'status' && key !== 'actualHours' && key !== 'statusNote'
       )
       if (restricted.length > 0) {
         throw new ApiError(403, 'Assignees can only update task status and actual hours')
@@ -81,9 +82,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (body.dependsOnTaskIds) {
       const depIds = [...new Set(body.dependsOnTaskIds)]
       if (depIds.includes(id)) throw new ApiError(400, 'A task cannot depend on itself')
-      const found = await db.task.findMany({ where: { id: { in: depIds } }, select: { id: true } })
+      const found = await db.task.findMany({ where: { id: { in: depIds } }, select: { id: true, title: true } })
       if (found.length !== depIds.length) {
         throw new ApiError(404, 'One or more dependency tasks not found')
+      }
+      const titleById = new Map(found.map((t) => [t.id, t.title]))
+      // Phase 5 circular-dependency check: only NEW edges need the walk —
+      // edges that already exist cannot close a loop (they were checked when
+      // they were added, and a cycle can only be introduced by a new edge).
+      const existingDeps = new Set(existing.dependencies.map((dep) => dep.dependsOnTaskId))
+      for (const depId of depIds) {
+        if (existingDeps.has(depId)) continue
+        if (await wouldCreateCycle(id, depId)) {
+          throw new ApiError(
+            400,
+            `Circular dependency detected — “${titleById.get(depId) ?? 'that task'}” already depends on this task directly or indirectly`
+          )
+        }
       }
     }
 
@@ -177,12 +192,46 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await logActivity(user.id, notifyType, { taskId: id, title, from: existing.status, to: body.status })
     }
 
+    // Phase 5 statusNote: an optional note attached to a status change becomes
+    // a regular comment authored by the mover (the blocker-reporting flow —
+    // "why is this blocked?" — lands here as a first-class comment).
+    let statusNoteComment: {
+      id: string
+      content: string
+      taskId: string
+      userId: string
+      user: { id: string; fullName: string; role: string } | null
+      createdAt: string
+    } | null = null
+    if (body.statusNote) {
+      const note = await db.taskComment.create({
+        data: { content: body.statusNote, taskId: id, userId: user.id },
+        include: { user: { select: { id: true, fullName: true, role: true } } },
+      })
+      statusNoteComment = {
+        id: note.id,
+        content: note.content,
+        taskId: note.taskId,
+        userId: note.userId,
+        user: note.user ?? null,
+        createdAt: note.createdAt.toISOString(),
+      }
+    }
+
     // Serialize once; the full DTO also rides the realtime broadcast so other
     // clients can patch their boards optimistically without refetching.
     const task = await fetchTaskDetail(id)
     if (!task) throw new ApiError(404, 'Task not found')
     const serialized = serializeTaskDetail(task)
     emitBoardChange(existing.eventId, 'task:updated', user.id, { taskId: id, task: serialized })
+    if (statusNoteComment) {
+      // After the task patch so open dialogs append the note to a fresh detail.
+      emitBoardChange(existing.eventId, 'comment:added', user.id, {
+        taskId: id,
+        taskTitle: title,
+        comment: statusNoteComment,
+      })
+    }
 
     return ok({ task: serialized })
   } catch (error) {

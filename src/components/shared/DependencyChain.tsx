@@ -10,7 +10,7 @@
  * referenced task when `onOpenTask` is provided.
  */
 
-import { ArrowUpRight, CheckCircle2, Link2 } from 'lucide-react'
+import { ArrowUpRight, CheckCircle2, Link2, Loader2, X } from 'lucide-react'
 import type { TaskDTO } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -62,10 +62,16 @@ export function DependencyChain({
   taskId,
   dependencies,
   onOpenTask,
+  onRemove,
+  removingDepId,
 }: {
   taskId: string
   dependencies: NonNullable<TaskDTO['dependencies']>
   onOpenTask?: (taskId: string) => void
+  /** Phase 5: when provided, direct dependency rows get a remove affordance. */
+  onRemove?: (dependsOnTaskId: string) => void
+  /** Id of a dependency currently being removed (spinner state). */
+  removingDepId?: string | null
 }) {
   // Dedupe upstream rows per parent (and never re-show the task itself).
   const seen = new Set<string>([taskId])
@@ -151,6 +157,25 @@ export function DependencyChain({
                     className="h-3 w-3 shrink-0 text-muted-foreground/30 transition-colors group-hover/dep:text-emerald-500"
                     aria-hidden="true"
                   />
+                ) : null}
+                {onRemove && dep.dependsOnTaskId !== taskId ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemove(dep.dependsOnTaskId)
+                    }}
+                    disabled={removingDepId === dep.dependsOnTaskId}
+                    className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-500/10"
+                    aria-label={`Remove dependency ${dep.dependsOnTaskTitle ?? ''}`}
+                    title="Remove dependency"
+                  >
+                    {removingDepId === dep.dependsOnTaskId ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    )}
+                  </button>
                 ) : null}
               </div>
 

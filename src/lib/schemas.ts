@@ -202,6 +202,12 @@ export const updateTaskSchema = z
     estimatedHours: nullablePositiveNumber,
     actualHours: nullablePositiveNumber,
     dependsOnTaskIds: z.array(z.uuid()).optional(),
+    /**
+     * Optional note attached to a status change (Phase 5 TaskStatusUpdate.comment).
+     * Blocked reasons are the primary use — the note becomes a task comment
+     * authored by the mover.
+     */
+    statusNote: z.string().trim().min(1, 'Status note cannot be empty').max(500, 'Status note must be at most 500 characters').optional(),
   })
   .refine(dateRange, { message: 'Start date must be on or before the due date', path: ['startDate'] })
 

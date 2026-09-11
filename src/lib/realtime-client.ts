@@ -26,6 +26,8 @@ export interface BoardChangePayload {
   at: string
   taskId?: string
   taskTitle?: string
+  /** comment:deleted — the removed comment's id. */
+  commentId?: string
   bulk?: boolean
   /** task:updated / task:created — the serialized DTO for optimistic patching. */
   task?: unknown
