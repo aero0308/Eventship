@@ -79,7 +79,15 @@ export interface EventDTO {
   createdBy: string
   creator?: Pick<UserDTO, 'id' | 'fullName'> | null
   taskCount?: number
-  taskStats?: { total: number; completed: number; inProgress: number; blocked: number; notStarted: number }
+  taskStats?: {
+    total: number
+    completed: number
+    inProgress: number
+    blocked: number
+    notStarted: number
+    /** 0–100 completion rate (server-computed, Phase 4 EventProgress.percentage). */
+    percent: number
+  }
   createdAt: string
   updatedAt: string
 }

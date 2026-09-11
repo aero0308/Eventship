@@ -38,10 +38,12 @@ export interface TaskStats {
   inProgress: number
   blocked: number
   notStarted: number
+  /** 0–100 completion rate, rounded (Phase 4 EventProgress.percentage). */
+  percent: number
 }
 
 export function emptyTaskStats(): TaskStats {
-  return { total: 0, completed: 0, inProgress: 0, blocked: 0, notStarted: 0 }
+  return { total: 0, completed: 0, inProgress: 0, blocked: 0, notStarted: 0, percent: 0 }
 }
 
 /**
@@ -68,6 +70,11 @@ export async function computeTaskStatsMap(eventIds: string[]): Promise<Map<strin
     else if (row.status === 'BLOCKED') stats.blocked += count
     else if (row.status === 'NOT_STARTED') stats.notStarted += count
     statsMap.set(row.eventId, stats)
+  }
+
+  // Derive the completion percentage once, after aggregation.
+  for (const stats of statsMap.values()) {
+    stats.percent = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0
   }
   return statsMap
 }

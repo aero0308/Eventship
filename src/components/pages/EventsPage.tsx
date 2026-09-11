@@ -6,12 +6,14 @@ import { motion } from 'framer-motion'
 import {
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   Download,
   Loader2,
   MapPin,
   Plus,
   Search,
   Users,
+  X,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import type { EventDTO, EventStatus, TeamDTO } from '@/types'
@@ -120,6 +122,9 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [teamFilter, setTeamFilter] = useState<string>('all')
+  // Date-range filter on the event start date (inclusive, YYYY-MM-DD inputs).
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   // ---- Live "who is where" (presence observer) ---------------------------
   // The grid joins no rooms; it snapshots event:* presence via an ack and
@@ -201,7 +206,13 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
     setLoading(true)
     try {
       const data = await api.get<{ events: EventDTO[] }>(
-        `/events${qs({ status: statusFilter === 'all' ? undefined : statusFilter, teamId: teamFilter === 'all' ? undefined : teamFilter, search: search.trim() || undefined })}`
+        `/events${qs({
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          teamId: teamFilter === 'all' ? undefined : teamFilter,
+          search: search.trim() || undefined,
+          startDateFrom: dateFrom || undefined,
+          startDateTo: dateTo || undefined,
+        })}`
       )
       setEvents(data.events)
     } catch (error) {
@@ -210,7 +221,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, teamFilter, search, toast])
+  }, [statusFilter, teamFilter, search, dateFrom, dateTo, toast])
 
   useEffect(() => {
     void loadTeams()
@@ -227,6 +238,25 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
     teams.forEach((team) => map.set(team.id, team.name))
     return map
   }, [teams])
+
+  // How many filters are actively narrowing the list (for the Clear-all chip).
+  const activeFilterCount = useMemo(
+    () =>
+      (statusFilter !== 'all' ? 1 : 0) +
+      (teamFilter !== 'all' ? 1 : 0) +
+      (search.trim() ? 1 : 0) +
+      (dateFrom ? 1 : 0) +
+      (dateTo ? 1 : 0),
+    [statusFilter, teamFilter, search, dateFrom, dateTo]
+  )
+
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+    setTeamFilter('all')
+    setDateFrom('')
+    setDateTo('')
+  }
 
   const openCreate = () => {
     setForm(EMPTY_FORM)
@@ -279,8 +309,11 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
 
   const handleExport = () => {
     const rows: (string | number | null)[][] = [
-      ['Name', 'Status', 'Team', 'Location', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Created by'],
-      ...events.map((event) => [
+      ['Name', 'Status', 'Team', 'Location', 'Start date', 'End date', 'Tasks', 'Completed', 'In progress', 'Blocked', 'Not started', 'Progress %', 'Created by'],
+      ...events.map((event) => {
+        const total = event.taskStats?.total ?? event.taskCount ?? 0
+        const completed = event.taskStats?.completed ?? 0
+        return [
         event.name,
         EVENT_STATUS_LABELS[event.status] ?? event.status,
         event.team?.name ?? teamNameById.get(event.teamId) ?? '',
@@ -292,8 +325,10 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
         event.taskStats?.inProgress ?? 0,
         event.taskStats?.blocked ?? 0,
         event.taskStats?.notStarted ?? 0,
+        event.taskStats?.percent ?? (total > 0 ? Math.round((completed / total) * 100) : 0),
         event.creator?.fullName ?? '',
-      ]),
+      ]
+      }),
     ]
     downloadCsv(`eventflow-events-${csvDateStamp()}`, rows)
     toast({ title: 'Export ready', description: `${events.length} event(s) exported to CSV.` })
@@ -319,44 +354,109 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
       />
 
       {/* Filter bar */}
-      <section className="mb-6 flex flex-col gap-3 sm:flex-row" aria-label="Event filters">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={searchPlaceholder ?? 'Search events by name or description…'}
-            className="h-11 pl-9"
-            aria-label="Search events"
-          />
+      <section className="mb-6 space-y-3" aria-label="Event filters">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={searchPlaceholder ?? 'Search events by name or description…'}
+              className="h-11 pl-9"
+              aria-label="Search events"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-11 w-full sm:w-44" aria-label="Filter by status">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {EVENT_STATUSES.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {EVENT_STATUS_LABELS[status]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={teamFilter} onValueChange={setTeamFilter}>
+            <SelectTrigger className="h-11 w-full sm:w-48" aria-label="Filter by team">
+              <SelectValue placeholder="All teams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All teams</SelectItem>
+              {teams.map((team) => (
+                <SelectItem key={team.id} value={team.id}>
+                  {team.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-11 w-full sm:w-44" aria-label="Filter by status">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {EVENT_STATUSES.map((status) => (
-              <SelectItem key={status} value={status}>
-                {EVENT_STATUS_LABELS[status]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={teamFilter} onValueChange={setTeamFilter}>
-          <SelectTrigger className="h-11 w-full sm:w-48" aria-label="Filter by team">
-            <SelectValue placeholder="All teams" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All teams</SelectItem>
-            {teams.map((team) => (
-              <SelectItem key={team.id} value={team.id}>
-                {team.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div
+            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5"
+            role="group"
+            aria-label="Filter by start date range"
+          >
+            <CalendarRange className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <label className="sr-only" htmlFor="filter-date-from">
+              Start date from
+            </label>
+            <Input
+              id="filter-date-from"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+            />
+            <span className="text-xs text-muted-foreground/60" aria-hidden="true">
+              →
+            </span>
+            <label className="sr-only" htmlFor="filter-date-to">
+              Start date to
+            </label>
+            <Input
+              id="filter-date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-8 w-[10.5rem] border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+            />
+          </div>
+
+          <p className="text-xs font-medium text-muted-foreground sm:ml-auto" aria-live="polite">
+            {loading ? (
+              'Loading…'
+            ) : (
+              <>
+                <span className="font-semibold tabular-nums text-foreground">{events.length}</span>{' '}
+                event{events.length === 1 ? '' : 's'}
+                {activeFilterCount > 0 ? <span className="text-muted-foreground/70"> match filters</span> : null}
+              </>
+            )}
+          </p>
+
+          {activeFilterCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
+              className="h-8 shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+              aria-label={`Clear all ${activeFilterCount} active filters`}
+            >
+              <X className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              Clear all
+              <Badge variant="secondary" className="ml-1.5 h-5 rounded-full px-1.5 text-[10px] font-bold">
+                {activeFilterCount}
+              </Badge>
+            </Button>
+          ) : null}
+        </div>
       </section>
 
       {/* Events grid */}
@@ -384,7 +484,9 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
             const total = event.taskStats?.total ?? event.taskCount ?? 0
             const completed = event.taskStats?.completed ?? 0
             const blocked = event.taskStats?.blocked ?? 0
-            const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+            // Server-completed percentage (Phase 4), with client fallback for
+            // any payload that predates the field.
+            const percent = event.taskStats?.percent ?? (total > 0 ? Math.round((completed / total) * 100) : 0)
             const viewers = viewersByEvent[event.id] ?? []
             return (
               <motion.div

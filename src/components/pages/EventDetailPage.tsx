@@ -592,8 +592,10 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
   }, [loadEvent, loadTasks])
 
   const stats = useMemo(() => {
-    const s = event?.taskStats ?? { total: 0, completed: 0, inProgress: 0, blocked: 0, notStarted: 0 }
-    const percent = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0
+    // Prefer the server-computed percent; fall back to client math for cached
+    // payloads created before the field existed.
+    const s = event?.taskStats ?? { total: 0, completed: 0, inProgress: 0, blocked: 0, notStarted: 0, percent: 0 }
+    const percent = s.percent ?? (s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0)
     return { ...s, percent }
   }, [event])
 

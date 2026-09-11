@@ -25,6 +25,19 @@ export async function GET(request: Request) {
     // SQLite `contains` matching is case-insensitive for ASCII text.
     if (search) where.name = { contains: search }
 
+    // Date-range filter on the event's start date (inclusive). `startDateTo`
+    // is expanded to the end of that UTC day so same-day events match.
+    // Unparseable values are ignored rather than erroring the whole request.
+    const fromParam = searchParams.get('startDateFrom')
+    const toParam = searchParams.get('startDateTo')
+    const fromDate = fromParam ? new Date(fromParam) : null
+    const toDate = toParam ? new Date(`${toParam}T23:59:59.999Z`) : null
+    const startDate = {
+      ...(fromDate && !Number.isNaN(fromDate.getTime()) ? { gte: fromDate } : {}),
+      ...(toDate && !Number.isNaN(toDate.getTime()) ? { lte: toDate } : {}),
+    }
+    if (Object.keys(startDate).length > 0) where.startDate = startDate
+
     const events = await db.event.findMany({
       where,
       orderBy: { startDate: 'desc' },
