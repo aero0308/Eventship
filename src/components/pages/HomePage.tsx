@@ -1,352 +1,567 @@
 'use client'
 
-import { motion } from 'framer-motion'
-import {
-  ArrowRight,
-  Bell,
-  CalendarCheck,
-  CalendarRange,
-  CheckCircle2,
-  ClipboardList,
-  ListChecks,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Users,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { APP_NAME, ROLE_BADGE_CLASSES, ROLE_LABELS, ROUTES } from '@/lib/constants'
+import { motion, useReducedMotion } from 'framer-motion'
+import { ArrowRight, ArrowUpRight } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ROUTES } from '@/lib/constants'
 import { navigate } from '@/hooks/use-hash-route'
-import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { CustomCursor } from '@/components/landing/CustomCursor'
+import { FadeIn } from '@/components/landing/FadeIn'
+import { FeatureRowGrid } from '@/components/landing/FeatureRow'
+import { LandingNav } from '@/components/landing/LandingNav'
+import { MarqueeStrip } from '@/components/landing/MarqueeStrip'
+import { NumberedList } from '@/components/landing/NumberedList'
+import type { NumberedItem } from '@/components/landing/NumberedList'
+import { ScrollProgress } from '@/components/landing/ScrollProgress'
+import { SectionLabel } from '@/components/landing/SectionLabel'
+import { scrollToSection, scrollToTop } from '@/components/landing/scroll'
 
-interface FeatureItem {
-  icon: LucideIcon
-  title: string
-  description: string
-  tint: string
+/* ------------------------------------------------------------------ data */
+
+const HERO_LINES = ['Event planning,', 'without the', 'chaos'] as const
+
+const PROBLEMS: readonly NumberedItem[] = [
+  {
+    index: '001',
+    title: 'No visibility into who’s doing what',
+    description: 'Work spreads across chat threads, inboxes and memory. Nobody can see the whole board.',
+  },
+  {
+    index: '002',
+    title: 'Blockers go unreported until it’s too late',
+    description: 'Problems surface in the final 48 hours, when there is no time left to fix them.',
+  },
+  {
+    index: '003',
+    title: 'Progress tracked in scattered spreadsheets',
+    description: 'Three versions of the truth, all slightly stale, all owned by someone on vacation.',
+  },
+  {
+    index: '004',
+    title: 'Managers waste hours on follow-ups',
+    description: 'Chasing status instead of removing obstacles. Meetings about the work, not the work.',
+  },
+]
+
+const SOLUTION_FEATURES = [
+  {
+    index: '001',
+    title: 'Task management',
+    description: 'Assign, track and complete tasks with full visibility — priorities, due dates, owners.',
+  },
+  {
+    index: '002',
+    title: 'Blocker reporting',
+    description: 'Flag problems instantly so nothing slips through. Every blocker is seen, owned, resolved.',
+  },
+  {
+    index: '003',
+    title: 'Real-time dashboard',
+    description: 'Watch progress update live across your team. No refresh, no meetings, no guesswork.',
+  },
+] as const
+
+const STEPS = [
+  {
+    title: 'Create',
+    description: 'Set up your event and team. Give it a date, an owner and a plan.',
+  },
+  {
+    title: 'Assign',
+    description: 'Delegate tasks to team members with clear owners and deadlines.',
+  },
+  {
+    title: 'Track',
+    description: 'Watch progress in real time. Blockers surface the moment they appear.',
+  },
+  {
+    title: 'Ship',
+    description: 'Deliver the event on time — with a complete record of everything.',
+  },
+] as const
+
+const CAPABILITIES = [
+  { name: 'Role-based access', description: 'Manager, leader and employee — each role sees exactly what it owns.' },
+  { name: 'Event management', description: 'Draft, plan, run and close out events through every stage.' },
+  { name: 'Task board (kanban)', description: 'Drag-and-drop columns with priorities, due dates and owners.' },
+  { name: 'Team management', description: 'Rosters, managers and membership in one place.' },
+  { name: 'Analytics dashboard', description: 'Completion rates, workload and trends — computed live.' },
+  { name: 'Dependencies', description: 'Tasks that wait on tasks, made explicit and visible.' },
+  { name: 'Comments & blockers', description: 'Context where the work happens, not in another tab.' },
+  { name: 'Real-time updates', description: 'Socket-powered sync — boards, dashboards and calendars move together.' },
+] as const
+
+const STATS = [
+  { value: '0 hrs', label: 'Wasted on status meetings' },
+  { value: '100%', label: 'Team visibility' },
+  { value: '<1s', label: 'Update latency' },
+  { value: '3 roles', label: 'Manager · Leader · Employee' },
+] as const
+
+const STACK = ['Next.js 16', 'TypeScript', 'Prisma', 'SQLite', 'Socket.IO', 'Tailwind CSS'] as const
+
+const MONO_LABEL = 'font-evos-mono text-[11px] uppercase tracking-[0.2em]'
+
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
+
+/* --------------------------------------------------------------- helpers */
+
+function HeroLine({
+  line,
+  index,
+  reduce,
+  children,
+}: {
+  line: string
+  index: number
+  reduce: boolean
+  children?: ReactNode
+}) {
+  return (
+    <span className="-mb-[0.06em] block overflow-hidden pb-[0.06em]">
+      <motion.span
+        className="block"
+        initial={reduce ? false : { y: '112%' }}
+        animate={{ y: '0%' }}
+        transition={{ duration: 0.9, delay: 0.12 + index * 0.1, ease: EASE }}
+      >
+        {children ?? line}
+      </motion.span>
+    </span>
+  )
 }
 
-const FEATURES: FeatureItem[] = [
-  {
-    icon: CalendarCheck,
-    title: 'Event planning & status tracking',
-    description: 'Draft, plan and run events through every stage — from first idea to completed debrief.',
-    tint: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  },
-  {
-    icon: Users,
-    title: 'Team coordination with roles',
-    description: 'Event managers, team leaders and employees — everyone sees exactly what they own.',
-    tint: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
-  },
-  {
-    icon: ListChecks,
-    title: 'Task boards with priorities & dependencies',
-    description: 'A drag-and-drop kanban with priorities, due dates, blockers and task dependencies.',
-    tint: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  },
-  {
-    icon: Bell,
-    title: 'Smart notifications & activity log',
-    description: 'Assignments, status changes and deadline alerts keep the whole team in sync.',
-    tint: 'bg-muted text-muted-foreground',
-  },
-]
-
-const STATS: { icon: LucideIcon; value: string; label: string }[] = [
-  { icon: CalendarCheck, value: '1,200+', label: 'Events planned' },
-  { icon: Users, value: '340', label: 'Teams coordinated' },
-  { icon: ListChecks, value: '18k', label: 'Tasks tracked' },
-  { icon: TrendingUp, value: '96%', label: 'On-time delivery' },
-]
-
-const ROLE_CARDS: { role: keyof typeof ROLE_LABELS; description: string }[] = [
-  {
-    role: 'EVENT_MANAGER',
-    description: 'Owns events end-to-end: creates plans, assigns teams and watches overall progress.',
-  },
-  {
-    role: 'TEAM_LEADER',
-    description: 'Leads a squad: distributes tasks, unblocks work and reports status upwards.',
-  },
-  {
-    role: 'EMPLOYEE',
-    description: 'Does the work: sees assigned tasks, updates progress and comments on details.',
-  },
-]
-
-const fadeUp = {
-  initial: { opacity: 0, y: 18 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, margin: '-60px' },
-  transition: { duration: 0.45, ease: 'easeOut' as const },
-}
+/* ------------------------------------------------------------- component */
 
 export function HomePage() {
+  const reduce = useReducedMotion()
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* ============ Header ============ */}
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-card/85 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
-              <CalendarRange className="h-5 w-5" aria-hidden="true" />
+    <div className="evos-root relative flex min-h-screen flex-col bg-evos-bg font-evos-body text-evos-ink antialiased">
+      <a
+        href="#evos-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[110] focus:bg-evos-ink focus:px-4 focus:py-2 focus:font-evos-mono focus:text-[11px] focus:uppercase focus:tracking-[0.2em] focus:text-evos-bg"
+      >
+        Skip to content
+      </a>
+
+      <div className="evos-noise" aria-hidden="true" />
+      <ScrollProgress />
+      <CustomCursor />
+      <LandingNav />
+
+      <main id="evos-main" className="flex-1">
+        {/* ---------------------------------------------------- 01 · hero */}
+        <header className="relative flex min-h-svh flex-col justify-end px-5 pb-8 pt-28 md:px-10 md:pb-12">
+          <h1
+            aria-label="Event planning, without the chaos."
+            className="font-evos-display text-[clamp(3rem,10vw,9.5rem)] font-medium uppercase leading-[0.88] tracking-[-0.045em] text-evos-ink"
+          >
+            <span aria-hidden="true" className="block">
+              {HERO_LINES.map((line, i) => (
+                <HeroLine key={line} line={line} index={i} reduce={reduce ?? false}>
+                  {i === HERO_LINES.length - 1 ? (
+                    <>
+                      {line}
+                      <span className="text-evos-accent">.</span>
+                    </>
+                  ) : (
+                    line
+                  )}
+                </HeroLine>
+              ))}
             </span>
-            <span className="text-lg font-bold tracking-tight text-foreground">{APP_NAME}</span>
-          </div>
-          <nav className="flex items-center gap-2" aria-label="Landing">
-            <Button variant="ghost" className="min-h-11 text-muted-foreground hover:text-foreground" onClick={() => navigate(ROUTES.LOGIN)}>
-              Sign in
-            </Button>
-            <Button className="min-h-11 bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate(ROUTES.REGISTER)}>
-              Get Started
-            </Button>
-          </nav>
-        </div>
-      </header>
+          </h1>
 
-      <main className="flex-1">
-        {/* ============ Hero ============ */}
-        <section className="relative overflow-hidden" aria-label="Introduction">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(55%_60%_at_20%_0%,rgba(16,185,129,0.14),transparent_65%)]" />
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_45%_at_90%_20%,rgba(20,184,166,0.10),transparent_65%)]" />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(60%_60%_at_50%_30%,black,transparent)] bg-[linear-gradient(to_right,rgba(28,25,23,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(28,25,23,0.05)_1px,transparent_1px)] bg-[size:44px_44px]"
-          />
-
-          <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 pb-16 pt-14 sm:pt-20 lg:grid-cols-2 lg:gap-14">
-            {/* Left copy */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
-            >
-              <Badge variant="outline" className="mb-5 gap-1.5 border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                New · Phase 1 live
-              </Badge>
-              <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
-                Run flawless events{' '}
-                <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">from one place.</span>
-              </h1>
-              <p className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-                {APP_NAME} brings your event plans, teams, tasks and notifications together —
-                so every launch day goes exactly the way you rehearsed it.
+          <div className="mt-14 grid gap-10 border-t border-evos-line pt-8 md:mt-20 md:grid-cols-2 md:gap-16">
+            <FadeIn>
+              <SectionLabel index="001" title="What we do" />
+              <p className="mt-5 max-w-md text-base leading-relaxed text-evos-muted md:text-lg">
+                Event OS is an operating system for event teams — plan events, assign work, surface
+                blockers and watch progress update live on one shared board.
               </p>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button
-                  size="lg"
-                  className="min-h-11 bg-emerald-600 px-6 text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700"
-                  onClick={() => navigate(ROUTES.REGISTER)}
-                >
-                  Get Started
-                  <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-                </Button>
-                <Button size="lg" variant="ghost" className="min-h-11 px-6 text-muted-foreground hover:text-foreground" onClick={() => navigate(ROUTES.LOGIN)}>
-                  Sign in
-                </Button>
-              </div>
-              <div className="mt-8 inline-flex items-start gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm shadow-sm">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                  <Target className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-                <p className="text-muted-foreground">
-                  Try the demo — <span className="font-semibold text-foreground">admin@eventflow.io</span> /{' '}
-                  <span className="font-semibold text-foreground">password123</span>
-                </p>
-              </div>
-            </motion.div>
+            </FadeIn>
+            <FadeIn delay={0.08}>
+              <SectionLabel index="002" title="For teams" />
+              <p className="mt-5 max-w-md text-base leading-relaxed text-evos-muted md:text-lg">
+                Built for managers, team leads and the people doing the work. Three roles, one
+                source of truth, zero status meetings.
+              </p>
+            </FadeIn>
+          </div>
 
-            {/* Right decorative mini-dashboard */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.55, delay: 0.15, ease: 'easeOut' }}
-              className="relative hidden justify-center lg:flex"
-              aria-hidden="true"
+          <FadeIn
+            delay={0.1}
+            className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-3 border-t border-evos-line pt-5 md:justify-between"
+          >
+            <span className={MONO_LABEL}>
+              Availability <span className="text-evos-accent">—</span> 2025
+            </span>
+            <span className={MONO_LABEL}>
+              Built for <span className="text-evos-accent">—</span> Event teams
+            </span>
+            <span className={`${MONO_LABEL} inline-flex items-center gap-2.5`}>
+              Status <span className="text-evos-accent">—</span> Live
+              <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-evos-accent opacity-60 motion-reduce:hidden" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-evos-accent" />
+              </span>
+            </span>
+          </FadeIn>
+        </header>
+
+        {/* ------------------------------------------------- 02 · marquee */}
+        <MarqueeStrip />
+
+        {/* ------------------------------------------------- 03 · problem */}
+        <section id="problem" className="scroll-mt-20 px-5 py-24 md:px-10 md:py-40" aria-labelledby="problem-title">
+          <div className="grid gap-12 lg:grid-cols-2 lg:gap-20">
+            <div className="self-start lg:sticky lg:top-24">
+              <SectionLabel index="003" title="The problem" />
+              <FadeIn>
+                <h2
+                  id="problem-title"
+                  className="mt-8 font-evos-display text-[clamp(2.5rem,5.5vw,4.75rem)] font-medium leading-[0.98] tracking-[-0.03em] text-evos-ink"
+                >
+                  Events fail
+                  <br />
+                  in the gaps
+                  <br />
+                  between people<span className="text-evos-accent">.</span>
+                </h2>
+              </FadeIn>
+            </div>
+            <div>
+              <NumberedList items={PROBLEMS} />
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------ 04 · solution */}
+        <section
+          id="solution"
+          className="scroll-mt-20 border-t border-evos-line px-5 py-24 md:px-10 md:py-40"
+          aria-labelledby="solution-title"
+        >
+          <SectionLabel index="004" title="The solution" />
+          <FadeIn>
+            <h2
+              id="solution-title"
+              className="mt-8 font-evos-display text-[clamp(2.5rem,6.5vw,5.5rem)] font-medium leading-[0.98] tracking-[-0.03em] text-evos-ink"
             >
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-                className="relative w-full max-w-md"
-              >
-                {/* Back card */}
-                <div className="absolute -right-4 -top-6 h-full w-full rotate-3 rounded-xl border border-border bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm" />
-                {/* Front card */}
-                <div className="relative rounded-xl border border-border bg-card p-5 shadow-xl shadow-stone-900/10">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">Launch Night Gala</p>
-                      <p className="mt-1 text-lg font-bold text-foreground">Task progress</p>
-                    </div>
-                    <Badge variant="outline" className="border-emerald-200 bg-emerald-100 text-emerald-800">In Progress</Badge>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Completion</span>
-                      <span className="font-semibold text-emerald-700">72%</span>
-                    </div>
-                    <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                        initial={{ width: 0 }}
-                        animate={{ width: '72%' }}
-                        transition={{ duration: 1.1, delay: 0.5, ease: 'easeOut' }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: 'Done', value: 18, classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-                      { label: 'Active', value: 5, classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-                      { label: 'Blocked', value: 2, classes: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300' },
-                    ].map((chip) => (
-                      <div key={chip.label} className={cn('rounded-lg px-3 py-2 text-center', chip.classes)}>
-                        <p className="text-lg font-bold leading-none">{chip.value}</p>
-                        <p className="mt-1 text-[11px] font-medium">{chip.label}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    {[
-                      { title: 'Finalize stage layout', done: true },
-                      { title: 'Confirm catering headcount', done: true },
-                      { title: 'Print attendee badges', done: false },
-                    ].map((task) => (
-                      <div key={task.title} className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/70 px-3 py-2">
-                        <CheckCircle2
-                          className={cn('h-4 w-4 shrink-0', task.done ? 'text-emerald-500' : 'text-stone-300')}
-                        />
-                        <span className={cn('truncate text-sm', task.done ? 'text-muted-foreground/70 line-through' : 'font-medium text-foreground')}>
-                          {task.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
+              One system<span className="text-evos-accent">.</span>
+              <br />
+              Total clarity<span className="text-evos-accent">.</span>
+            </h2>
+          </FadeIn>
+          <FadeIn className="mt-16 md:mt-24">
+            <FeatureRowGrid features={SOLUTION_FEATURES} />
+          </FadeIn>
         </section>
 
-        {/* ============ Stats strip ============ */}
-        <section className="border-y border-border bg-muted/70" aria-label="Key numbers">
-          <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:grid-cols-4">
-            {STATS.map((stat, index) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: index * 0.08 }}
-                className="flex flex-col items-center gap-1.5 text-center"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-card text-emerald-600 shadow-sm ring-1 ring-stone-200">
-                  <stat.icon className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <p className="text-2xl font-bold tracking-tight text-foreground">{stat.value}</p>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{stat.label}</p>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* ============ Features ============ */}
-        <section className="mx-auto max-w-6xl px-4 py-16" aria-label="Features">
-          <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Everything an event needs</h2>
-            <p className="mt-3 text-muted-foreground">
-              One workspace for the whole lifecycle — plan the event, organize the team, track every task.
-            </p>
-          </motion.div>
-
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: index * 0.08 }}
-                whileHover={{ y: -4 }}
-                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <span className={cn('flex h-11 w-11 items-center justify-center rounded-lg', feature.tint)}>
-                  <feature.icon className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <h3 className="mt-4 text-base font-semibold text-foreground">{feature.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* ============ Roles ============ */}
-        <section className="border-y border-border bg-muted/70 py-16" aria-label="Roles">
-          <div className="mx-auto max-w-6xl px-4">
-            <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-              <h2 className="text-3xl font-bold tracking-tight text-foreground">Built for every role</h2>
-              <p className="mt-3 text-muted-foreground">Permissions and views adapt to how each person contributes.</p>
-            </motion.div>
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {ROLE_CARDS.map((card, index) => (
-                <motion.div
-                  key={card.role}
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: index * 0.08 }}
-                  className="rounded-xl border border-border bg-card p-6 shadow-sm"
+        {/* --------------------------------------------- 05 · how it works */}
+        <section
+          id="how"
+          className="scroll-mt-20 border-t border-evos-line px-5 py-24 md:px-10 md:py-40"
+          aria-labelledby="how-title"
+        >
+          <div className="grid gap-8 lg:grid-cols-[1fr_2fr] lg:gap-20">
+            <div className="self-start lg:sticky lg:top-24">
+              <SectionLabel index="005" title="How it works" />
+              <FadeIn>
+                <h2
+                  id="how-title"
+                  className="mt-8 font-evos-display text-[clamp(2rem,4vw,3.25rem)] font-medium leading-[1.02] tracking-[-0.025em] text-evos-ink"
                 >
-                  <Badge variant="outline" className={cn('px-3 py-1', ROLE_BADGE_CLASSES[card.role])}>
-                    {ROLE_LABELS[card.role]}
-                  </Badge>
-                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{card.description}</p>
-                </motion.div>
+                  Four steps.
+                  <br />
+                  Zero chaos<span className="text-evos-accent">.</span>
+                </h2>
+              </FadeIn>
+            </div>
+
+            <div className="relative border-t border-evos-line">
+              {/* Vertical rail — draws itself downward as the steps scroll in. */}
+              <motion.span
+                aria-hidden="true"
+                className="absolute left-[2.15rem] top-0 hidden h-full w-px origin-top bg-evos-ink sm:block md:left-[2.9rem]"
+                initial={reduce ? false : { scaleY: 0 }}
+                whileInView={{ scaleY: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.4, ease: EASE }}
+              />
+              {STEPS.map((step, i) => (
+                <FadeIn key={step.title} delay={i * 0.05}>
+                  <div className="group relative grid gap-3 border-b border-evos-line py-10 transition-colors duration-300 hover:bg-evos-line/40 sm:grid-cols-[4.5rem_1fr] sm:gap-x-6 md:grid-cols-[6rem_1fr_1.1fr] md:items-baseline md:gap-x-10 md:py-12">
+                    <span
+                      aria-hidden="true"
+                      className="relative z-10 bg-evos-bg font-evos-mono text-sm text-evos-ink transition-colors duration-300 group-hover:text-evos-accent md:text-base"
+                    >
+                      0{i + 1}
+                    </span>
+                    <h3 className="font-evos-display text-3xl font-medium uppercase leading-none tracking-[-0.02em] text-evos-ink transition-transform duration-300 group-hover:translate-x-2 md:text-[2.75rem]">
+                      {step.title}
+                    </h3>
+                    <p className="max-w-md text-sm leading-relaxed text-evos-muted md:justify-self-end md:text-base">
+                      {step.description}
+                    </p>
+                  </div>
+                </FadeIn>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ============ CTA band ============ */}
-        <section className="mx-auto max-w-6xl px-4 py-16" aria-label="Call to action">
-          <motion.div
-            {...fadeUp}
-            className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-600 px-6 py-12 text-center shadow-lg shadow-emerald-600/20 sm:px-12"
-          >
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 opacity-25 [mask-image:radial-gradient(70%_70%_at_50%_0%,black,transparent)] bg-[linear-gradient(to_right,rgba(255,255,255,0.35)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.35)_1px,transparent_1px)] bg-[size:36px_36px]"
-            />
-            <div className="relative">
-              <ClipboardList className="mx-auto h-10 w-10 text-emerald-100" aria-hidden="true" />
-              <h2 className="mt-4 text-3xl font-bold tracking-tight text-white">Ready to orchestrate your next event?</h2>
-              <p className="mx-auto mt-3 max-w-xl text-emerald-50">
-                Create a free account, invite your team and ship your first flawless event this week.
-              </p>
-              <Button
-                size="lg"
-                className="mt-7 min-h-11 bg-card px-7 text-emerald-700 shadow-md hover:bg-emerald-50"
-                onClick={() => navigate(ROUTES.REGISTER)}
-              >
-                Get Started — it&apos;s free
-                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-              </Button>
+        {/* --------------------------------------------- 06 · capabilities */}
+        <section
+          id="capabilities"
+          className="scroll-mt-20 border-t border-evos-line px-5 py-24 md:px-10 md:py-40"
+          aria-labelledby="capabilities-title"
+        >
+          <div className="grid gap-8 lg:grid-cols-[1fr_2fr] lg:gap-20">
+            <div className="self-start lg:sticky lg:top-24">
+              <SectionLabel index="006" title="Capabilities" />
+              <FadeIn>
+                <h2
+                  id="capabilities-title"
+                  className="mt-8 font-evos-display text-[clamp(2rem,4vw,3.25rem)] font-medium leading-[1.02] tracking-[-0.025em] text-evos-ink"
+                >
+                  Everything
+                  <br />
+                  included<span className="text-evos-accent">.</span>
+                </h2>
+                <p className="mt-6 max-w-xs text-sm leading-relaxed text-evos-muted md:text-base">
+                  Eight capabilities, one subscription of attention. No plugins, no add-ons, no
+                  integrations to babysit.
+                </p>
+              </FadeIn>
             </div>
-          </motion.div>
+
+            <ul className="border-t border-evos-line">
+              {CAPABILITIES.map((cap, i) => (
+                <li key={cap.name}>
+                  <FadeIn delay={i * 0.04}>
+                    <div className="group grid items-baseline gap-2 border-b border-evos-line py-6 transition-colors duration-300 hover:bg-evos-line/40 md:grid-cols-[1.1fr_1fr] md:gap-10 md:py-7">
+                      <div className="flex items-baseline gap-5">
+                        <span
+                          aria-hidden="true"
+                          className="font-evos-mono text-[11px] text-evos-muted transition-colors duration-300 group-hover:text-evos-accent"
+                        >
+                          0{i + 1}
+                        </span>
+                        <h3 className="font-evos-display text-xl font-medium tracking-[-0.015em] text-evos-ink transition-transform duration-300 group-hover:translate-x-1.5 md:text-2xl">
+                          {cap.name}
+                        </h3>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-6 md:justify-end">
+                        <p className="max-w-sm text-sm leading-relaxed text-evos-muted">
+                          {cap.description}
+                        </p>
+                        <ArrowUpRight
+                          aria-hidden="true"
+                          className="h-4 w-4 shrink-0 self-center text-evos-muted opacity-0 transition-all duration-300 group-hover:text-evos-accent group-hover:opacity-100"
+                        />
+                      </div>
+                    </div>
+                  </FadeIn>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* -------------------------------------------------- 07 · numbers */}
+        <section
+          id="numbers"
+          className="scroll-mt-20 border-t border-evos-line px-5 py-24 md:px-10 md:py-40"
+          aria-labelledby="numbers-title"
+        >
+          <SectionLabel index="007" title="By the numbers" />
+          <FadeIn>
+            <h2 id="numbers-title" className="sr-only">
+              By the numbers
+            </h2>
+          </FadeIn>
+          <FadeIn className="mt-12 md:mt-16">
+            <div className="grid grid-cols-1 gap-px border border-evos-line bg-evos-line sm:grid-cols-2 lg:grid-cols-4">
+              {STATS.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="group bg-evos-bg px-6 py-12 transition-colors duration-300 hover:bg-evos-ink md:py-16"
+                >
+                  <p className="font-evos-display text-[clamp(3rem,6.5vw,6rem)] font-medium leading-none tracking-[-0.03em] text-evos-ink tabular-nums transition-colors duration-300 group-hover:text-evos-bg">
+                    {stat.value}
+                  </p>
+                  <p
+                    className={`mt-5 ${MONO_LABEL} text-evos-muted transition-colors duration-300 group-hover:text-evos-bg/60`}
+                  >
+                    {stat.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </FadeIn>
+        </section>
+
+        {/* ----------------------------------------------- 08 · built with */}
+        <section
+          id="stack"
+          className="scroll-mt-20 border-t border-evos-line px-5 py-24 md:px-10 md:py-32"
+          aria-labelledby="stack-title"
+        >
+          <div className="grid items-baseline gap-8 lg:grid-cols-[1fr_2fr] lg:gap-20">
+            <SectionLabel index="008" title="Built with" sticky />
+            <FadeIn>
+              <h2 id="stack-title" className="sr-only">
+                Built with
+              </h2>
+              <div className="grid grid-cols-2 gap-px border border-evos-line bg-evos-line md:grid-cols-3 lg:grid-cols-6">
+                {STACK.map((name) => (
+                  <div
+                    key={name}
+                    className="flex h-20 items-center justify-center bg-evos-bg px-3 text-center font-evos-mono text-[11px] uppercase tracking-[0.15em] text-evos-muted transition-colors duration-300 hover:bg-evos-ink hover:text-evos-bg md:h-24"
+                  >
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </FadeIn>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------- 09 · cta */}
+        <section
+          id="cta"
+          className="flex min-h-[80vh] flex-col items-center justify-center border-t border-evos-line px-5 py-32 text-center md:px-10"
+          aria-labelledby="cta-title"
+        >
+          <FadeIn>
+            <p className={MONO_LABEL}>
+              009 <span className="text-evos-accent">—</span> Begin
+            </p>
+          </FadeIn>
+          <FadeIn delay={0.06}>
+            <h2
+              id="cta-title"
+              className="mt-8 font-evos-display text-[clamp(3rem,9.5vw,8.5rem)] font-medium uppercase leading-[0.9] tracking-[-0.04em] text-evos-ink"
+            >
+              Ready to
+              <br />
+              organize<span className="text-evos-accent">?</span>
+            </h2>
+          </FadeIn>
+          <FadeIn delay={0.12} className="mt-14 flex flex-col items-center gap-5 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.REGISTER)}
+              className="group inline-flex min-h-12 items-center gap-3 bg-evos-ink px-9 py-3.5 font-evos-mono text-xs uppercase tracking-[0.2em] text-evos-bg transition-colors duration-300 hover:bg-evos-accent"
+            >
+              Get started
+              <ArrowRight
+                aria-hidden="true"
+                className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.LOGIN)}
+              className={`${MONO_LABEL} evos-underline inline-flex min-h-12 items-center text-evos-ink`}
+            >
+              Sign in
+            </button>
+          </FadeIn>
+          <FadeIn delay={0.18}>
+            <p className="mt-8 font-evos-mono text-[11px] uppercase tracking-[0.18em] text-evos-muted">
+              Free to try. No credit card required.
+            </p>
+          </FadeIn>
         </section>
       </main>
 
-      <footer className="border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
-          <span className="font-medium text-muted-foreground">{APP_NAME} — Event Management System</span>
-          <span>© {new Date().getFullYear()} {APP_NAME}. Plan events. Coordinate teams. Ship on time.</span>
+      {/* ------------------------------------------------------- footer */}
+      <footer className="mt-auto border-t border-evos-line px-5 pb-8 pt-16 md:px-10 md:pt-24">
+        <div className="grid gap-12 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-8">
+          <div>
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="text-left font-evos-display text-4xl font-medium uppercase leading-none tracking-[-0.03em] text-evos-ink md:text-6xl"
+            >
+              Event OS<span className="text-evos-accent">.</span>
+            </button>
+            <p className="mt-5 max-w-xs text-sm leading-relaxed text-evos-muted">
+              The operating system for event teams — plan, assign, track, ship.
+            </p>
+          </div>
+
+          <nav aria-label="Footer index">
+            <p className={`${MONO_LABEL} text-evos-muted`}>Index</p>
+            <ul className="mt-5 space-y-3">
+              {[
+                { id: 'capabilities', label: 'Features' },
+                { id: 'how', label: 'How it works' },
+                { id: 'numbers', label: 'By the numbers' },
+                { id: 'cta', label: 'Get started' },
+              ].map((link) => (
+                <li key={link.id}>
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection(link.id)}
+                    className="evos-underline text-sm text-evos-ink"
+                  >
+                    {link.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <div>
+            <p className={`${MONO_LABEL} text-evos-muted`}>Account</p>
+            <ul className="mt-5 space-y-3">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigate(ROUTES.LOGIN)}
+                  className="evos-underline text-sm text-evos-ink"
+                >
+                  Login
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigate(ROUTES.REGISTER)}
+                  className="evos-underline text-sm text-evos-ink"
+                >
+                  Register
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <p className={`${MONO_LABEL} text-evos-muted`}>Contact</p>
+            <ul className="mt-5 space-y-3">
+              <li>
+                <a
+                  href="mailto:hello@eventos.co"
+                  className="evos-underline text-sm text-evos-ink"
+                >
+                  hello@eventos.co
+                </a>
+              </li>
+              <li>
+                <span className="text-sm text-evos-muted">Mon–Fri, 9–17 PT</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-16 flex flex-col gap-3 border-t border-evos-line pt-6 md:flex-row md:items-center md:justify-between">
+          <span className={MONO_LABEL}>© 2025 Event OS</span>
+          <span className={MONO_LABEL}>Portland, OR</span>
+          <span className={MONO_LABEL}>Type — Space Grotesk / IBM Plex Mono</span>
         </div>
       </footer>
     </div>
