@@ -39,18 +39,18 @@ export function ResetPasswordPage() {
   if (!token) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-red-200 bg-red-50/70 p-5 text-center dark:border-red-500/25 dark:bg-red-500/10">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-300">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/15 text-red-400">
             <LinkIcon className="h-5 w-5" aria-hidden="true" />
           </span>
-          <p className="font-semibold text-red-900 dark:text-red-200">This link is missing its reset token</p>
-          <p className="text-sm text-red-800/80 dark:text-red-300/80">
+          <p className="font-semibold text-white">This link is missing its reset token</p>
+          <p className="text-sm text-fora-text-2">
             Open the password reset link from your email — or start a new request below.
           </p>
         </div>
         <Button
           type="button"
-          className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+          className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] hover:bg-fora-accent-hover"
           onClick={() => navigate(ROUTES.FORGOT_PASSWORD)}
         >
           Request a new reset link
@@ -98,18 +98,18 @@ export function ResetPasswordPage() {
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className="space-y-4"
       >
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-fora-border bg-fora-surface-2 p-5 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
             <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
           </span>
-          <p className="font-semibold text-emerald-900 dark:text-emerald-200">Your password has been reset</p>
-          <p className="text-sm text-emerald-800/80 dark:text-emerald-300/80">
+          <p className="font-semibold text-white">Your password has been reset</p>
+          <p className="text-sm leading-relaxed text-fora-text-2">
             Every active session was signed out for safety. Use your new password to sign in.
           </p>
         </div>
         <Button
           type="button"
-          className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+          className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] hover:bg-fora-accent-hover"
           onClick={() => navigate(ROUTES.LOGIN)}
         >
           <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -156,7 +156,11 @@ export function ResetPasswordPage() {
         <PasswordMatchHint password={password} confirm={confirmPassword} visible={focusedConfirm} />
       </div>
 
-      <Button type="submit" className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={loading}>
+      <Button
+        type="submit"
+        className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] transition-shadow hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.5)]"
+        disabled={loading}
+      >
         {loading ? (
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (

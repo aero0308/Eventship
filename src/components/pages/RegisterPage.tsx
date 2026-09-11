@@ -170,9 +170,9 @@ export function RegisterPage() {
             <SelectTrigger id="register-role" className="h-11 w-full" aria-label="Account role">
               <SelectValue placeholder="Select role" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border-fora-border bg-fora-surface-2 text-white">
               {ROLES.map((r) => (
-                <SelectItem key={r} value={r}>
+                <SelectItem key={r} value={r} className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white">
                   {ROLE_LABELS[r]}
                 </SelectItem>
               ))}
@@ -186,10 +186,16 @@ export function RegisterPage() {
             <SelectTrigger id="register-team" className="h-11 w-full" aria-label="Team">
               <SelectValue placeholder={teamsLoading ? 'Loading teams…' : 'Choose a team'} />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_TEAM}>No team</SelectItem>
+            <SelectContent className="border-fora-border bg-fora-surface-2 text-white">
+              <SelectItem value={NO_TEAM} className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white">
+                No team
+              </SelectItem>
               {teams.map((team) => (
-                <SelectItem key={team.id} value={team.id}>
+                <SelectItem
+                  key={team.id}
+                  value={team.id}
+                  className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white"
+                >
                   {team.name}
                 </SelectItem>
               ))}
@@ -198,7 +204,11 @@ export function RegisterPage() {
         </div>
       </div>
 
-      <Button type="submit" className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={loading}>
+      <Button
+        type="submit"
+        className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] transition-shadow hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.5)]"
+        disabled={loading}
+      >
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />}
         {loading ? 'Creating account…' : 'Create account'}
       </Button>
@@ -208,7 +218,7 @@ export function RegisterPage() {
         <button
           type="button"
           onClick={() => navigate(ROUTES.LOGIN)}
-          className="min-h-11 font-semibold text-emerald-700 underline-offset-4 hover:underline sm:min-h-0"
+          className="min-h-11 font-semibold text-fora-glow underline-offset-4 hover:underline sm:min-h-0"
         >
           Sign in
         </button>

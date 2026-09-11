@@ -55,29 +55,29 @@ export function ForgotPasswordPage() {
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className="space-y-4"
       >
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-fora-border bg-fora-surface-2 p-5 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
             <MailCheck className="h-5 w-5" aria-hidden="true" />
           </span>
-          <p className="font-semibold text-emerald-900 dark:text-emerald-200">Check your inbox</p>
-          <p className="text-sm leading-relaxed text-emerald-800/80 dark:text-emerald-300/80">
-            If an account exists for <span className="font-medium">{email.trim()}</span>, a password reset link is on
+          <p className="font-semibold text-white">Check your inbox</p>
+          <p className="text-sm leading-relaxed text-fora-text-2">
+            If an account exists for <span className="font-medium text-white">{email.trim()}</span>, a password reset link is on
             its way. The link expires after 30 minutes.
           </p>
         </div>
 
         {demoResetUrl ? (
-          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10" data-testid="demo-inbox">
-            <p className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4" data-testid="demo-inbox">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-300">
               <Inbox className="h-4 w-4" aria-hidden="true" />
               Demo inbox
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-amber-800/90 dark:text-amber-200/80">
+            <p className="mt-1 text-xs leading-relaxed text-amber-200/70">
               This sandbox has no email provider, so the reset link that would normally be emailed is delivered here:
             </p>
             <Button
               type="button"
-              className="mt-3 h-11 w-full bg-amber-600 text-white hover:bg-amber-700"
+              className="mt-3 h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] hover:bg-fora-accent-hover"
               onClick={() => {
                 // demoResetUrl is shaped like a pastable URL suffix ("/#/reset-
                 // password?token=…"); navigate() adds the "#", so strip it first.
@@ -130,7 +130,11 @@ export function ForgotPasswordPage() {
         />
       </div>
 
-      <Button type="submit" className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={loading}>
+      <Button
+        type="submit"
+        className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] transition-shadow hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.5)]"
+        disabled={loading}
+      >
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
         {loading ? 'Sending…' : 'Send reset link'}
       </Button>

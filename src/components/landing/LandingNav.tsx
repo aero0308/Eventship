@@ -63,7 +63,13 @@ export function LandingNav() {
         scrolled ? 'border-b border-fora-border bg-fora-bg/80 backdrop-blur-xl' : 'border-b border-transparent bg-transparent',
       )}
     >
-      <nav aria-label="Main navigation" className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      {/* 3-column grid keeps the link group truly centered regardless of the
+          wordmark/actions width asymmetry (a flex justify-between would drift
+          the middle group left). */}
+      <nav
+        aria-label="Main navigation"
+        className="mx-auto grid h-16 max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-6"
+      >
         {/* Wordmark */}
         <button
           type="button"
@@ -71,7 +77,7 @@ export function LandingNav() {
             setOpen(false)
             scrollToTop()
           }}
-          className="flex items-center gap-2.5"
+          className="flex items-center gap-2.5 justify-self-start"
           aria-label="Event OS — back to top"
         >
           <span
@@ -81,8 +87,8 @@ export function LandingNav() {
           <span className="text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
         </button>
 
-        {/* Center links (desktop) */}
-        <ul className="hidden items-center gap-8 md:flex">
+        {/* Center links (desktop) — dead-center of the viewport */}
+        <ul className="hidden items-center justify-self-center gap-8 md:flex">
           {NAV_LINKS.map((link) => (
             <li key={link.label}>
               <button
@@ -97,18 +103,18 @@ export function LandingNav() {
         </ul>
 
         {/* Right actions (desktop) */}
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center justify-self-end gap-2 md:flex">
           <button
             type="button"
             onClick={() => navigate(ROUTES.LOGIN)}
-            className="rounded-full px-4 py-2 text-sm text-fora-text-2 transition-colors duration-200 hover:text-white"
+            className="whitespace-nowrap rounded-full px-4 py-2 text-sm text-fora-text-2 transition-colors duration-200 hover:text-white"
           >
             Sign In
           </button>
           <button
             type="button"
             onClick={() => navigate(ROUTES.REGISTER)}
-            className="rounded-full bg-fora-accent px-4.5 py-2 text-sm font-medium text-white shadow-[0_0_24px_rgba(99,102,241,0.4)] transition-all duration-200 hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.6)]"
+            className="whitespace-nowrap rounded-full bg-fora-accent px-4.5 py-2 text-sm font-medium text-white shadow-[0_0_24px_rgba(99,102,241,0.4)] transition-all duration-200 hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.6)]"
           >
             Get Started
           </button>
@@ -120,7 +126,7 @@ export function LandingNav() {
           onClick={() => setOpen(true)}
           aria-expanded={open}
           aria-label="Open navigation menu"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-white md:hidden"
+          className="col-start-3 inline-flex h-11 w-11 items-center justify-center justify-self-end rounded-full text-white md:hidden"
         >
           <Menu className="h-5 w-5" aria-hidden="true" />
         </button>

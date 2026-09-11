@@ -1,13 +1,19 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import { Check, Github, Linkedin, Send, Twitter } from 'lucide-react'
+import { Check, Github, Linkedin, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { scrollToSection, scrollToTop } from '@/components/landing/scroll'
 
 interface FooterLink {
   label: string
   action: () => void
+}
+
+interface SocialLink {
+  label: string
+  icon: typeof Github
+  href: string
 }
 
 const PRODUCT_LINKS: FooterLink[] = [
@@ -26,11 +32,14 @@ const COMPANY_LINKS: FooterLink[] = [
 
 const LEGAL_LINKS = ['Privacy', 'Terms', 'Security'] as const
 
-const SOCIALS = [
-  { label: 'GitHub', icon: Github },
-  { label: 'Twitter', icon: Twitter },
-  { label: 'LinkedIn', icon: Linkedin },
-] as const
+const SOCIALS: SocialLink[] = [
+  { label: 'GitHub', icon: Github, href: 'https://github.com/aero0308' },
+  {
+    label: 'LinkedIn',
+    icon: Linkedin,
+    href: 'https://www.linkedin.com/in/sachin-gupta-52aa923aa/',
+  },
+]
 
 /**
  * Landing footer: wordmark + tagline + socials, Product/Company/Legal link
@@ -71,7 +80,7 @@ export function LandingFooter() {
                   You&apos;re on the list — see you next issue.
                 </p>
               ) : (
-                <div className="mt-3 flex items-center gap-2 rounded-full border border-fora-border bg-fora-surface p-1.5 pl-4 transition-colors focus-within:border-fora-accent/50">
+                <div className="fora-newsletter mt-3 flex items-center gap-2 rounded-full border border-fora-border bg-fora-surface p-1.5 pl-4 transition-all duration-300 hover:border-fora-border-hover focus-within:border-white/25 focus-within:shadow-[0_0_0_4px_rgba(255,255,255,0.05)]">
                   <input
                     id="footer-newsletter"
                     type="email"
@@ -79,7 +88,7 @@ export function LandingFooter() {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@team.com"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-fora-muted focus:outline-none"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-fora-muted focus:outline-none focus-visible:outline-none"
                   />
                   <button
                     type="submit"
@@ -96,9 +105,12 @@ export function LandingFooter() {
               {SOCIALS.map((social) => (
                 <a
                   key={social.label}
-                  href="mailto:hello@eventos.co"
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={`Event OS on ${social.label}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-fora-border text-fora-muted transition-all duration-200 hover:border-white/25 hover:text-white"
+                  title={social.label}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-fora-border text-fora-muted transition-all duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:text-white"
                 >
                   <social.icon className="h-4 w-4" aria-hidden="true" />
                 </a>
@@ -153,7 +165,7 @@ export function LandingFooter() {
 
         {/* Bottom row */}
         <div className="mt-16 flex flex-col items-center justify-between gap-3 border-t border-fora-border pt-8 sm:flex-row">
-          <p className="text-xs text-fora-muted">© 2025 Event OS · Made for event teams</p>
+          <p className="text-xs text-fora-muted">© {new Date().getFullYear()} Event OS · Made for event teams</p>
           <p className="flex items-center gap-2 text-xs text-fora-muted">
             <span aria-hidden="true" className="fora-pulse-ring h-1.5 w-1.5 rounded-full bg-fora-accent" />
             All systems live

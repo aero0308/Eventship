@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { ArrowRight } from 'lucide-react'
 import { ROUTES } from '@/lib/constants'
 import { navigate } from '@/hooks/use-hash-route'
@@ -18,6 +19,21 @@ export function FinalCTA() {
       aria-labelledby="cta-title"
       className="relative scroll-mt-24 overflow-hidden py-28 md:py-40"
     >
+      {/* flow.so-style photographic backdrop — indigo contour-wave art, faded
+          in/out at both edges so the section melts into the page black. */}
+      <div aria-hidden="true" className="absolute inset-0">
+        <Image
+          src="/images/landing/cta-bg.png"
+          alt=""
+          fill
+          sizes="100vw"
+          className="object-cover [mask-image:linear-gradient(to_bottom,transparent,black_18%,black_82%,transparent)]"
+          unoptimized
+        />
+        {/* Contrast wash for headline legibility */}
+        <div className="absolute inset-0 bg-fora-bg/55" />
+      </div>
+
       <GridBackground />
       <GlowOrb className="left-1/2 top-1/2 h-[520px] w-[880px] -translate-x-1/2 -translate-y-1/2" color="rgba(99,102,241,0.2)" float />
       <GlowOrb className="-right-40 -top-40 h-[360px] w-[360px]" color="rgba(129,140,248,0.12)" />

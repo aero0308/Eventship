@@ -1,5 +1,5 @@
+import Image from 'next/image'
 import { ArrowRight, ArrowUpRight, Clock } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { FadeIn } from '@/components/landing/FadeIn'
 import { SectionLabel } from '@/components/landing/SectionLabel'
 
@@ -9,29 +9,29 @@ const POSTS = [
     readTime: '6 min read',
     title: 'How to run a 200-person event without losing your mind',
     excerpt: 'The checklist system, the comms cadence and the 72-hour runbook that keep big events calm.',
-    gradient: 'from-fora-accent/45 via-fora-surface-3 to-fora-surface',
-    icon: '✦',
+    image: '/images/landing/blog-1.png',
+    alt: 'Event crew with headsets coordinating a live show from laptops on the venue floor',
   },
   {
     category: 'Operations',
     readTime: '4 min read',
     title: 'The 5 blockers that kill event timelines',
     excerpt: 'Vendor sign-offs, venue access, printed assets — where launches actually get stuck, and how to pre-empt them.',
-    gradient: 'from-zinc-600/40 via-fora-surface-3 to-fora-surface',
-    icon: '⚑',
+    image: '/images/landing/blog-2.png',
+    alt: 'Planning wall covered in timeline notes under desk lamps, one red flag card lit up in the middle',
   },
   {
     category: 'Product',
     readTime: '5 min read',
     title: 'Why real-time dashboards beat status meetings',
     excerpt: 'Status meetings are a polling loop. Live dashboards are an event stream. The math favors one of them.',
-    gradient: 'from-fora-glow/35 via-fora-surface-3 to-fora-surface',
-    icon: '◎',
+    image: '/images/landing/blog-3.png',
+    alt: 'Live analytics dashboard with charts glowing on a monitor in a dark office at night',
   },
 ] as const
 
 /**
- * Blog preview cards: gradient image placeholders (CSS-only), category tag,
+ * Blog preview cards: AI-generated editorial photography, category tag,
  * title, excerpt and a coming-soon read-more affordance.
  */
 export function BlogCards() {
@@ -61,16 +61,27 @@ export function BlogCards() {
         <div className="mt-14 grid gap-5 md:mt-16 md:grid-cols-3">
           {POSTS.map((post, index) => (
             <FadeIn key={post.title} delay={index * 0.08} className="h-full">
-              <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-fora-border bg-fora-surface transition-all duration-300 hover:-translate-y-1 hover:border-fora-border-hover">
-                {/* Gradient image placeholder */}
-                <div
-                  aria-hidden="true"
-                  className={cn('relative h-44 overflow-hidden bg-gradient-to-br', post.gradient)}
-                >
-                  <span className="absolute -right-3 -top-6 select-none font-fora-serif text-[7rem] italic leading-none text-white/[0.13]">
-                    {post.icon}
-                  </span>
-                  <div className="absolute inset-0 bg-[radial-gradient(400px_circle_at_20%_120%,rgba(255,255,255,0.08),transparent_60%)]" />
+              <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-fora-border bg-fora-surface transition-all duration-300 hover:-translate-y-1 hover:border-fora-border-hover hover:shadow-[0_16px_48px_-16px_rgba(0,0,0,0.8)]">
+                {/* Editorial photo header */}
+                <div className="relative h-44 overflow-hidden md:h-48">
+                  <Image
+                    src={post.image}
+                    alt={post.alt}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    unoptimized
+                  />
+                  {/* Darken for chip legibility + blend into the card body */}
+                  <div aria-hidden="true" className="absolute inset-0 bg-fora-bg/20" />
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-gradient-to-t from-fora-surface via-fora-surface/10 to-transparent"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="absolute bottom-3 left-6 h-px w-10 bg-gradient-to-r from-fora-accent to-transparent"
+                  />
                 </div>
 
                 <div className="flex flex-1 flex-col p-6">

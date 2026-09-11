@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { ArrowRight, Play, Sparkles } from 'lucide-react'
 import { ROUTES } from '@/lib/constants'
 import { navigate } from '@/hooks/use-hash-route'
@@ -17,6 +18,25 @@ import { scrollToSection } from '@/components/landing/scroll'
 export function Hero() {
   return (
     <section className="relative overflow-hidden pb-16 pt-32 md:pb-24 md:pt-44">
+      {/* flow.so-style photographic backdrop — sits behind the fixed nav and
+          the hero copy, then dissolves into the page black before the trust
+          bar. Rendered first so the grid/orbs layer above it. */}
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[540px] md:h-[760px]">
+        <Image
+          src="/images/landing/hero-bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[center_65%]"
+          unoptimized
+        />
+        {/* Contrast wash so the white headline stays readable */}
+        <div className="absolute inset-0 bg-fora-bg/40" />
+        {/* Dissolve into the page background at the bottom edge */}
+        <div className="absolute inset-0 bg-gradient-to-b from-fora-bg/20 via-fora-bg/35 to-fora-bg" />
+      </div>
+
       <GridBackground />
       <GlowOrb className="-top-48 left-1/2 h-[560px] w-[920px] -translate-x-1/2" color="rgba(99,102,241,0.2)" float />
 

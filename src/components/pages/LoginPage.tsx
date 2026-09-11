@@ -87,7 +87,7 @@ export function LoginPage() {
           <button
             type="button"
             onClick={() => navigate(ROUTES.FORGOT_PASSWORD)}
-            className="min-h-11 text-xs font-semibold text-emerald-700 underline-offset-4 hover:underline sm:min-h-0"
+            className="min-h-11 text-xs font-semibold text-fora-glow underline-offset-4 hover:underline sm:min-h-0"
           >
             Forgot password?
           </button>
@@ -110,21 +110,25 @@ export function LoginPage() {
         ) : null}
       </div>
 
-      <Button type="submit" className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={loading}>
+      <Button
+        type="submit"
+        className="h-11 w-full bg-fora-accent text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] transition-shadow hover:bg-fora-accent-hover hover:shadow-[0_0_36px_rgba(99,102,241,0.5)]"
+        disabled={loading}
+      >
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />}
         {loading ? 'Signing in…' : 'Sign in'}
       </Button>
 
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-sm dark:border-emerald-500/25 dark:bg-emerald-500/10">
-        <p className="font-medium text-emerald-900 dark:text-emerald-200">Demo account</p>
-        <p className="mt-0.5 text-emerald-800/80 dark:text-emerald-300/80">
+      <div className="rounded-lg border border-fora-border bg-fora-surface-2 p-3 text-sm">
+        <p className="font-medium text-white">Demo account</p>
+        <p className="mt-0.5 text-fora-text-2">
           {DEMO_EMAIL} / {DEMO_PASSWORD}
         </p>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="mt-2 h-9 border-emerald-300 bg-card text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+          className="mt-2 h-9 border-fora-border bg-transparent text-fora-text-2 hover:bg-white/5 hover:text-white"
           onClick={fillDemo}
         >
           <Wand2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -137,7 +141,7 @@ export function LoginPage() {
         <button
           type="button"
           onClick={() => navigate(ROUTES.REGISTER)}
-          className="min-h-11 font-semibold text-emerald-700 underline-offset-4 hover:underline sm:min-h-0"
+          className="min-h-11 font-semibold text-fora-glow underline-offset-4 hover:underline sm:min-h-0"
         >
           Create one
         </button>

@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   CheckSquare,
   Clock,
-  History,
   Inbox,
   LayoutDashboard,
   Loader2,
@@ -92,14 +91,14 @@ interface NavItem {
 }
 
 // "My Tasks" intentionally lives as a tab inside the Tasks page (not a separate
-// nav entry) to keep the navbar uncluttered.
+// nav entry) to keep the navbar uncluttered. Activity lives off the navbar on
+// purpose — the dashboard's activity feed links to the full page.
 const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
   { path: ROUTES.EVENTS, label: 'Events', icon: CalendarDays },
   { path: ROUTES.CALENDAR, label: 'Calendar', icon: CalendarRange },
   { path: ROUTES.TASKS, label: 'Tasks', icon: CheckSquare },
   { path: ROUTES.TEAMS, label: 'Teams', icon: Users },
-  { path: ROUTES.ACTIVITY, label: 'Activity', icon: History },
 ]
 
 /** Manager-only nav entry, appended when the signed-in user is an EVENT_MANAGER. */
@@ -524,10 +523,6 @@ export function Layout({ children }: LayoutProps) {
                 <DropdownMenuItem onClick={() => handleNavigate(ROUTES.CALENDAR)}>
                   <CalendarRange className="mr-2 h-4 w-4" aria-hidden="true" />
                   Calendar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNavigate(ROUTES.ACTIVITY)}>
-                  <History className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Activity
                 </DropdownMenuItem>
                 {user?.role === 'EVENT_MANAGER' ? (
                   <DropdownMenuItem onClick={() => handleNavigate(ROUTES.ADMIN)}>
