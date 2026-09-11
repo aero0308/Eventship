@@ -611,6 +611,11 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   const loadTasksRef = useRef(loadTasks)
   loadTasksRef.current = loadTasks
 
+  // Phase 7: remote mutations refresh the stats strip via this ref (the
+  // realtime effect subscribes once — the ref keeps the callback current).
+  const loadStatsRef = useRef(loadStats)
+  loadStatsRef.current = loadStats
+
   // Latest filter values for the realtime optimistic matcher — the socket
   // effect below subscribes once; refs keep the predicate current without
   // resubscribing on every keystroke.
@@ -1013,6 +1018,12 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
       timer = setTimeout(() => void loadTasksRef.current({ silent: true }), 400)
     }
 
+    // Phase 7: remote task mutations should keep the stats strip honest too
+    // (the board itself patches optimistically, the counters ride along).
+    const scheduleStatsRefresh = () => {
+      setTimeout(() => void loadStatsRef.current(), 500)
+    }
+
     /** Would a remotely-changed task belong in the current (filtered) view? */
     const matchesFilters = (task: TaskDTO) => {
       const f = filtersRef.current
@@ -1044,6 +1055,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
       if (payload.type === 'task:updated' && isTaskDTO(payload.task)) {
         const task = payload.task
+        scheduleStatsRefresh()
         if (matchesFilters(task)) {
           setTasks((list) =>
             withDepStatusRefresh(
@@ -1064,6 +1076,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
       if (payload.type === 'task:created' && isTaskDTO(payload.task)) {
         const task = payload.task
+        scheduleStatsRefresh()
         if (matchesFilters(task)) {
           setTasks((list) => (list.some((t) => t.id === task.id) ? list : [task, ...list]))
         } else {
@@ -1074,6 +1087,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
       if (payload.type === 'task:deleted' && payload.taskId) {
         const taskId = payload.taskId
+        scheduleStatsRefresh()
         setTasks((list) => list.filter((t) => t.id !== taskId))
         setDetailId((current) => (current === taskId ? null : current))
         return

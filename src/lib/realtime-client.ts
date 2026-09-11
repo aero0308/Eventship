@@ -29,6 +29,11 @@ export interface BoardChangePayload {
   /** comment:deleted — the removed comment's id. */
   commentId?: string
   bulk?: boolean
+  /** bulk pings — how many tasks were updated/deleted. */
+  updated?: number
+  deleted?: number
+  /** task:updated — present when the status actually changed (Phase 7 toasts). */
+  statusChange?: { from: string; to: string }
   /** task:updated / task:created — the serialized DTO for optimistic patching. */
   task?: unknown
   /** comment:added — the serialized comment for live dialog append. */
@@ -63,10 +68,26 @@ export interface PresenceSummary {
   viewers: PresenceUser[]
 }
 
+/** Full connection status (Phase 7 spec 7.3). */
+export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error'
+
+/** Site-wide minimal change hint emitted by the realtime service (no payload). */
+export interface RealtimeDataEcho {
+  room: string
+  event: string
+  at: string
+}
+
 let socket: Socket | null = null
 let currentUser: RealtimeUser | null = null
 const scopes = new Map<string, { rooms: Set<string>; presenceRooms: Set<string> }>()
 const stateListeners = new Set<(connected: boolean) => void>()
+const statusListeners = new Set<(status: RealtimeStatus) => void>()
+let currentStatus: RealtimeStatus = 'disconnected'
+let failedAttempts = 0
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+const ERROR_AFTER_ATTEMPTS = 5
 
 function allRooms(): string[] {
   const union = new Set<string>()
@@ -86,9 +107,23 @@ function notifyState(connected: boolean) {
   }
 }
 
+function setStatus(status: RealtimeStatus) {
+  if (currentStatus === status) return
+  currentStatus = status
+  for (const listener of statusListeners) {
+    try {
+      listener(status)
+    } catch {
+      // A broken listener must not break the others.
+    }
+  }
+  notifyState(status === 'connected')
+}
+
 export function getRealtimeSocket(): Socket | null {
   if (typeof window === 'undefined') return null
   if (socket) return socket
+  setStatus('connecting')
   socket = io('/?XTransformPort=3003', {
     path: '/',
     transports: ['websocket', 'polling'],
@@ -99,17 +134,50 @@ export function getRealtimeSocket(): Socket | null {
     timeout: 10000,
   })
   socket.on('connect', () => {
+    failedAttempts = 0
     const rooms = allRooms()
     if (rooms.length > 0) {
       socket?.emit('room:join', { rooms, user: currentUser })
     }
-    notifyState(true)
+    setStatus('connected')
   })
   socket.on('disconnect', (reason) => {
-    if (reason !== 'io client disconnect') notifyState(false)
+    if (reason !== 'io client disconnect') setStatus('disconnected')
   })
-  socket.on('connect_error', () => notifyState(false))
+  socket.on('connect_error', () => {
+    failedAttempts += 1
+    setStatus(failedAttempts >= ERROR_AFTER_ATTEMPTS ? 'error' : 'reconnecting')
+    // Socket.IO does NOT auto-retry after a middleware rejection (e.g. a
+    // transient auth-backend hiccup) — schedule our own backoff retry so the
+    // socket heals without a page reload.
+    if (retryTimer) return
+    const delay = Math.min(1500 * 2 ** (Math.min(failedAttempts, 4) - 1), 8000)
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      if (socket && !socket.connected) socket.connect()
+    }, delay)
+  })
+  // The manager fires before every retry — surface the transient state.
+  socket.io.on('reconnect_attempt', () => {
+    setStatus(failedAttempts >= ERROR_AFTER_ATTEMPTS ? 'error' : 'reconnecting')
+  })
   return socket
+}
+
+/**
+ * Tear the socket down (logout). The next getRealtimeSocket() call reconnects
+ * fresh — used so a signed-out browser stops holding an authenticated socket.
+ */
+export function disconnectRealtime(): void {
+  if (typeof window === 'undefined') return
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  socket?.disconnect()
+  socket = null
+  failedAttempts = 0
+  setStatus('disconnected')
 }
 
 /** Identify the signed-in user (used for presence + reconnect joins). */
@@ -179,12 +247,21 @@ export function fetchPresenceSummary(prefixes: string[] = ['event:']): Promise<P
   })
 }
 
-/** Subscribe to realtime connection state. Returns an unsubscribe function. */
+/** Subscribe to realtime connection state (boolean convenience wrapper). */
 export function onRealtimeStateChange(listener: (connected: boolean) => void): () => void {
   stateListeners.add(listener)
-  listener(socket?.connected ?? false)
+  listener(currentStatus === 'connected')
   return () => {
     stateListeners.delete(listener)
+  }
+}
+
+/** Subscribe to the full connection status (connecting/connected/…/error). */
+export function onRealtimeStatusChange(listener: (status: RealtimeStatus) => void): () => void {
+  statusListeners.add(listener)
+  listener(currentStatus)
+  return () => {
+    statusListeners.delete(listener)
   }
 }
 
@@ -195,6 +272,8 @@ if (typeof window !== 'undefined') {
       return {
         hasSocket: socket !== null,
         connected: socket?.connected ?? false,
+        status: currentStatus,
+        failedAttempts,
         listenerCount: stateListeners.size,
         scopes: [...scopes.entries()].map(([scope, s]) => ({
           scope,

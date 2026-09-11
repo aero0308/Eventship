@@ -39,3 +39,34 @@ export function emitBoardChange(eventId: string, type: string, actorId: string, 
     data: { type, eventId, actorId, at: new Date().toISOString(), ...extra },
   })
 }
+
+/**
+ * Broadcast a board change to the event room AND the owning team's room
+ * (Phase 7 team rooms: team-scoped surfaces stay live without joining every
+ * event room of the team). Same payload shape as emitBoardChange.
+ */
+export function emitTaskBoardChange(
+  eventId: string,
+  teamId: string | null | undefined,
+  type: string,
+  actorId: string,
+  extra?: Record<string, unknown>
+): void {
+  emitBoardChange(eventId, type, actorId, extra)
+  if (teamId) {
+    void emitRealtime({
+      room: `team:${teamId}`,
+      event: 'board:changed',
+      data: { type, eventId, actorId, at: new Date().toISOString(), ...extra },
+    })
+  }
+}
+
+/** Broadcast a team-scoped change (roster edits, team settings). */
+export function emitTeamChange(teamId: string, event: string, data?: Record<string, unknown>): void {
+  void emitRealtime({
+    room: `team:${teamId}`,
+    event,
+    data: { teamId, at: new Date().toISOString(), ...data },
+  })
+}

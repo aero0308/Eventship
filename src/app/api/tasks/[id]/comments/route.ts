@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody, requireUser } from '@/lib/api-utils'
 import { createCommentSchema } from '@/lib/schemas'
-import { emitBoardChange } from '@/lib/realtime'
+import { emitTaskBoardChange } from '@/lib/realtime'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,7 +10,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id: taskId } = await params
     const body = await parseBody(request, createCommentSchema)
 
-    const task = await db.task.findUnique({ where: { id: taskId } })
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      include: { event: { select: { teamId: true } } },
+    })
     if (!task) throw new ApiError(404, 'Task not found')
 
     const comment = await db.taskComment.create({
@@ -37,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
     // The serialized comment rides the broadcast so open task dialogs on other
     // clients can append it live (plus a typing indicator beforehand).
-    emitBoardChange(task.eventId, 'comment:added', user.id, {
+    emitTaskBoardChange(task.eventId, task.event.teamId, 'comment:added', user.id, {
       taskId,
       taskTitle: task.title,
       comment: {

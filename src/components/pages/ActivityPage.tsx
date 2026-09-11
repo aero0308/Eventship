@@ -9,6 +9,7 @@ import { csvDateStamp } from '@/lib/csv'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
+import { getRealtimeSocket, type RealtimeDataEcho } from '@/lib/realtime-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -80,6 +81,33 @@ export function ActivityPage() {
     })()
     return () => {
       cancelled = true
+    }
+  }, [load])
+
+  // Phase 7: live activity feed — board/team changes echo in from the realtime
+  // service as minimal hints; debounce the burst and refresh the feed silently
+  // so new entries appear without a manual reload.
+  useEffect(() => {
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onEcho = (payload: RealtimeDataEcho) => {
+      const live =
+        payload.event.startsWith('task:') ||
+        payload.event.startsWith('comment:') ||
+        payload.event === 'event:updated' ||
+        payload.event === 'team:updated'
+      if (!live) return
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        void load()
+      }, 900)
+    }
+    socket.on('data:echo', onEcho)
+    return () => {
+      socket.off('data:echo', onEcho)
+      if (timer) clearTimeout(timer)
     }
   }, [load])
 

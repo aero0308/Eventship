@@ -114,9 +114,10 @@ export async function notifyUser(
       data: { userId, type, message },
     })
     // Live-push to the recipient's personal room (best-effort; realtime
-    // service may be offline — polling remains the fallback).
+    // service may be offline — polling remains the fallback). The message
+    // rides the payload so clients can toast it without a refetch (Phase 7).
     const { emitRealtime } = await import('@/lib/realtime')
-    await emitRealtime({ room: `user:${userId}`, event: 'notification:new', data: { userId, type } })
+    await emitRealtime({ room: `user:${userId}`, event: 'notification:new', data: { userId, type, message } })
   } catch (e) {
     console.error('[notify]', e)
   }

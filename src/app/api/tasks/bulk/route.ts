@@ -11,7 +11,7 @@ import {
 } from '@/lib/api-utils'
 import { bulkTaskActionSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
-import { emitBoardChange } from '@/lib/realtime'
+import { emitBoardChange, emitRealtime } from '@/lib/realtime'
 
 /**
  * POST /api/tasks/bulk — apply one action to many tasks.
@@ -51,6 +51,11 @@ export async function POST(request: Request) {
     })
     const taskById = new Map(tasks.map((t) => [t.id, t]))
     const touchedEvents = new Set<string>()
+    const touchedTeams = new Set<string>()
+    const touch = (task: (typeof tasks)[number]) => {
+      touchedEvents.add(task.eventId)
+      touchedTeams.add(task.event.teamId)
+    }
 
     // Strict dependency guard (per-user preference): pre-compute unfinished
     // dependency counts for the selected tasks so COMPLETED can be refused.
@@ -83,7 +88,7 @@ export async function POST(request: Request) {
         if (body.action === 'delete') {
           assertAccess(fullManager, 'Only managers, the owning team leader, or the creator can delete a task')
           await db.task.delete({ where: { id } })
-          touchedEvents.add(task.eventId)
+          touch(task)
           deleted += 1
           continue
         }
@@ -113,7 +118,7 @@ export async function POST(request: Request) {
             recipients.delete(user.id)
             await Promise.all([...recipients].map((recipientId) => notifyUser(recipientId, notifyType, message)))
             await logActivity(user.id, notifyType, { taskId: id, title: task.title, from: task.status, to: body.status })
-            touchedEvents.add(task.eventId)
+            touch(task)
             updated += 1
           }
           continue
@@ -124,7 +129,7 @@ export async function POST(request: Request) {
 
         if (body.action === 'priority' && task.priority !== body.priority) {
           await db.task.update({ where: { id }, data: { priority: body.priority! } })
-          touchedEvents.add(task.eventId)
+          touch(task)
           updated += 1
         } else if (body.action === 'assign' && task.assignedTo !== body.assignedTo) {
           await db.task.update({ where: { id }, data: { assignedTo: body.assignedTo! } })
@@ -136,11 +141,11 @@ export async function POST(request: Request) {
             title: task.title,
             assignedTo: body.assignedTo,
           })
-          touchedEvents.add(task.eventId)
+          touch(task)
           updated += 1
         } else if (body.action === 'unassign' && task.assignedTo !== null) {
           await db.task.update({ where: { id }, data: { assignedTo: null } })
-          touchedEvents.add(task.eventId)
+          touch(task)
           updated += 1
         }
       } catch (error) {
@@ -150,9 +155,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // One board-change ping per touched event (clients refetch on receipt).
+    // One board-change ping per touched event + team room fan-out (Phase 7).
     for (const eventId of touchedEvents) {
       emitBoardChange(eventId, `task:${body.action}`, user.id, { bulk: true, updated, deleted })
+    }
+    for (const teamId of touchedTeams) {
+      void emitRealtime({
+        room: `team:${teamId}`,
+        event: 'board:changed',
+        data: { type: `task:${body.action}`, bulk: true, actorId: user.id, at: new Date().toISOString(), updated, deleted },
+      })
     }
 
     return ok({ updated, deleted, failed, total: ids.length })

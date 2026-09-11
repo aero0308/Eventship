@@ -1,0 +1,1571 @@
+PHASE 7: Real-Time Updates (WebSockets) - Step-by-Step AI Prompts
+📋 How This Works
+For Phase 7, we'll add real-time functionality using Socket.IO. This is what makes your app feel alive — updates appear instantly without refreshing!
+
+Order of work:
+
+First: Backend WebSocket server (Socket.IO + FastAPI)
+
+Then: Frontend Socket.IO client + service
+
+Then: Integrate WebSocket into stores (tasks, notifications)
+
+Then: UI indicators (connection status, live toasts)
+
+Then: Test with two browser windows
+
+What You'll See by End of Phase 7:
+
+✅ Live connection status indicator in header
+
+✅ Task updates appear instantly in other users' windows
+
+✅ Comments appear without refresh
+
+✅ New notifications pop up in real-time
+
+✅ Dashboard updates live
+
+✅ Toast notifications for remote events
+
+✅ Automatic reconnection on network issues
+
+📌 Step 7.1: Backend WebSocket Server (Socket.IO)
+🤖 Complete Prompt for Step 7.1:
+text
+We're starting Phase 7 - Real-Time Updates with WebSockets. Use python-socketio with FastAPI.
+
+**First, add socketio to requirements:**
+
+Update **backend/requirements.txt** - Add these lines:
+python-socketio==5.10.0
+python-engineio==4.8.0
+
+text
+
+**Create these files:**
+
+1. **backend/app/websocket/__init__.py** - Socket.IO server setup:
+```python
+import socketio
+from typing import Optional
+from uuid import UUID
+from app.core.config import settings
+
+# Create Socket.IO server
+# cors_allowed_origins should allow frontend URL
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins=settings.CORS_ORIGINS,
+    logger=True,
+    engineio_logger=False
+)
+
+# Store connected users: {sid: user_id}
+connected_users: dict[str, str] = {}
+
+# Store user rooms: {user_id: set of room names}
+user_rooms: dict[str, set] = {}
+
+
+async def authenticate_socket(sid: str, environ: dict) -> Optional[str]:
+    """
+    Authenticate socket connection using JWT from query params or auth header.
+    Returns user_id if valid, None otherwise.
+    """
+    from jose import jwt, JWTError
+    from app.core.config import settings
+    
+    # Try to get token from query string or auth
+    query_string = environ.get('QUERY_STRING', '')
+    token = None
+    
+    if 'token=' in query_string:
+        # Parse token from query string
+        params = dict(p.split('=') for p in query_string.split('&') if '=' in p)
+        token = params.get('token')
+    
+    if not token:
+        # Try Authorization header
+        auth_header = environ.get('HTTP_AUTHORIZATION', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+    
+    if not token:
+        return None
+    
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        return payload.get('sub')
+    except JWTError:
+        return None
+
+
+@sio.event
+async def connect(sid: str, environ: dict, auth: Optional[dict] = None):
+    """Handle client connection"""
+    user_id = await authenticate_socket(sid, environ)
+    
+    if not user_id:
+        print(f"❌ Socket {sid} rejected: authentication failed")
+        raise socketio.exceptions.ConnectionRefusedError('Authentication failed')
+    
+    connected_users[sid] = user_id
+    user_rooms[user_id] = set()
+    
+    # Join user's personal room
+    await sio.enter_room(sid, f"user_{user_id}")
+    user_rooms[user_id].add(f"user_{user_id}")
+    
+    print(f"✅ User {user_id} connected (sid: {sid})")
+    
+    # Send confirmation
+    await sio.emit('connected', {'status': 'ok', 'user_id': user_id}, to=sid)
+
+
+@sio.event
+async def disconnect(sid: str):
+    """Handle client disconnection"""
+    user_id = connected_users.pop(sid, None)
+    if user_id:
+        user_rooms.pop(user_id, None)
+        print(f"❌ User {user_id} disconnected (sid: {sid})")
+
+
+@sio.event
+async def join_team(sid: str, data: dict):
+    """Join a team room for team-wide updates"""
+    user_id = connected_users.get(sid)
+    if not user_id:
+        return
+    
+    team_id = data.get('team_id')
+    if team_id:
+        room = f"team_{team_id}"
+        await sio.enter_room(sid, room)
+        if user_id in user_rooms:
+            user_rooms[user_id].add(room)
+        print(f"👥 User {user_id} joined {room}")
+
+
+@sio.event
+async def leave_team(sid: str, data: dict):
+    """Leave a team room"""
+    team_id = data.get('team_id')
+    if team_id:
+        room = f"team_{team_id}"
+        await sio.leave_room(sid, room)
+        user_id = connected_users.get(sid)
+        if user_id and user_id in user_rooms:
+            user_rooms[user_id].discard(room)
+
+
+@sio.event
+async def join_event(sid: str, data: dict):
+    """Join an event room for event-specific updates"""
+    user_id = connected_users.get(sid)
+    if not user_id:
+        return
+    
+    event_id = data.get('event_id')
+    if event_id:
+        room = f"event_{event_id}"
+        await sio.enter_room(sid, room)
+        if user_id in user_rooms:
+            user_rooms[user_id].add(room)
+        print(f"📅 User {user_id} joined {room}")
+
+
+@sio.event
+async def leave_event(sid: str, data: dict):
+    """Leave an event room"""
+    event_id = data.get('event_id')
+    if event_id:
+        await sio.leave_room(sid, f"event_{event_id}")
+
+
+# ============================================================
+# BROADCAST HELPERS - Called from CRUD operations
+# ============================================================
+
+async def broadcast_task_updated(task_data: dict, event_id: str, team_id: Optional[str], actor_id: str):
+    """
+    Broadcast task update to all relevant rooms.
+    - To event room (everyone watching event)
+    - To team room (team members)
+    - To assignee's personal room
+    """
+    payload = {
+        'type': 'task_updated',
+        'task': task_data,
+        'actor_id': actor_id
+    }
+    
+    # Broadcast to event room
+    await sio.emit('task_updated', payload, room=f"event_{event_id}")
+    
+    # Broadcast to team room if available
+    if team_id:
+        await sio.emit('task_updated', payload, room=f"team_{team_id}")
+    
+    # Send to assignee
+    if task_data.get('assigned_to'):
+        await sio.emit('task_updated', payload, room=f"user_{task_data['assigned_to']}")
+
+
+async def broadcast_task_created(task_data: dict, event_id: str, team_id: Optional[str], actor_id: str):
+    """Broadcast new task creation"""
+    payload = {
+        'type': 'task_created',
+        'task': task_data,
+        'actor_id': actor_id
+    }
+    
+    await sio.emit('task_created', payload, room=f"event_{event_id}")
+    if team_id:
+        await sio.emit('task_created', payload, room=f"team_{team_id}")
+    if task_data.get('assigned_to'):
+        await sio.emit('task_created', payload, room=f"user_{task_data['assigned_to']}")
+
+
+async def broadcast_task_deleted(task_id: str, event_id: str, team_id: Optional[str], actor_id: str):
+    """Broadcast task deletion"""
+    payload = {
+        'type': 'task_deleted',
+        'task_id': task_id,
+        'actor_id': actor_id
+    }
+    
+    await sio.emit('task_deleted', payload, room=f"event_{event_id}")
+    if team_id:
+        await sio.emit('task_deleted', payload, room=f"team_{team_id}")
+
+
+async def broadcast_comment_added(comment_data: dict, task_id: str, event_id: str, team_id: Optional[str], actor_id: str):
+    """Broadcast new comment"""
+    payload = {
+        'type': 'comment_added',
+        'comment': comment_data,
+        'task_id': task_id,
+        'actor_id': actor_id
+    }
+    
+    await sio.emit('comment_added', payload, room=f"event_{event_id}")
+    if team_id:
+        await sio.emit('comment_added', payload, room=f"team_{team_id}")
+
+
+async def send_notification(user_id: str, notification_data: dict):
+    """Send notification to a specific user"""
+    payload = {
+        'type': 'notification',
+        'notification': notification_data
+    }
+    await sio.emit('notification', payload, room=f"user_{user_id}")
+
+
+async def broadcast_event_updated(event_data: dict, team_id: str, actor_id: str):
+    """Broadcast event updates to team"""
+    payload = {
+        'type': 'event_updated',
+        'event': event_data,
+        'actor_id': actor_id
+    }
+    await sio.emit('event_updated', payload, room=f"team_{team_id}")
+Update backend/app/main.py - Mount Socket.IO with FastAPI:
+
+python
+import socketio
+from app.websocket import sio
+
+# ... existing FastAPI app setup ...
+
+# At the BOTTOM of main.py (after all routes are registered):
+# Wrap FastAPI with Socket.IO ASGI app
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+
+# Export the wrapped app
+# Make sure uvicorn command in Dockerfile uses this
+Update backend/Dockerfile - Ensure correct entry:
+
+dockerfile
+CMD ["uvicorn", "app.main:socket_app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+OR if using docker-compose command:
+
+yaml
+backend:
+  command: uvicorn app.main:socket_app --host 0.0.0.0 --port 8000 --reload
+backend/app/websocket/events.py - Integration helpers for CRUD:
+
+python
+"""
+Helper functions to broadcast events from CRUD operations.
+These are called AFTER database commits to notify connected clients.
+"""
+from typing import Optional
+from uuid import UUID
+from app.websocket import (
+    broadcast_task_updated,
+    broadcast_task_created,
+    broadcast_task_deleted,
+    broadcast_comment_added,
+    send_notification,
+    broadcast_event_updated
+)
+
+
+def task_to_dict(task) -> dict:
+    """Convert Task model to dict for broadcasting"""
+    return {
+        'id': str(task.id),
+        'title': task.title,
+        'description': task.description,
+        'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority,
+        'status': task.status.value if hasattr(task.status, 'value') else task.status,
+        'event_id': str(task.event_id),
+        'assigned_to': str(task.assigned_to) if task.assigned_to else None,
+        'assignee_name': task.assignee.full_name if hasattr(task, 'assignee') and task.assignee else None,
+        'due_date': task.due_date.isoformat() if task.due_date else None,
+        'estimated_hours': task.estimated_hours,
+        'created_at': task.created_at.isoformat() if task.created_at else None,
+        'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+    }
+
+
+def comment_to_dict(comment) -> dict:
+    """Convert Comment model to dict for broadcasting"""
+    return {
+        'id': str(comment.id),
+        'content': comment.content,
+        'task_id': str(comment.task_id),
+        'user_id': str(comment.user_id),
+        'user_name': comment.user.full_name if hasattr(comment, 'user') and comment.user else 'Unknown',
+        'created_at': comment.created_at.isoformat() if comment.created_at else None,
+    }
+
+
+def event_to_dict(event) -> dict:
+    """Convert Event model to dict for broadcasting"""
+    return {
+        'id': str(event.id),
+        'name': event.name,
+        'description': event.description,
+        'status': event.status.value if hasattr(event.status, 'value') else event.status,
+        'start_date': event.start_date.isoformat() if event.start_date else None,
+        'end_date': event.end_date.isoformat() if event.end_date else None,
+        'team_id': str(event.team_id),
+    }
+Requirements:
+
+Socket.IO server with JWT authentication
+
+Room-based broadcasting (user, team, event rooms)
+
+Helper functions for CRUD integration
+
+Automatic disconnect handling
+
+Proper CORS configuration
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 7.2: Backend CRUD Integration (Broadcast Events)
+
+### 🤖 Complete Prompt for Step 7.2:
+Now integrate WebSocket broadcasts into your existing CRUD operations.
+
+Update these CRUD files to broadcast events AFTER commits.
+
+Update backend/app/crud/task.py - Add broadcasts:
+
+In create_task() — after db.commit():
+
+python
+from app.websocket.events import task_to_dict
+from app.websocket import broadcast_task_created
+import asyncio
+
+# After db.refresh(task):
+try:
+    event = db.query(Event).filter(Event.id == task.event_id).first()
+    team_id = str(event.team_id) if event else None
+    asyncio.create_task(broadcast_task_created(
+        task_to_dict(task),
+        str(task.event_id),
+        team_id,
+        str(user_id)
+    ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+In update_task_status() — after commit:
+
+python
+from app.websocket import broadcast_task_updated
+import asyncio
+
+try:
+    event = db.query(Event).filter(Event.id == task.event_id).first()
+    team_id = str(event.team_id) if event else None
+    asyncio.create_task(broadcast_task_updated(
+        task_to_dict(task),
+        str(task.event_id),
+        team_id,
+        str(user_id)
+    ))
+    
+    # Also notify assignee if task is blocked
+    if task.status == TaskStatus.BLOCKED and task.assigned_to:
+        from app.websocket import send_notification
+        asyncio.create_task(send_notification(
+            str(task.assigned_to),
+            {
+                'id': str(task.id),
+                'message': f'Task "{task.title}" is blocked',
+                'type': 'TASK_BLOCKED',
+                'created_at': task.updated_at.isoformat() if task.updated_at else None
+            }
+        ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+In update_task() — after commit:
+
+python
+try:
+    event = db.query(Event).filter(Event.id == task.event_id).first()
+    team_id = str(event.team_id) if event else None
+    asyncio.create_task(broadcast_task_updated(
+        task_to_dict(task),
+        str(task.event_id),
+        team_id,
+        str(user_id)  # Pass user_id param
+    ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+In delete_task() — BEFORE delete, capture info:
+
+python
+# Capture info before delete
+event_id = str(task.event_id)
+event = db.query(Event).filter(Event.id == task.event_id).first()
+team_id = str(event.team_id) if event else None
+task_id = str(task.id)
+
+db.delete(task)
+db.commit()
+
+# Broadcast after
+asyncio.create_task(broadcast_task_deleted(task_id, event_id, team_id, str(user_id)))
+In add_comment() — after commit:
+
+python
+from app.websocket.events import comment_to_dict
+from app.websocket import broadcast_comment_added
+import asyncio
+
+try:
+    task = db.query(Task).filter(Task.id == task_id).first()
+    event = db.query(Event).filter(Event.id == task.event_id).first()
+    team_id = str(event.team_id) if event else None
+    
+    # Reload comment with user relationship
+    db.refresh(comment)
+    asyncio.create_task(broadcast_comment_added(
+        comment_to_dict(comment),
+        str(task_id),
+        str(task.event_id),
+        team_id,
+        str(user_id)
+    ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+In assign_task() — after commit:
+
+python
+try:
+    event = db.query(Event).filter(Event.id == task.event_id).first()
+    team_id = str(event.team_id) if event else None
+    asyncio.create_task(broadcast_task_updated(
+        task_to_dict(task),
+        str(task.event_id),
+        team_id,
+        str(assignee_id)
+    ))
+    
+    # Notify new assignee
+    from app.websocket import send_notification
+    asyncio.create_task(send_notification(
+        str(assignee_id),
+        {
+            'id': str(task.id),
+            'message': f'You were assigned to "{task.title}"',
+            'type': 'TASK_ASSIGNED',
+            'created_at': task.updated_at.isoformat() if task.updated_at else None
+        }
+    ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+Update backend/app/crud/event.py - Add event broadcasts:
+
+In update_event() — after commit:
+
+python
+from app.websocket.events import event_to_dict
+from app.websocket import broadcast_event_updated
+import asyncio
+
+try:
+    asyncio.create_task(broadcast_event_updated(
+        event_to_dict(event),
+        str(event.team_id),
+        str(user_id)
+    ))
+except Exception as e:
+    print(f"Broadcast failed: {e}")
+Important Notes:
+
+Use asyncio.create_task() so the broadcast doesn't block the response
+
+Always wrap in try/except — if broadcast fails, the request should still succeed
+
+Update function signatures to accept user_id if not already there
+
+Test with print statements to verify broadcasts are triggered
+
+Requirements:
+
+Broadcasts after commits (not before)
+
+Fail-safe (broadcast failures don't break API)
+
+Include actor_id so sender can skip their own events
+
+Generate the updated CRUD functions.
+
+text
+
+---
+
+## 📌 Step 7.3: Frontend Socket.IO Service
+
+### 🤖 Complete Prompt for Step 7.3:
+Now build the frontend Socket.IO client.
+
+First, install the client library:
+
+Run in terminal:
+
+bash
+cd frontend
+npm install socket.io-client
+Create these files:
+
+frontend/src/types/socket.ts - Socket event types:
+
+typescript
+import { Task } from './task'
+import { Event } from './event'
+import { TaskComment } from './task'
+
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error'
+
+export interface SocketNotification {
+    id: string
+    message: string
+    type: 'TASK_ASSIGNED' | 'TASK_STATUS_CHANGED' | 'TASK_BLOCKED' | 'COMMENT_ADDED' | 'DEADLINE_APPROACHING'
+    created_at: string
+}
+
+export interface TaskUpdatedPayload {
+    type: 'task_updated'
+    task: Task
+    actor_id: string
+}
+
+export interface TaskCreatedPayload {
+    type: 'task_created'
+    task: Task
+    actor_id: string
+}
+
+export interface TaskDeletedPayload {
+    type: 'task_deleted'
+    task_id: string
+    actor_id: string
+}
+
+export interface CommentAddedPayload {
+    type: 'comment_added'
+    comment: TaskComment
+    task_id: string
+    actor_id: string
+}
+
+export interface NotificationPayload {
+    type: 'notification'
+    notification: SocketNotification
+}
+
+export interface EventUpdatedPayload {
+    type: 'event_updated'
+    event: Event
+    actor_id: string
+}
+frontend/src/services/socketService.ts - Socket.IO client wrapper:
+
+typescript
+import { io, Socket } from 'socket.io-client'
+import { ConnectionStatus } from '../types/socket'
+
+class SocketService {
+    private socket: Socket | null = null
+    private reconnectAttempts = 0
+    private maxReconnectAttempts = 5
+    private listeners: Map<string, Set<Function>> = new Map()
+    private statusListeners: Set<(status: ConnectionStatus) => void> = new Set()
+    private currentStatus: ConnectionStatus = 'disconnected'
+    
+    /**
+     * Connect to Socket.IO server with JWT token
+     */
+    connect(token: string): void {
+        if (this.socket?.connected) {
+            console.log('Socket already connected')
+            return
+        }
+        
+        // Get base URL (strip /api/v1)
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+        const baseUrl = apiUrl.replace('/api/v1', '')
+        
+        this.setStatus('connecting')
+        
+        this.socket = io(baseUrl, {
+            auth: { token },
+            query: { token },
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: this.maxReconnectAttempts,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000
+        })
+        
+        this.setupListeners()
+    }
+    
+    /**
+     * Disconnect from server
+     */
+    disconnect(): void {
+        if (this.socket) {
+            this.socket.disconnect()
+            this.socket = null
+            this.setStatus('disconnected')
+            this.reconnectAttempts = 0
+        }
+    }
+    
+    /**
+     * Register event listeners
+     */
+    private setupListeners(): void {
+        if (!this.socket) return
+        
+        this.socket.on('connect', () => {
+            console.log('✅ Socket connected')
+            this.reconnectAttempts = 0
+            this.setStatus('connected')
+        })
+        
+        this.socket.on('disconnect', (reason) => {
+            console.log('❌ Socket disconnected:', reason)
+            this.setStatus('disconnected')
+            
+            if (reason === 'io server disconnect') {
+                // Server initiated disconnect - reconnect manually
+                this.socket?.connect()
+            }
+        })
+        
+        this.socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error)
+            this.reconnectAttempts++
+            
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                this.setStatus('error')
+            } else {
+                this.setStatus('reconnecting')
+            }
+        })
+        
+        this.socket.io.on('reconnect_attempt', (attempt) => {
+            console.log(`Reconnect attempt ${attempt}`)
+            this.setStatus('reconnecting')
+        })
+        
+        this.socket.io.on('reconnect', () => {
+            console.log('✅ Reconnected')
+            this.setStatus('connected')
+        })
+        
+        // Forward all incoming events to registered listeners
+        const forwardedEvents = [
+            'task_updated',
+            'task_created',
+            'task_deleted',
+            'comment_added',
+            'notification',
+            'event_updated'
+        ]
+        
+        forwardedEvents.forEach(event => {
+            this.socket!.on(event, (data) => {
+                this.emit(event, data)
+            })
+        })
+    }
+    
+    /**
+     * Emit event to all registered listeners
+     */
+    private emit(event: string, data: any): void {
+        const listeners = this.listeners.get(event)
+        if (listeners) {
+            listeners.forEach(callback => {
+                try {
+                    callback(data)
+                } catch (err) {
+                    console.error(`Error in listener for ${event}:`, err)
+                }
+            })
+        }
+    }
+    
+    /**
+     * Subscribe to an event
+     * Returns unsubscribe function
+     */
+    on(event: string, callback: (data: any) => void): () => void {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, new Set())
+        }
+        this.listeners.get(event)!.add(callback)
+        
+        return () => {
+            this.listeners.get(event)?.delete(callback)
+        }
+    }
+    
+    /**
+     * Subscribe to connection status changes
+     */
+    onStatusChange(callback: (status: ConnectionStatus) => void): () => void {
+        this.statusListeners.add(callback)
+        callback(this.currentStatus)
+        return () => this.statusListeners.delete(callback)
+    }
+    
+    private setStatus(status: ConnectionStatus): void {
+        this.currentStatus = status
+        this.statusListeners.forEach(cb => cb(status))
+    }
+    
+    /**
+     * Join a team room
+     */
+    joinTeam(teamId: string): void {
+        this.socket?.emit('join_team', { team_id: teamId })
+    }
+    
+    leaveTeam(teamId: string): void {
+        this.socket?.emit('leave_team', { team_id: teamId })
+    }
+    
+    /**
+     * Join an event room
+     */
+    joinEvent(eventId: string): void {
+        this.socket?.emit('join_event', { event_id: eventId })
+    }
+    
+    leaveEvent(eventId: string): void {
+        this.socket?.emit('leave_event', { event_id: eventId })
+    }
+    
+    getStatus(): ConnectionStatus {
+        return this.currentStatus
+    }
+    
+    isConnected(): boolean {
+        return this.socket?.connected || false
+    }
+}
+
+// Singleton export
+export const socketService = new SocketService()
+frontend/src/hooks/useSocket.ts - React hook for socket:
+
+typescript
+import { useEffect, useState } from 'react'
+import { socketService } from '../services/socketService'
+import { ConnectionStatus } from '../types/socket'
+
+/**
+ * Get current connection status
+ */
+export const useConnectionStatus = (): ConnectionStatus => {
+    const [status, setStatus] = useState<ConnectionStatus>(socketService.getStatus())
+    
+    useEffect(() => {
+        const unsubscribe = socketService.onStatusChange(setStatus)
+        return unsubscribe
+    }, [])
+    
+    return status
+}
+
+/**
+ * Subscribe to a socket event
+ */
+export const useSocketEvent = <T = any>(
+    event: string,
+    callback: (data: T) => void,
+    deps: any[] = []
+): void => {
+    useEffect(() => {
+        const unsubscribe = socketService.on(event, callback)
+        return unsubscribe
+    }, deps)
+}
+
+/**
+ * Join/leave event room automatically
+ */
+export const useEventRoom = (eventId: string | undefined): void => {
+    useEffect(() => {
+        if (!eventId) return
+        socketService.joinEvent(eventId)
+        return () => socketService.leaveEvent(eventId)
+    }, [eventId])
+}
+
+/**
+ * Join/leave team room automatically
+ */
+export const useTeamRoom = (teamId: string | undefined): void => {
+    useEffect(() => {
+        if (!teamId) return
+        socketService.joinTeam(teamId)
+        return () => socketService.leaveTeam(teamId)
+    }, [teamId])
+}
+Requirements:
+
+Singleton pattern (one connection per app)
+
+Automatic reconnection with exponential backoff
+
+Event subscription with unsubscribe
+
+Connection status broadcasting
+
+Room join/leave helpers
+
+Token from localStorage
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 7.4: Frontend Store Integration
+
+### 🤖 Complete Prompt for Step 7.4:
+Now integrate WebSocket events into your existing Zustand stores.
+
+Update these files:
+
+Update frontend/src/stores/authStore.ts - Connect socket on login:
+
+typescript
+import { socketService } from '../services/socketService'
+
+// In login action, after set({ user, token, isAuthenticated: true }):
+socketService.connect(response.access_token)
+
+// In register action, after set({ user, token, isAuthenticated: true }):
+socketService.connect(response.access_token)
+
+// In logout action, before clearing:
+socketService.disconnect()
+
+// In refreshToken (if you restore session on page load):
+// Call socketService.connect(token) after successful token restoration
+Add an initializeSocket action to authStore:
+
+typescript
+initializeSocket: () => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+        socketService.connect(token)
+    }
+}
+Call it in your main App.tsx:
+
+typescript
+useEffect(() => {
+    // On app mount, if already authenticated, connect socket
+    if (isAuthenticated) {
+        useAuthStore.getState().initializeSocket()
+    }
+}, [])
+Update frontend/src/stores/taskStore.ts - Listen for real-time task events:
+
+Add an initializeRealtime action:
+
+typescript
+import { socketService } from '../services/socketService'
+import { useAuthStore } from './authStore'
+import toast from 'react-hot-toast'
+
+// Add inside create():
+
+initializeRealtime: () => {
+    const currentUserId = useAuthStore.getState().user?.id
+    
+    // Task updated by someone else
+    socketService.on('task_updated', (payload: any) => {
+        const { task, actor_id } = payload
+        
+        // Skip if this user made the change (already updated locally)
+        if (actor_id === currentUserId) return
+        
+        set(state => ({
+            tasks: state.tasks.map(t => t.id === task.id ? task : t),
+            myTasks: state.myTasks.map(t => t.id === task.id ? task : t),
+            currentTask: state.currentTask?.id === task.id ? task : state.currentTask
+        }))
+        
+        // Show toast notification
+        const statusText = task.status.replace('_', ' ')
+        toast.success(`Task "${task.title}" is now ${statusText}`, {
+            icon: '🔄',
+            duration: 4000
+        })
+    })
+    
+    // Task created by someone else
+    socketService.on('task_created', (payload: any) => {
+        const { task, actor_id } = payload
+        if (actor_id === currentUserId) return
+        
+        set(state => {
+            // Avoid duplicates
+            if (state.tasks.some(t => t.id === task.id)) return state
+            return { tasks: [task, ...state.tasks] }
+        })
+        
+        toast.success(`New task: "${task.title}"`, {
+            icon: '➕',
+            duration: 4000
+        })
+    })
+    
+    // Task deleted
+    socketService.on('task_deleted', (payload: any) => {
+        const { task_id, actor_id } = payload
+        if (actor_id === currentUserId) return
+        
+        set(state => ({
+            tasks: state.tasks.filter(t => t.id !== task_id),
+            myTasks: state.myTasks.filter(t => t.id !== task_id),
+            currentTask: state.currentTask?.id === task_id ? null : state.currentTask
+        }))
+    })
+    
+    // Comment added
+    socketService.on('comment_added', (payload: any) => {
+        const { comment, task_id, actor_id } = payload
+        if (actor_id === currentUserId) return
+        
+        // Only add if we're viewing this task
+        if (get().currentTask?.id === task_id) {
+            set(state => {
+                if (state.comments.some(c => c.id === comment.id)) return state
+                return { comments: [comment, ...state.comments] }
+            })
+        }
+        
+        // Update comment count in tasks list
+        set(state => ({
+            tasks: state.tasks.map(t => 
+                t.id === task_id 
+                    ? { ...t, comments_count: t.comments_count + 1 }
+                    : t
+            )
+        }))
+    })
+}
+Add initializeRealtime: () => void to the TaskState interface.
+
+Update frontend/src/stores/notificationStore.ts - Create new store for notifications:
+
+typescript
+import { create } from 'zustand'
+import { socketService } from '../services/socketService'
+import { useAuthStore } from './authStore'
+import toast from 'react-hot-toast'
+
+export interface Notification {
+    id: string
+    message: string
+    type: 'TASK_ASSIGNED' | 'TASK_STATUS_CHANGED' | 'TASK_BLOCKED' | 'COMMENT_ADDED' | 'DEADLINE_APPROACHING'
+    read: boolean
+    created_at: string
+    link?: string
+}
+
+interface NotificationState {
+    notifications: Notification[]
+    unreadCount: number
+    addNotification: (notification: Notification) => void
+    markAsRead: (id: string) => void
+    markAllAsRead: () => void
+    removeNotification: (id: string) => void
+    clearAll: () => void
+    initializeRealtime: () => void
+}
+
+export const useNotificationStore = create<NotificationState>((set, get) => ({
+    notifications: [],
+    unreadCount: 0,
+    
+    addNotification: (notification) => {
+        set(state => ({
+            notifications: [notification, ...state.notifications].slice(0, 50),
+            unreadCount: state.unreadCount + 1
+        }))
+    },
+    
+    markAsRead: (id) => {
+        set(state => {
+            const notification = state.notifications.find(n => n.id === id)
+            if (!notification || notification.read) return state
+            
+            return {
+                notifications: state.notifications.map(n =>
+                    n.id === id ? { ...n, read: true } : n
+                ),
+                unreadCount: Math.max(0, state.unreadCount - 1)
+            }
+        })
+    },
+    
+    markAllAsRead: () => {
+        set(state => ({
+            notifications: state.notifications.map(n => ({ ...n, read: true })),
+            unreadCount: 0
+        }))
+    },
+    
+    removeNotification: (id) => {
+        set(state => {
+            const notification = state.notifications.find(n => n.id === id)
+            const wasUnread = notification && !notification.read
+            return {
+                notifications: state.notifications.filter(n => n.id !== id),
+                unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount
+            }
+        })
+    },
+    
+    clearAll: () => set({ notifications: [], unreadCount: 0 }),
+    
+    initializeRealtime: () => {
+        const currentUserId = useAuthStore.getState().user?.id
+        
+        socketService.on('notification', (payload: any) => {
+            const { notification } = payload
+            
+            get().addNotification({
+                id: notification.id,
+                message: notification.message,
+                type: notification.type,
+                read: false,
+                created_at: notification.created_at
+            })
+            
+            // Show toast
+            const icons: Record<string, string> = {
+                'TASK_ASSIGNED': '👤',
+                'TASK_STATUS_CHANGED': '🔄',
+                'TASK_BLOCKED': '🚫',
+                'COMMENT_ADDED': '💬',
+                'DEADLINE_APPROACHING': '⏰'
+            }
+            
+            toast(notification.message, {
+                icon: icons[notification.type] || '🔔',
+                duration: 5000
+            })
+        })
+    }
+}))
+Update frontend/src/App.tsx - Initialize real-time on mount:
+
+typescript
+import { useEffect } from 'react'
+import { useAuthStore } from './stores/authStore'
+import { useTaskStore } from './stores/taskStore'
+import { useNotificationStore } from './stores/notificationStore'
+
+// Inside App component, add:
+useEffect(() => {
+    const initializeRealtime = () => {
+        useTaskStore.getState().initializeRealtime()
+        useNotificationStore.getState().initializeRealtime()
+    }
+    
+    // If already authenticated (page refresh), initialize now
+    if (useAuthStore.getState().isAuthenticated) {
+        useAuthStore.getState().initializeSocket()
+        initializeRealtime()
+    }
+    
+    // Also initialize when user logs in
+    const unsubscribe = useAuthStore.subscribe(
+        (state) => state.isAuthenticated,
+        (isAuth) => {
+            if (isAuth) {
+                initializeRealtime()
+            }
+        }
+    )
+    
+    return unsubscribe
+}, [])
+Requirements:
+
+Skip events from self (actor_id check)
+
+Toast notifications for remote events
+
+Update tasks in all relevant lists (tasks, myTasks, currentTask)
+
+Notifications accumulate, max 50
+
+Generate ALL updated files.
+
+text
+
+---
+
+## 📌 Step 7.5: UI Components (Connection Status & Notification Bell)
+
+### 🤖 Complete Prompt for Step 7.5:
+Now create UI components for connection status and notifications.
+
+Create these files:
+
+frontend/src/components/layout/ConnectionStatus.tsx:
+
+typescript
+import { useConnectionStatus } from '../../hooks/useSocket'
+
+export const ConnectionStatus = () => {
+    const status = useConnectionStatus()
+    
+    const config = {
+        connecting: { color: 'bg-yellow-500', text: 'Connecting...', pulse: true },
+        connected: { color: 'bg-green-500', text: 'Live', pulse: false },
+        disconnected: { color: 'bg-gray-400', text: 'Offline', pulse: false },
+        reconnecting: { color: 'bg-yellow-500', text: 'Reconnecting...', pulse: true },
+        error: { color: 'bg-red-500', text: 'Connection failed', pulse: false }
+    }
+    
+    const c = config[status]
+    
+    return (
+        <div className="flex items-center gap-2 text-xs text-gray-500" title={c.text}>
+            <span className="relative flex h-2 w-2">
+                {c.pulse && (
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${c.color} opacity-75`} />
+                )}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${c.color}`} />
+            </span>
+            <span className="hidden sm:inline">{c.text}</span>
+        </div>
+    )
+}
+frontend/src/components/layout/NotificationBell.tsx:
+
+typescript
+import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { useNotificationStore } from '../../stores/notificationStore'
+import { formatDistanceToNow } from 'date-fns'
+
+export const NotificationBell = () => {
+    const [isOpen, setIsOpen] = useState(false)
+    const dropdownRef = useRef<HTMLDivElement>(null)
+    const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification } = useNotificationStore()
+    
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setIsOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+    
+    const typeIcons: Record<string, string> = {
+        'TASK_ASSIGNED': '👤',
+        'TASK_STATUS_CHANGED': '🔄',
+        'TASK_BLOCKED': '🚫',
+        'COMMENT_ADDED': '💬',
+        'DEADLINE_APPROACHING': '⏰'
+    }
+    
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
+            >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                )}
+            </button>
+            
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                    <div className="flex items-center justify-between p-4 border-b">
+                        <h3 className="font-semibold">Notifications</h3>
+                        {unreadCount > 0 && (
+                            <button
+                                onClick={markAllAsRead}
+                                className="text-xs text-blue-600 hover:underline"
+                            >
+                                Mark all read
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="max-h-96 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                            <div className="p-8 text-center text-gray-400 text-sm">
+                                No notifications yet
+                            </div>
+                        ) : (
+                            notifications.map(notification => (
+                                <div
+                                    key={notification.id}
+                                    className={`p-4 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer ${
+                                        !notification.read ? 'bg-blue-50' : ''
+                                    }`}
+                                    onClick={() => {
+                                        markAsRead(notification.id)
+                                        setIsOpen(false)
+                                    }}
+                                >
+                                    <div className="flex gap-3">
+                                        <span className="text-xl flex-shrink-0">
+                                            {typeIcons[notification.type] || '🔔'}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm">{notification.message}</p>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                removeNotification(notification.id)
+                                            }}
+                                            className="text-gray-400 hover:text-red-500 text-xs flex-shrink-0"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+Update frontend/src/components/layout/Header.tsx:
+
+typescript
+import { ConnectionStatus } from './ConnectionStatus'
+import { NotificationBell } from './NotificationBell'
+
+// Inside header, add:
+<div className="flex items-center gap-3">
+    <ConnectionStatus />
+    <NotificationBell />
+    {/* existing user menu */}
+</div>
+Requirements:
+
+Connection status dot with color coding
+
+Notification bell with unread badge
+
+Dropdown with notifications list
+
+Mark as read / mark all as read
+
+Delete individual notifications
+
+Empty state
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 7.6: Auto-Join Rooms on Page Visit
+
+### 🤖 Complete Prompt for Step 7.6:
+Now auto-join rooms when users visit relevant pages.
+
+Update these files:
+
+frontend/src/pages/events/EventDetailPage.tsx:
+
+typescript
+import { useEventRoom } from '../../hooks/useSocket'
+
+// Inside component, add:
+useEventRoom(id)
+
+// This auto-joins the event room when viewing event detail
+// Any task changes in this event will now appear live
+frontend/src/pages/teams/TeamDetailPage.tsx:
+
+typescript
+import { useTeamRoom } from '../../hooks/useSocket'
+
+// Inside component:
+useTeamRoom(id)
+frontend/src/pages/tasks/TaskDetailPage.tsx - Already gets comments in real-time via store:
+
+The store listens to comment_added events globally, so this works automatically. Just ensure initializeRealtime() has been called (it's called in App.tsx after login).
+
+Requirements:
+
+Auto-join event room when viewing event detail
+
+Auto-join team room when viewing team detail
+
+Leave rooms on unmount
+
+Task detail page already receives live comments via store
+
+Generate the updated page files.
+
+text
+
+---
+
+## 🎯 Phase 7 Completion Checklist
+
+### ✅ Backend
+- [ ] python-socketio installed
+- [ ] Socket.IO server created with JWT auth
+- [ ] Room management (user, team, event)
+- [ ] Broadcast helpers (task, comment, event, notification)
+- [ ] CRUD integration (broadcasts after commits)
+- [ ] main.py mounts socket_app
+- [ ] Dockerfile/docker-compose uses socket_app
+
+### ✅ Frontend Services
+- [ ] socket.io-client installed
+- [ ] Socket types
+- [ ] Socket service (singleton with reconnection)
+- [ ] Custom hooks (useConnectionStatus, useSocketEvent, useEventRoom, useTeamRoom)
+
+### ✅ Frontend Store Integration
+- [ ] Auth store connects socket on login
+- [ ] Auth store disconnects on logout
+- [ ] Task store handles task_updated
+- [ ] Task store handles task_created
+- [ ] Task store handles task_deleted
+- [ ] Task store handles comment_added
+- [ ] Notification store created
+- [ ] Notification store handles notification
+- [ ] App.tsx initializes real-time on mount
+
+### ✅ UI Components
+- [ ] ConnectionStatus indicator
+- [ ] NotificationBell with dropdown
+- [ ] Header includes both
+
+### ✅ Room Auto-Join
+- [ ] EventDetailPage joins event room
+- [ ] TeamDetailPage joins team room
+
+---
+
+## 📋 What You Should Be Able to Test After Phase 7
+
+### 1. 🔌 Connection Status
+| Test | Expected |
+|------|----------|
+| Login | Green dot "Live" in header |
+| Stop backend | Yellow "Reconnecting..." then red |
+| Start backend | Automatically reconnects to green |
+| Check browser console | "✅ Socket connected" |
+
+### 2. 🔄 Live Task Updates
+**Setup:** Open two browser windows side-by-side
+
+| Test | Expected |
+|------|----------|
+| Login as User A (window 1) | See dashboard |
+| Login as User B (window 2) | See dashboard |
+| User A creates a task | Window 2 shows toast "New task: ..." |
+| User A updates task status | Window 2 sees task update instantly + toast |
+| User A deletes task | Window 2 removes it from list |
+| No page refresh needed | All updates live |
+
+### 3. 💬 Live Comments
+**Setup:** Both users viewing the same task detail page
+
+| Test | Expected |
+|------|----------|
+| User A adds a comment | User B sees it appear without refresh |
+| User B adds a comment | User A sees it appear |
+| Comment count updates | Both windows show updated count |
+
+### 4. 🚫 Blocker Notifications
+| Test | Expected |
+|------|----------|
+| User A blocks a task | User B (assignee) gets notification toast |
+| Check notification bell | Unread count increments |
+| Click bell | See notification in list |
+| Click notification | Mark as read, count decreases |
+
+### 5. 📊 Dashboard Live Updates
+| Test | Expected |
+|------|----------|
+| Open Dashboard in window 1 | See stats |
+| Create task in window 2 | Stats don't update automatically (they need refresh) |
+| Click Refresh in window 1 | Stats update |
+| Note: Live dashboard updates are optional enhancement |
+
+### 6. 👥 Team/Event Rooms
+| Test | Expected |
+|------|----------|
+| Both users view same event detail | Both joined event room |
+| User A changes task in event | User B sees update |
+| Navigate away from event | Room left (check console) |
+
+### 7. 🔔 Notification Bell
+| Test | Expected |
+|------|----------|
+| Get assigned to task | Notification appears in bell |
+| Badge shows count | Red badge with number |
+| Click notification | Mark as read, badge decreases |
+| Mark all read | Badge disappears |
+| Delete notification | Removed from list |
+
+### 8. 🔄 Reconnection
+| Test | Expected |
+|------|----------|
+| Login, then stop backend | Status becomes "Reconnecting..." |
+| Wait ~5 seconds | "Connection failed" after max attempts |
+| Start backend | Auto-reconnects to "Live" |
+| Make change in other window | Updates still flow |
+
+---
+
+## 🎬 Quick Test Flow (5 Minutes)
+
+### Step 1: Open Two Windows
+1. Login in window 1 (e.g., as manager)
+2. Login in window 2 (different user in same team)
+3. ✅ Both show green "Live" dot
+
+### Step 2: Test Task Updates
+1. Window 1: Go to Tasks, create a new task
+2. Window 2: Watch — ✅ toast appears "New task: ..."
+3. Window 1: Drag task to "In Progress"
+4. Window 2: ✅ Task moves in real-time, toast appears
+
+### Step 3: Test Comments
+1. Both windows: Open same task detail
+2. Window 1: Add a comment
+3. Window 2: ✅ Comment appears instantly
+
+### Step 4: Test Notifications
+1. Window 1: Assign a task to User B (window 2's user)
+2. Window 2: ✅ Toast "You were assigned to..." + bell count +1
+3. Window 2: Click bell, see notification
+4. Click notification → ✅ Marked as read
+
+### Step 5: Test Blocker Flow
+1. Window 1: Drag task to "Blocked", enter reason
+2. Window 2: ✅ Sees blocked status + toast notification
+
+### Step 6: Test Reconnection
+1. Stop backend: `docker-compose stop backend`
+2. ✅ Both windows show "Reconnecting..."
+3. Start backend: `docker-compose start backend`
+4. ✅ Auto reconnects, shows "Live"
+
+---
+
+## 🚨 Common Issues & Fixes
+
+### Issue 1: Socket not connecting
+**Check:**
+```bash
+docker-compose logs backend | grep -i socket
+Fix: Ensure socket_app is used in Dockerfile command
+
+Issue 2: 401 on socket connect
+Cause: Token not passed or expired
+Fix: Check socketService.connect() receives a valid token; verify JWT_SECRET_KEY matches
+
+Issue 3: CORS errors on socket
+Fix: Ensure CORS_ORIGINS in backend config includes http://localhost:3000
+
+Issue 4: Events not received
+Cause: Not in room OR listener not registered
+Fix:
+
+Check console for "User X joined team_Y"
+
+Ensure initializeRealtime() was called after login
+
+Verify useEventRoom() / useTeamRoom() is called in page components
+
+Issue 5: Duplicate events
+Cause: Not skipping self-events
+Fix: Check actor_id === currentUserId returns early
+
+Issue 6: Notifications not appearing
+Cause: Notification store not initialized
+Fix: Ensure useNotificationStore.getState().initializeRealtime() is called in App.tsx
+
+Issue 7: Reconnection loop
+Cause: Token expired, but reconnect keeps trying
+Fix: On error status, refresh token or force logout

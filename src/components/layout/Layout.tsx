@@ -29,13 +29,15 @@ import { formatDistanceToNow } from 'date-fns'
 import { useTheme } from 'next-themes'
 import { Moon, Sun } from 'lucide-react'
 import type { NotificationDTO, NotificationType } from '@/types'
-import { ROUTES, ROLE_BADGE_CLASSES, ROLE_LABELS } from '@/lib/constants'
+import { ROUTES, ROLE_BADGE_CLASSES, ROLE_LABELS, TASK_STATUS_LABELS } from '@/lib/constants'
 import { api } from '@/lib/api-client'
 import {
   clearRealtimeRooms,
+  disconnectRealtime,
   getRealtimeSocket,
   setRealtimeRooms,
   setRealtimeUser,
+  type BoardChangePayload,
 } from '@/lib/realtime-client'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { useShortcutModifier } from '@/hooks/use-platform'
@@ -51,6 +53,7 @@ import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { CommandPalette } from '@/components/layout/CommandPalette'
 import { NotificationPrefsDialog } from '@/components/layout/NotificationPrefsDialog'
+import { LiveBadge } from '@/components/shared/RealtimeChrome'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -109,6 +112,23 @@ const NOTIFICATION_STYLE: Record<NotificationType, { icon: LucideIcon; classes: 
   TASK_BLOCKED: { icon: AlertTriangle, classes: 'bg-red-100 text-red-600' },
   COMMENT_ADDED: { icon: MessageSquare, classes: 'bg-muted text-muted-foreground' },
   DEADLINE_APPROACHING: { icon: Clock, classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+}
+
+/** Friendly label for live notification toasts (Phase 7). */
+const NOTIF_TOAST_CONTEXT: Record<string, string> = {
+  TASK_ASSIGNED: 'Assigned to you',
+  TASK_STATUS_CHANGED: 'Task status changed',
+  TASK_COMPLETED: 'Task completed',
+  TASK_BLOCKED: 'Task blocked',
+  COMMENT_ADDED: 'New comment',
+  DEADLINE_APPROACHING: 'Deadline approaching',
+}
+
+/** Left-accent color per target status for the remote status-move toasts. */
+function statusToastClass(status: string): string {
+  if (status === 'BLOCKED') return 'border-l-4 border-l-red-500'
+  if (status === 'COMPLETED') return 'border-l-4 border-l-emerald-500'
+  return 'border-l-4 border-l-amber-500'
 }
 
 export function initialsOf(name: string): string {
@@ -179,6 +199,81 @@ export function Layout({ children }: LayoutProps) {
     }
   }, [user])
 
+  // Phase 7: global toast layer for REMOTE realtime events. The shared socket
+  // delivers board changes for every room a mounted page scope joined, plus
+  // personal notifications — remote actions become live toasts here while the
+  // pages themselves apply the data changes. Own actions are skipped (the
+  // acting page already gives feedback) and a tiny per-entity throttle
+  // protects against duplicate/bursty broadcasts.
+  const recentToastAtRef = useRef(new Map<string, number>())
+  useEffect(() => {
+    if (!user) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    const recent = recentToastAtRef.current
+    const shouldToast = (key: string) => {
+      const now = Date.now()
+      const last = recent.get(key) ?? 0
+      recent.set(key, now)
+      return now - last > 1500
+    }
+    const titleOf = (payload: BoardChangePayload): string | undefined => {
+      if (payload.taskTitle) return payload.taskTitle
+      const task = payload.task as { title?: string } | undefined
+      return typeof task?.title === 'string' ? task.title : undefined
+    }
+    const onBoardChange = (payload: BoardChangePayload) => {
+      if (!payload || payload.actorId === user.id) return
+      const title = titleOf(payload)
+      if (payload.type === 'task:created') {
+        if (!shouldToast(`created:${payload.taskId ?? ''}`)) return
+        toast({
+          title: 'New task created',
+          description: title ? `“${title}” was just added to the board.` : 'Someone added a task.',
+          className: 'border-l-4 border-l-emerald-500',
+        })
+      } else if (payload.type === 'task:updated' && payload.statusChange) {
+        if (!shouldToast(`status:${payload.taskId ?? ''}:${payload.statusChange.to}`)) return
+        const label = TASK_STATUS_LABELS[payload.statusChange.to] ?? payload.statusChange.to.toLowerCase()
+        toast({
+          title: `Task moved to ${label}`,
+          description: title ? `“${title}” is now ${label.toLowerCase()}.` : undefined,
+          className: statusToastClass(payload.statusChange.to),
+        })
+      } else if (payload.type === 'task:deleted') {
+        if (!shouldToast(`deleted:${payload.taskId ?? ''}`)) return
+        toast({
+          title: 'Task deleted',
+          description: title ? `“${title}” was removed from the board.` : undefined,
+          className: 'border-l-4 border-l-red-500',
+        })
+      } else if (payload.bulk) {
+        if (!shouldToast(`bulk:${payload.type}`)) return
+        const parts = [`${payload.updated ?? 0} updated`, ...(payload.deleted ? [`${payload.deleted} deleted`] : [])]
+        toast({
+          title: 'Bulk update applied',
+          description: parts.join(' · '),
+          className: 'border-l-4 border-l-amber-500',
+        })
+      }
+    }
+    const onNotificationNew = (payload: { message?: string; type?: string }) => {
+      if (!payload?.message) return
+      if (!shouldToast(`notif:${payload.message}`)) return
+      toast({
+        title: payload.message,
+        description: NOTIF_TOAST_CONTEXT[payload.type ?? ''] ?? 'New notification',
+        className: 'border-l-4 border-l-emerald-500',
+      })
+    }
+    socket.on('board:changed', onBoardChange)
+    socket.on('notification:new', onNotificationNew)
+    return () => {
+      socket.off('board:changed', onBoardChange)
+      socket.off('notification:new', onNotificationNew)
+    }
+  }, [user, toast])
+
   const markRead = async (id: string) => {
     const previous = notifications
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)))
@@ -205,6 +300,8 @@ export function Layout({ children }: LayoutProps) {
 
   const handleLogout = async () => {
     toast({ title: 'Signed out', description: 'See you soon!' })
+    // Drop the authenticated socket so a signed-out browser holds no session.
+    disconnectRealtime()
     await logout()
   }
 
@@ -285,6 +382,8 @@ export function Layout({ children }: LayoutProps) {
             >
               <Search className="h-5 w-5" aria-hidden="true" />
             </Button>
+            {/* Realtime connection indicator (Phase 7: visible app-wide) */}
+            <LiveBadge className="hidden sm:inline-flex" />
             {/* Theme toggle */}
             <ThemeToggle />
             {/* Notifications */}

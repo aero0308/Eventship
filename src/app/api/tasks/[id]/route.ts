@@ -11,7 +11,7 @@ import {
 } from '@/lib/api-utils'
 import { updateTaskSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
-import { emitBoardChange } from '@/lib/realtime'
+import { emitBoardChange, emitTaskBoardChange } from '@/lib/realtime'
 import {
   serializeTaskDetail,
   taskDetailInclude,
@@ -220,10 +220,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     // Serialize once; the full DTO also rides the realtime broadcast so other
     // clients can patch their boards optimistically without refetching.
+    // statusChange rides along (Phase 7) so toast layers can announce status
+    // moves without spamming every field-level edit.
     const task = await fetchTaskDetail(id)
     if (!task) throw new ApiError(404, 'Task not found')
     const serialized = serializeTaskDetail(task)
-    emitBoardChange(existing.eventId, 'task:updated', user.id, { taskId: id, task: serialized })
+    emitTaskBoardChange(
+      existing.eventId,
+      existing.event.teamId,
+      'task:updated',
+      user.id,
+      statusChanged
+        ? { taskId: id, task: serialized, statusChange: { from: existing.status, to: body.status! } }
+        : { taskId: id, task: serialized }
+    )
     if (statusNoteComment) {
       // After the task patch so open dialogs append the note to a fresh detail.
       emitBoardChange(existing.eventId, 'comment:added', user.id, {
@@ -245,7 +255,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const { id } = await params
     const existing = await db.task.findUnique({
       where: { id },
-      select: { id: true, eventId: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
+      select: { id: true, title: true, eventId: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
     })
     if (!existing) throw new ApiError(404, 'Task not found')
     assertAccess(
@@ -255,7 +265,10 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     // Comments and dependencies cascade-delete via schema relations.
     await db.task.delete({ where: { id } })
-    emitBoardChange(existing.eventId, 'task:deleted', user.id, { taskId: id })
+    emitTaskBoardChange(existing.eventId, existing.event.teamId, 'task:deleted', user.id, {
+      taskId: id,
+      taskTitle: existing.title,
+    })
     return ok({ success: true })
   } catch (error) {
     return handleApiError(error)

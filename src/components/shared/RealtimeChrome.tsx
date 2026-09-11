@@ -11,8 +11,9 @@ import { useEffect, useState } from 'react'
 import { Radio, WifiOff } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
-  onRealtimeStateChange,
+  onRealtimeStatusChange,
   type PresenceUser,
+  type RealtimeStatus,
 } from '@/lib/realtime-client'
 import { cn } from '@/lib/utils'
 
@@ -25,37 +26,97 @@ function initialsOf(name: string): string {
     .join('')
 }
 
+/** Visual + a11y config per connection status (Phase 7 spec 7.5). */
+const STATUS_CONFIG: Record<
+  RealtimeStatus,
+  { label: string; className: string; icon: 'live' | 'down'; pulse: boolean; announce: string } | null
+> = {
+  connected: {
+    label: 'Live',
+    className:
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+    icon: 'live',
+    pulse: true,
+    announce: 'Realtime connected',
+  },
+  // Transient states render amber with a pulsing dot; only surfaced after the
+  // socket has been live at least once (see quiet rule below).
+  connecting: {
+    label: 'Connecting…',
+    className:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+    icon: 'down',
+    pulse: true,
+    announce: 'Realtime connecting',
+  },
+  reconnecting: {
+    label: 'Reconnecting…',
+    className:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+    icon: 'down',
+    pulse: true,
+    announce: 'Realtime reconnecting',
+  },
+  // Give up visually after several failed attempts (still retrying silently).
+  error: {
+    label: 'Offline',
+    className:
+      'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300',
+    icon: 'down',
+    pulse: false,
+    announce: 'Realtime connection failed',
+  },
+  disconnected: null, // idle before first connect — no chip
+}
+
 export function LiveBadge({ className, subtle }: { className?: string; subtle?: boolean }) {
-  const [connected, setConnected] = useState(false)
+  const [status, setStatus] = useState<RealtimeStatus>('connecting')
   const [everConnected, setEverConnected] = useState(false)
 
-  useEffect(() => onRealtimeStateChange((state) => {
-    setConnected(state)
-    if (state) setEverConnected(true)
-  }), [])
+  useEffect(
+    () =>
+      onRealtimeStatusChange((next) => {
+        if (next === 'connected') setEverConnected(true)
+        setStatus(next)
+      }),
+    []
+  )
 
-  // Stay quiet until the first successful connect so offline deployments
-  // don't show a permanent "reconnecting" chip.
-  if (!everConnected && !connected) return null
+  // Quiet rule: stay hidden until the first successful connect so offline
+  // deployments never show a permanent reconnecting chip; once live, degrade
+  // visibly (amber "Reconnecting…" → red "Offline") per the Phase 7 spec.
+  const config = STATUS_CONFIG[status]
+  if (!config) return null
+  if (!everConnected && status !== 'connected') return null
+
+  const Icon = config.icon === 'live' ? Radio : WifiOff
 
   return (
     <span
       role="status"
-      aria-label={connected ? 'Realtime connected' : 'Realtime reconnecting'}
+      aria-label={config.announce}
       className={cn(
-        'inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold uppercase tracking-wide transition-colors',
-        connected
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-          : 'border-border bg-muted text-muted-foreground',
+        'inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold uppercase tracking-wide transition-colors duration-300',
+        config.className,
         className
       )}
     >
-      {connected ? (
-        <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" />
+      {config.icon === 'live' ? (
+        <span className="relative flex h-3 w-3" aria-hidden="true">
+          {config.pulse ? (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+          ) : null}
+          <Icon className="relative h-3 w-3" />
+        </span>
       ) : (
-        <WifiOff className="h-3 w-3" aria-hidden="true" />
+        <span className="relative flex h-3 w-3" aria-hidden="true">
+          {config.pulse ? (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
+          ) : null}
+          <Icon className="relative h-3 w-3" />
+        </span>
       )}
-      {connected ? 'Live' : 'Reconnecting'}
+      {subtle ? null : config.label}
     </span>
   )
 }

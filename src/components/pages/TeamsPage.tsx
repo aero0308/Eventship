@@ -25,6 +25,12 @@ import { format } from 'date-fns'
 import type { EventDTO, TeamDTO, UserDTO } from '@/types'
 import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, ROLE_BADGE_CLASSES, ROLE_LABELS } from '@/lib/constants'
 import { api, ApiClientError } from '@/lib/api-client'
+import {
+  clearRealtimeRooms,
+  getRealtimeSocket,
+  setRealtimeRooms,
+  type RealtimeDataEcho,
+} from '@/lib/realtime-client'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -113,22 +119,27 @@ export function TeamsPage() {
   const [addQuery, setAddQuery] = useState('')
   const [memberBusy, setMemberBusy] = useState<string | null>(null)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [teamsData, usersData] = await Promise.all([
-        api.get<{ teams: TeamDTO[] }>('/teams'),
-        api.get<{ users: UserDTO[] }>('/users'),
-      ])
-      setTeams(teamsData.teams)
-      setUsers(usersData.users)
-    } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : 'Failed to load teams.'
-      toast({ title: 'Could not load teams', description: message, variant: 'destructive' })
-    } finally {
-      setLoading(false)
-    }
-  }, [toast])
+  const loadData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true)
+      try {
+        const [teamsData, usersData] = await Promise.all([
+          api.get<{ teams: TeamDTO[] }>('/teams'),
+          api.get<{ users: UserDTO[] }>('/users'),
+        ])
+        setTeams(teamsData.teams)
+        setUsers(usersData.users)
+      } catch (error) {
+        const message = error instanceof ApiClientError ? error.message : 'Failed to load teams.'
+        if (!options?.silent) {
+          toast({ title: 'Could not load teams', description: message, variant: 'destructive' })
+        }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [toast]
+  )
 
   useEffect(() => {
     void loadData()
@@ -224,6 +235,8 @@ export function TeamsPage() {
   }
 
   // ============ Detail ============
+  // Phase 7: remote team edits bump this key to refetch the open dialog live.
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0)
   useEffect(() => {
     if (!detailId) {
       setDetail(null)
@@ -257,7 +270,51 @@ export function TeamsPage() {
     return () => {
       cancelled = true
     }
-  }, [detailId, toast])
+  }, [detailId, detailRefreshKey, toast])
+
+  // ============ Realtime (Phase 7) ============
+  // Spec 7.6: auto-join the team room while a team detail dialog is open, so
+  // roster/board activity for that team arrives live (silent — no presence).
+  useEffect(() => {
+    if (!detailId) return
+    setRealtimeRooms('team-detail', [`team:${detailId}`], { presenceRooms: [] })
+    return () => clearRealtimeRooms('team-detail')
+  }, [detailId])
+
+  // Remote team edit → refetch the open dialog.
+  useEffect(() => {
+    if (!detailId) return
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    const onTeamUpdated = (payload: { teamId?: string }) => {
+      if (payload?.teamId === detailId) setDetailRefreshKey((key) => key + 1)
+    }
+    socket.on('team:updated', onTeamUpdated)
+    return () => {
+      socket.off('team:updated', onTeamUpdated)
+    }
+  }, [detailId])
+
+  // Live list: team edits + board activity echo in as minimal hints and
+  // refresh the grid's stats/member counts without a manual reload.
+  useEffect(() => {
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onEcho = (payload: RealtimeDataEcho) => {
+      if (payload.event !== 'team:updated' && !payload.event.startsWith('task:')) return
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        void loadData({ silent: true })
+      }, 1200)
+    }
+    socket.on('data:echo', onEcho)
+    return () => {
+      socket.off('data:echo', onEcho)
+      if (timer) clearTimeout(timer)
+    }
+  }, [loadData])
 
   const startEdit = () => {
     if (!detail) return

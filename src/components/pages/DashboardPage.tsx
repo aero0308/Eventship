@@ -38,6 +38,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, ProgressOverTimeDTO, TaskDTO } from '@/types'
+import { getRealtimeSocket, type RealtimeDataEcho } from '@/lib/realtime-client'
 import { useTheme } from 'next-themes'
 import {
   EVENT_STATUS_CLASSES,
@@ -538,6 +539,37 @@ export function DashboardPage() {
     return () => {
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [loadDashboard])
+
+  // Phase 7: LIVE dashboard — the realtime service echoes every board change
+  // site-wide as a minimal {room, event} hint (never the payload, so nothing
+  // role-restricted leaks). Bursts are debounced into a single silent refresh;
+  // the refetch goes through the role-scoped REST API.
+  useEffect(() => {
+    const socket = getRealtimeSocket()
+    if (!socket) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const LIVE_EVENTS = new Set([
+      'task:created',
+      'task:updated',
+      'task:deleted',
+      'comment:added',
+      'comment:deleted',
+      'event:updated',
+    ])
+    const onEcho = (payload: RealtimeDataEcho) => {
+      if (!LIVE_EVENTS.has(payload.event)) return
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
+      }, 900)
+    }
+    socket.on('data:echo', onEcho)
+    return () => {
+      socket.off('data:echo', onEcho)
+      if (timer) clearTimeout(timer)
     }
   }, [loadDashboard])
 

@@ -16,7 +16,7 @@ import {
 } from '@/lib/api-utils'
 import { createTaskSchema } from '@/lib/schemas'
 import { serializeTask, taskInclude } from '../_lib/tasks'
-import { emitBoardChange } from '@/lib/realtime'
+import { emitTaskBoardChange } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
 export async function GET(request: Request) {
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     })
     // The full DTO rides the realtime broadcast so other clients can add the
     // task optimistically without refetching.
-    emitBoardChange(body.eventId, 'task:created', user.id, { taskId: created.id, task: serializeTask(task) })
+    emitTaskBoardChange(body.eventId, event.teamId, 'task:created', user.id, { taskId: created.id, task: serializeTask(task) })
 
     return ok({ task: serializeTask(task) }, 201)
   } catch (error) {

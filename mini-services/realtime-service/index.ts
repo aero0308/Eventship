@@ -8,14 +8,26 @@
  *
  * Rooms:
  *   event:{eventId} — board activity for one event (task created/updated/deleted, comments)
+ *   team:{teamId}   — team-wide activity (roster edits, task fan-out for the team)
  *   user:{userId}   — personal channel (new notifications)
  *
- * Presence: every `event:*` room tracks connected viewers (id + name + role)
- * and broadcasts the list whenever it changes, so pages can show who is
- * looking at the same board right now.
+ * Auth (Phase 7): every socket handshake is authenticated with the app's
+ * `ems_session` cookie (forwarded by the Caddy gateway on the same origin).
+ * The cookie is validated against the Next.js API (`/api/auth/me` over
+ * loopback) and the resulting identity is authoritative — clients cannot
+ * claim someone else's name/presence. Unauthenticated sockets are rejected.
+ *
+ * Presence: every `event:*`/`board:*` room tracks connected viewers
+ * (id + name + role) and broadcasts the list whenever it changes, so pages
+ * can show who is looking at the same board right now.
  *
  * Typing: clients emit `comment:typing` ({room, user}) while composing a task
  * comment; the server relays it to everyone else in the room (rate-limited).
+ *
+ * data:echo — every board/team broadcast is echoed SITE-WIDE with a minimal
+ * {room, event} hint (never the payload — payloads may be role-restricted),
+ * so surfaces that join no rooms (dashboard, activity feed) can refresh live
+ * without leaking data: refetches go through the role-scoped REST API.
  */
 
 import { createServer } from 'http'
@@ -94,6 +106,30 @@ function forgetSocket(io: Server, socket: Socket) {
   presenceRooms.clear()
 }
 
+// ---------- handshake authentication (Phase 7) ----------
+
+const NEXT_AUTH_URL = 'http://127.0.0.1:3000/api/auth/me'
+
+function extractSessionCookie(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    const name = part.slice(0, eq).trim()
+    if (name === 'ems_session') {
+      const value = part.slice(eq + 1).trim()
+      return value.length > 0 ? value : null
+    }
+  }
+  return null
+}
+
+interface AuthedUser {
+  id: string
+  fullName: string
+  role: string
+}
+
 const publicServer = createServer()
 
 const io = new Server(publicServer, {
@@ -107,10 +143,48 @@ const io = new Server(publicServer, {
   pingInterval: 25000,
 })
 
+/**
+ * Validate the session cookie against the Next.js API and attach the
+ * authoritative identity to the socket. Rejects the handshake when the
+ * cookie is missing/invalid or when the auth API is unreachable — mirrors the
+ * spec's `ConnectionRefusedError('Authentication failed')` behavior.
+ */
+io.use(async (socket, next) => {
+  try {
+    const token = extractSessionCookie(socket.handshake.headers.cookie)
+    if (!token) {
+      next(new Error('Authentication required'))
+      return
+    }
+    const res = await fetch(NEXT_AUTH_URL, {
+      headers: { cookie: `ems_session=${token}` },
+      // Generous timeout: in dev, the first /api/auth/me hit can trigger a
+      // cold compile. A miss here is safe — the client retries with backoff.
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) {
+      next(new Error('Authentication failed'))
+      return
+    }
+    const body = (await res.json()) as { user?: { id?: string; fullName?: string; role?: string } }
+    const user = body.user
+    if (!user?.id || !user.fullName) {
+      next(new Error('Authentication failed'))
+      return
+    }
+    socket.data.user = { id: user.id, fullName: user.fullName, role: user.role ?? 'EMPLOYEE' } as AuthedUser
+    next()
+  } catch {
+    next(new Error('Authentication failed'))
+  }
+})
+
 io.on('connection', (socket) => {
   socket.data.joinedRooms = new Set<string>()
   // Rooms where THIS socket announces presence (subset of joinedRooms).
   socket.data.presenceRooms = new Set<string>()
+  // Authoritative identity from the handshake auth middleware.
+  const authedUser = socket.data.user as AuthedUser | undefined
 
   /**
    * Client joins a set of rooms. Rooms listed in `presenceRooms` announce the
@@ -125,7 +199,8 @@ io.on('connection', (socket) => {
       ack?: (response: { ok: boolean; viewers?: Record<string, PresenceUser[]> }) => void
     ) => {
       const rooms = Array.isArray(payload.rooms) ? payload.rooms.slice(0, 50) : []
-      const user = payload.user
+      // The server-validated identity always wins over the client-provided one.
+      const user = authedUser ?? payload.user
       const requestedPresence = Array.isArray(payload.presenceRooms)
         ? new Set(payload.presenceRooms.slice(0, 50))
         : null
@@ -218,7 +293,8 @@ io.on('connection', (socket) => {
   socket.on('comment:typing', (payload: { room?: string; user?: PresenceUser }) => {
     const room = typeof payload?.room === 'string' ? payload.room : ''
     if (!room.startsWith('event:') || room.length > 128) return
-    const user = payload.user
+    // Relay only for authenticated sockets, under the server-validated identity.
+    const user = authedUser
     if (!user || typeof user.id !== 'string' || typeof user.fullName !== 'string') return
     const key = `${socket.id}:${room}`
     const now = Date.now()
@@ -265,6 +341,21 @@ const internalServer = createServer((req, res) => {
           return
         }
         io.to(room).emit(event, data ?? {})
+        // Site-wide echo with a MINIMAL hint (no payload — payloads may carry
+        // role-restricted data). Surfaces like the dashboard/activity feed
+        // listen for these to trigger live refetches through the REST API.
+        // Board changes ride as `board:changed` with the semantic type inside
+        // data.type — unwrap it so the echo carries `task:updated` etc.
+        let echoEvent = event
+        if (event === 'board:changed' && data && typeof data === 'object' && typeof (data as { type?: unknown }).type === 'string') {
+          echoEvent = (data as { type: string }).type
+        }
+        if (
+          (room.startsWith('event:') || room.startsWith('board:') || room.startsWith('team:')) &&
+          (echoEvent.startsWith('task:') || echoEvent.startsWith('comment:') || echoEvent === 'event:updated' || echoEvent === 'team:updated')
+        ) {
+          io.emit('data:echo', { room, event: echoEvent, at: new Date().toISOString() })
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ ok: true }))
       } catch {

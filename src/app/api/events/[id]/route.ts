@@ -10,7 +10,7 @@ import {
   serializeEvent,
   type EventWithRelations,
 } from '../../_lib/events'
-import { emitBoardChange } from '@/lib/realtime'
+import { emitBoardChange, emitRealtime } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
 async function fetchEventWithStats(id: string) {
@@ -81,6 +81,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (Object.keys(data).length > 0) {
       await db.event.update({ where: { id }, data })
       emitBoardChange(id, 'event:updated', user.id, { eventId: id })
+      // Phase 7 team rooms: the owning team's subscribers hear it too.
+      const targetTeamId = body.teamId ?? existing.teamId
+      if (targetTeamId) {
+        void emitRealtime({
+          room: `team:${targetTeamId}`,
+          event: 'board:changed',
+          data: { type: 'event:updated', eventId: id, actorId: user.id, at: new Date().toISOString() },
+        })
+      }
     }
 
     if (statusChanged) {
