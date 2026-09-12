@@ -3,9 +3,13 @@ import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { createSession, hashPassword, toPublicUser } from '@/lib/auth'
 import { registerSchema } from '@/lib/schemas'
+import { enforceRateLimit, registerLimiter } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   try {
+    // Account-creation flood guard: 5 registrations/min/IP.
+    enforceRateLimit(registerLimiter, request)
+
     const body = await parseBody(request, registerSchema)
 
     const existing = await db.user.findUnique({ where: { email: body.email } })

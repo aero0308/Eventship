@@ -40,6 +40,7 @@ import {
 } from '@/lib/realtime-client'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { useShortcutModifier } from '@/hooks/use-platform'
+import { useKeyboardShortcuts, formatShortcut } from '@/hooks/use-keyboard-shortcuts'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -158,6 +159,21 @@ export function Layout({ children }: LayoutProps) {
   const navItems = useMemo(
     () => (user?.role === 'EVENT_MANAGER' ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS),
     [user]
+  )
+
+  // A11y: Alt+1…6 jump straight to nav destinations without a pointer.
+  // The palette (Ctrl/Cmd+K) stays the discoverable “search everything” path.
+  const handleNavigateRef = useRef<(target: string) => void>(() => {})
+  useKeyboardShortcuts(
+    useMemo(
+      () =>
+        navItems.map((item, index) => ({
+          key: String(index + 1),
+          alt: true,
+          action: () => handleNavigateRef.current(item.path),
+        })),
+      [navItems]
+    )
   )
 
   const loadNotifications = useCallback(async () => {
@@ -309,10 +325,27 @@ export function Layout({ children }: LayoutProps) {
     navigate(target)
   }
 
+  useEffect(() => {
+    handleNavigateRef.current = handleNavigate
+  })
+
   const isActive = (itemPath: string) => pathname === itemPath
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/50">
+      {/* A11y: bypass link — navigates programmatically so the SPA hash route is untouched. */}
+      <a
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault()
+          const main = document.getElementById('main-content')
+          main?.focus()
+          main?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-emerald-600 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       <header className="sticky top-0 z-40 w-full border-b border-border bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 min-[1400px]:max-w-[1400px]">
           {/* Logo + desktop nav */}
@@ -336,13 +369,14 @@ export function Layout({ children }: LayoutProps) {
                   type="button"
                   onClick={() => handleNavigate(item.path)}
                   aria-current={isActive(item.path) ? 'page' : undefined}
+                  aria-keyshortcuts={`Alt+${navItems.indexOf(item) + 1}`}
+                  title={`${item.label} (${formatShortcut({ key: String(navItems.indexOf(item) + 1), alt: true })})`}
                   className={cn(
                     'inline-flex h-10 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-colors min-[1400px]:px-3',
                     isActive(item.path)
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
-                  title={item.label}
                 >
                   <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span className="hidden whitespace-nowrap min-[1400px]:inline" aria-hidden="true">{item.label}</span>
@@ -608,7 +642,7 @@ export function Layout({ children }: LayoutProps) {
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
 
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
       </main>
 

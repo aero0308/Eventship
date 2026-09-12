@@ -255,6 +255,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">esc</kbd>
               close
             </span>
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">Alt</kbd>
+              +
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">1–6</kbd>
+              pages
+            </span>
             <span className="ml-auto hidden sm:inline">Search is live — results stream in as you type</span>
           </div>
         </Command>

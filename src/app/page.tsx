@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Compass } from 'lucide-react'
 import { ROUTES } from '@/lib/constants'
@@ -14,16 +15,60 @@ import { LoginPage } from '@/components/pages/LoginPage'
 import { RegisterPage } from '@/components/pages/RegisterPage'
 import { ForgotPasswordPage } from '@/components/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/components/pages/ResetPasswordPage'
-import { DashboardPage } from '@/components/pages/DashboardPage'
-import { EventsPage } from '@/components/pages/EventsPage'
-import { EventDetailPage } from '@/components/pages/EventDetailPage'
-import { TasksPage } from '@/components/pages/TasksPage'
-import { TeamsPage } from '@/components/pages/TeamsPage'
-import { CalendarPage } from '@/components/pages/CalendarPage'
-import { AdminPage } from '@/components/pages/AdminPage'
-import { ActivityPage } from '@/components/pages/ActivityPage'
-import { ProfilePage } from '@/components/pages/ProfilePage'
 import { Button } from '@/components/ui/button'
+
+/*
+ * Performance (Testing & Polish): the authenticated app is code-split per
+ * page. Landing + auth stay in the entry bundle for a fast first paint;
+ * each dashboard route (charts, dnd-kit, tables and all) loads on demand
+ * with a centered spinner fallback.
+ * NOTE: Next.js 16 requires the options argument of dynamic() to be an
+ * inline object literal (a shared const is rejected at compile time).
+ */
+function PageLoadingFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <LoadingSpinner label="Loading…" />
+    </div>
+  )
+}
+
+const DashboardPage = dynamic(
+  () => import('@/components/pages/DashboardPage').then((m) => m.DashboardPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const EventsPage = dynamic(
+  () => import('@/components/pages/EventsPage').then((m) => m.EventsPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const EventDetailPage = dynamic(
+  () => import('@/components/pages/EventDetailPage').then((m) => m.EventDetailPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const TasksPage = dynamic(
+  () => import('@/components/pages/TasksPage').then((m) => m.TasksPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const TeamsPage = dynamic(
+  () => import('@/components/pages/TeamsPage').then((m) => m.TeamsPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const CalendarPage = dynamic(
+  () => import('@/components/pages/CalendarPage').then((m) => m.CalendarPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const AdminPage = dynamic(
+  () => import('@/components/pages/AdminPage').then((m) => m.AdminPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const ActivityPage = dynamic(
+  () => import('@/components/pages/ActivityPage').then((m) => m.ActivityPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
+const ProfilePage = dynamic(
+  () => import('@/components/pages/ProfilePage').then((m) => m.ProfilePage),
+  { loading: PageLoadingFallback, ssr: false }
+)
 
 const PROTECTED_PATHS: readonly string[] = [
   ROUTES.DASHBOARD,

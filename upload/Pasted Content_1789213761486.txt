@@ -1,0 +1,2534 @@
+PHASE 8: Testing & Polish - Step-by-Step AI Prompts
+📋 How This Works
+Phase 8 is about making your app production-ready. We'll add:
+
+✅ Comprehensive testing (backend + frontend)
+
+✅ Error handling everywhere
+
+✅ Loading states and empty states
+
+✅ Accessibility improvements
+
+✅ Performance optimizations
+
+✅ Security hardening
+
+✅ UI/UX polish
+
+Order of work:
+
+Backend testing (pytest)
+
+Frontend testing (vitest + testing library)
+
+Error handling & validation polish
+
+Loading & empty states
+
+Accessibility (a11y) fixes
+
+Performance optimization
+
+Security hardening
+
+Final UI polish
+
+📌 Step 8.1: Backend Testing Setup
+🤖 Complete Prompt for Step 8.1:
+text
+We're starting Phase 8 - Testing & Polish. First, set up comprehensive backend testing with pytest.
+
+**Update backend/requirements.txt** - Add testing dependencies:
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.1
+factory-boy==3.3.0
+faker==20.1.0
+
+text
+
+**Create these files:**
+
+1. **backend/pytest.ini** - Pytest configuration:
+```ini
+[pytest]
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = 
+    -v
+    --strict-markers
+    --cov=app
+    --cov-report=term-missing
+    --cov-report=html:htmlcov
+    --cov-fail-under=70
+asyncio_mode = auto
+markers =
+    unit: Unit tests
+    integration: Integration tests
+    slow: Slow tests
+backend/tests/init.py - Empty file
+
+backend/tests/conftest.py - Pytest fixtures:
+
+python
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.main import app
+from app.core.database import Base, get_db
+from app.core.security import hash_password
+from app.models.user import User, UserRole
+from app.models.team import Team
+from app.models.event import Event, EventStatus
+from app.models.task import Task, TaskStatus, TaskPriority
+
+# Use in-memory SQLite for tests
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(scope="function")
+def db():
+    """Create a fresh database for each test"""
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="function")
+def client(db):
+    """Test client with database override"""
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_user(db):
+    """Create a test user"""
+    user = User(
+        email="test@example.com",
+        full_name="Test User",
+        hashed_password=hash_password("Test123!"),
+        role=UserRole.EMPLOYEE,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def test_manager(db):
+    """Create a test manager"""
+    user = User(
+        email="manager@example.com",
+        full_name="Test Manager",
+        hashed_password=hash_password("Test123!"),
+        role=UserRole.EVENT_MANAGER,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def test_team(db, test_manager):
+    """Create a test team"""
+    team = Team(
+        name="Test Team",
+        description="A team for testing",
+        manager_id=test_manager.id
+    )
+    db.add(team)
+    db.commit()
+    db.refresh(team)
+    return team
+
+
+@pytest.fixture
+def auth_headers(client, test_user):
+    """Get auth headers for test user"""
+    response = client.post("/api/v1/auth/login", json={
+        "email": "test@example.com",
+        "password": "Test123!"
+    })
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def manager_headers(client, test_manager):
+    """Get auth headers for test manager"""
+    response = client.post("/api/v1/auth/login", json={
+        "email": "manager@example.com",
+        "password": "Test123!"
+    })
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+backend/tests/test_auth.py - Authentication tests:
+
+python
+import pytest
+
+
+class TestAuth:
+    """Test authentication endpoints"""
+    
+    def test_register_success(self, client):
+        """Test successful user registration"""
+        response = client.post("/api/v1/auth/register", json={
+            "email": "newuser@example.com",
+            "full_name": "New User",
+            "password": "Password123!",
+            "role": "EMPLOYEE"
+        })
+        assert response.status_code == 201
+        data = response.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["user"]["email"] == "newuser@example.com"
+    
+    def test_register_duplicate_email(self, client, test_user):
+        """Test registration with existing email fails"""
+        response = client.post("/api/v1/auth/register", json={
+            "email": "test@example.com",
+            "full_name": "Another User",
+            "password": "Password123!",
+            "role": "EMPLOYEE"
+        })
+        assert response.status_code == 400
+        assert "already" in response.json()["detail"].lower()
+    
+    def test_register_weak_password(self, client):
+        """Test registration with weak password fails"""
+        response = client.post("/api/v1/auth/register", json={
+            "email": "weak@example.com",
+            "full_name": "Weak User",
+            "password": "123",
+            "role": "EMPLOYEE"
+        })
+        assert response.status_code == 422  # Validation error
+    
+    def test_login_success(self, client, test_user):
+        """Test successful login"""
+        response = client.post("/api/v1/auth/login", json={
+            "email": "test@example.com",
+            "password": "Test123!"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+    
+    def test_login_wrong_password(self, client, test_user):
+        """Test login with wrong password fails"""
+        response = client.post("/api/v1/auth/login", json={
+            "email": "test@example.com",
+            "password": "WrongPassword123!"
+        })
+        assert response.status_code == 401
+    
+    def test_login_nonexistent_user(self, client):
+        """Test login with non-existent user fails"""
+        response = client.post("/api/v1/auth/login", json={
+            "email": "ghost@example.com",
+            "password": "Password123!"
+        })
+        assert response.status_code == 401
+    
+    def test_get_current_user(self, client, auth_headers, test_user):
+        """Test getting current user profile"""
+        response = client.get("/api/v1/users/me", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["email"] == test_user.email
+    
+    def test_get_current_user_no_auth(self, client):
+        """Test accessing protected route without auth fails"""
+        response = client.get("/api/v1/users/me")
+        assert response.status_code == 403  # Or 401
+backend/tests/test_teams.py - Team tests:
+
+python
+class TestTeams:
+    """Test team management endpoints"""
+    
+    def test_create_team_as_manager(self, client, manager_headers):
+        """Test creating a team as manager"""
+        response = client.post("/api/v1/teams/", 
+            headers=manager_headers,
+            json={
+                "name": "Marketing Team",
+                "description": "Handles marketing"
+            }
+        )
+        assert response.status_code == 201
+        assert response.json()["name"] == "Marketing Team"
+    
+    def test_create_team_as_employee_forbidden(self, client, auth_headers):
+        """Test that employees cannot create teams"""
+        response = client.post("/api/v1/teams/",
+            headers=auth_headers,
+            json={
+                "name": "Unauthorized Team",
+                "description": "Should fail"
+            }
+        )
+        assert response.status_code == 403
+    
+    def test_list_teams(self, client, manager_headers, test_team):
+        """Test listing teams"""
+        response = client.get("/api/v1/teams/", headers=manager_headers)
+        assert response.status_code == 200
+        assert len(response.json()) >= 1
+    
+    def test_get_team(self, client, manager_headers, test_team):
+        """Test getting a specific team"""
+        response = client.get(f"/api/v1/teams/{test_team.id}", headers=manager_headers)
+        assert response.status_code == 200
+        assert response.json()["id"] == str(test_team.id)
+    
+    def test_get_nonexistent_team(self, client, manager_headers):
+        """Test getting a non-existent team"""
+        response = client.get(
+            "/api/v1/teams/00000000-0000-0000-0000-000000000000",
+            headers=manager_headers
+        )
+        assert response.status_code == 404
+backend/tests/test_tasks.py - Task tests:
+
+python
+class TestTasks:
+    """Test task management endpoints"""
+    
+    def test_create_task(self, client, manager_headers, test_team, db):
+        """Test creating a task"""
+        # Create event first
+        from app.models.event import Event, EventStatus
+        from datetime import datetime, timedelta
+        
+        event = Event(
+            name="Test Event",
+            description="Test",
+            start_date=datetime.utcnow() + timedelta(days=7),
+            end_date=datetime.utcnow() + timedelta(days=10),
+            status=EventStatus.DRAFT,
+            team_id=test_team.id,
+            created_by=test_team.manager_id
+        )
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        
+        response = client.post("/api/v1/tasks/",
+            headers=manager_headers,
+            json={
+                "title": "Test Task",
+                "description": "A test task",
+                "priority": "HIGH",
+                "event_id": str(event.id)
+            }
+        )
+        assert response.status_code == 201
+        assert response.json()["title"] == "Test Task"
+    
+    def test_update_task_status(self, client, manager_headers, db):
+        """Test updating task status"""
+        # Setup task first
+        # Then update status
+        # Verify the response
+        pass  # Implement based on your test setup
+Requirements:
+
+Test authentication (register, login, protected routes)
+
+Test CRUD operations for all resources
+
+Test authorization (role-based access)
+
+Test validation (invalid input)
+
+Test error handling
+
+Minimum 70% code coverage
+
+Generate ALL complete test files.
+
+text
+
+---
+
+## 📌 Step 8.2: Frontend Testing Setup
+
+### 🤖 Complete Prompt for Step 8.2:
+Now set up frontend testing with Vitest and React Testing Library.
+
+First install dependencies:
+
+Run in terminal:
+
+bash
+docker-compose exec frontend npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom @vitest/coverage-v8
+Update frontend/package.json - Add test scripts:
+
+json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  }
+}
+Create these files:
+
+frontend/vitest.config.ts:
+
+typescript
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+
+export default defineConfig({
+    plugins: [react()],
+    test: {
+        globals: true,
+        environment: 'jsdom',
+        setupFiles: ['./src/test/setup.ts'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'json', 'html'],
+            exclude: [
+                'node_modules/',
+                'src/test/',
+                '**/*.d.ts',
+                '**/*.config.ts',
+                'src/main.tsx'
+            ]
+        }
+    },
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, './src')
+        }
+    }
+})
+frontend/src/test/setup.ts - Test setup:
+
+typescript
+import '@testing-library/jest-dom'
+import { cleanup } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
+
+// Cleanup after each test
+afterEach(() => {
+    cleanup()
+})
+
+// Mock matchMedia
+Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+    })),
+})
+
+// Mock scrollTo
+window.scrollTo = vi.fn()
+frontend/src/test/utils.tsx - Test utilities:
+
+typescript
+import { ReactElement } from 'react'
+import { render, RenderOptions } from '@testing-library/react'
+import { BrowserRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+const createTestQueryClient = () => new QueryClient({
+    defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false }
+    }
+})
+
+interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
+    initialRoute?: string
+}
+
+export const renderWithProviders = (
+    ui: ReactElement,
+    options?: CustomRenderOptions
+) => {
+    const queryClient = createTestQueryClient()
+    const { initialRoute = '/', ...renderOptions } = options || {}
+    
+    window.history.pushState({}, 'Test', initialRoute)
+    
+    const Wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+            <BrowserRouter>
+                {children}
+            </BrowserRouter>
+        </QueryClientProvider>
+    )
+    
+    return {
+        ...render(ui, { wrapper: Wrapper, ...renderOptions }),
+        queryClient
+    }
+}
+
+export * from '@testing-library/react'
+export { default as userEvent } from '@testing-library/user-event'
+frontend/src/components/ui/tests/Button.test.tsx:
+
+typescript
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Button } from '../Button'
+
+describe('Button', () => {
+    it('renders with children', () => {
+        render(<Button>Click me</Button>)
+        expect(screen.getByText('Click me')).toBeInTheDocument()
+    })
+    
+    it('calls onClick when clicked', async () => {
+        const handleClick = vi.fn()
+        const user = userEvent.setup()
+        
+        render(<Button onClick={handleClick}>Click me</Button>)
+        await user.click(screen.getByText('Click me'))
+        
+        expect(handleClick).toHaveBeenCalledTimes(1)
+    })
+    
+    it('shows loading state', () => {
+        render(<Button isLoading>Submit</Button>)
+        expect(screen.getByRole('button')).toBeDisabled()
+    })
+    
+    it('is disabled when disabled prop is true', () => {
+        render(<Button disabled>Disabled</Button>)
+        expect(screen.getByRole('button')).toBeDisabled()
+    })
+    
+    it('applies variant classes', () => {
+        const { rerender } = render(<Button variant="danger">Delete</Button>)
+        expect(screen.getByRole('button')).toHaveClass('bg-red-600')
+        
+        rerender(<Button variant="primary">Primary</Button>)
+        expect(screen.getByRole('button')).toHaveClass('bg-blue-600')
+    })
+})
+frontend/src/pages/auth/tests/LoginPage.test.tsx:
+
+typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { renderWithProviders } from '../../../test/utils'
+import { LoginPage } from '../LoginPage'
+
+// Mock auth service
+vi.mock('../../../services/authService', () => ({
+    authService: {
+        login: vi.fn()
+    }
+}))
+
+describe('LoginPage', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+    
+    it('renders login form', () => {
+        renderWithProviders(<LoginPage />, { initialRoute: '/login' })
+        
+        expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+        expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
+    })
+    
+    it('shows validation errors for empty fields', async () => {
+        const user = userEvent.setup()
+        renderWithProviders(<LoginPage />, { initialRoute: '/login' })
+        
+        await user.click(screen.getByRole('button', { name: /sign in/i }))
+        
+        await waitFor(() => {
+            expect(screen.getByText(/email is required/i)).toBeInTheDocument()
+        })
+    })
+    
+    it('shows error for invalid email', async () => {
+        const user = userEvent.setup()
+        renderWithProviders(<LoginPage />, { initialRoute: '/login' })
+        
+        await user.type(screen.getByLabelText(/email/i), 'invalid-email')
+        await user.type(screen.getByLabelText(/password/i), 'Password123!')
+        await user.click(screen.getByRole('button', { name: /sign in/i }))
+        
+        await waitFor(() => {
+            expect(screen.getByText(/invalid email/i)).toBeInTheDocument()
+        })
+    })
+    
+    it('submits form with valid data', async () => {
+        const user = userEvent.setup()
+        const { authService } = await import('../../../services/authService')
+        
+        vi.mocked(authService.login).mockResolvedValue({
+            user: { id: '1', email: 'test@example.com', full_name: 'Test', role: 'EMPLOYEE' },
+            access_token: 'token',
+            refresh_token: 'refresh',
+            token_type: 'bearer'
+        } as any)
+        
+        renderWithProviders(<LoginPage />, { initialRoute: '/login' })
+        
+        await user.type(screen.getByLabelText(/email/i), 'test@example.com')
+        await user.type(screen.getByLabelText(/password/i), 'Password123!')
+        await user.click(screen.getByRole('button', { name: /sign in/i }))
+        
+        await waitFor(() => {
+            expect(authService.login).toHaveBeenCalledWith('test@example.com', 'Password123!')
+        })
+    })
+})
+frontend/src/stores/tests/authStore.test.ts:
+
+typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { useAuthStore } from '../authStore'
+
+vi.mock('../../services/authService', () => ({
+    authService: {
+        login: vi.fn(),
+        register: vi.fn(),
+        logout: vi.fn()
+    }
+}))
+
+describe('authStore', () => {
+    beforeEach(() => {
+        // Reset store state
+        useAuthStore.setState({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null
+        })
+        localStorage.clear()
+    })
+    
+    it('starts with initial state', () => {
+        const state = useAuthStore.getState()
+        expect(state.user).toBeNull()
+        expect(state.isAuthenticated).toBe(false)
+    })
+    
+    it('has login action', () => {
+        const state = useAuthStore.getState()
+        expect(typeof state.login).toBe('function')
+    })
+    
+    it('has logout action', () => {
+        const state = useAuthStore.getState()
+        expect(typeof state.logout).toBe('function')
+    })
+})
+Requirements:
+
+Test key components (Button, Input, Modal)
+
+Test critical pages (LoginPage, RegisterPage)
+
+Test stores (authStore, taskStore)
+
+Test custom hooks
+
+Run with npm test
+
+Generate ALL complete test files.
+
+text
+
+---
+
+## 📌 Step 8.3: Error Handling & Validation Polish
+
+### 🤖 Complete Prompt for Step 8.3:
+Now add comprehensive error handling and validation throughout the app.
+
+Create/Update these files:
+
+frontend/src/utils/errorHandler.ts - Centralized error handling:
+
+typescript
+import { AxiosError } from 'axios'
+import toast from 'react-hot-toast'
+
+export interface ApiError {
+    detail: string
+    status?: number
+    field?: string
+}
+
+/**
+ * Extract error message from various error types
+ */
+export const getErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+        return error.message
+    }
+    
+    if (typeof error === 'string') {
+        return error
+    }
+    
+    if (error && typeof error === 'object' && 'detail' in error) {
+        const detail = (error as any).detail
+        if (typeof detail === 'string') return detail
+        if (Array.isArray(detail)) {
+            return detail.map((d: any) => d.msg || d.message).join(', ')
+        }
+    }
+    
+    return 'Something went wrong. Please try again.'
+}
+
+/**
+ * Extract field-specific errors from validation errors
+ */
+export const getFieldErrors = (error: unknown): Record<string, string> => {
+    const errors: Record<string, string> = {}
+    
+    if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as AxiosError
+        const data = axiosError.response?.data as any
+        
+        if (Array.isArray(data?.detail)) {
+            data.detail.forEach((err: any) => {
+                if (err.loc && err.loc.length > 1) {
+                    const field = err.loc[err.loc.length - 1]
+                    errors[field] = err.msg
+                }
+            })
+        }
+    }
+    
+    return errors
+}
+
+/**
+ * Handle API errors with toast notifications
+ */
+export const handleApiError = (error: unknown, context?: string): void => {
+    const message = getErrorMessage(error)
+    const prefix = context ? `${context}: ` : ''
+    toast.error(`${prefix}${message}`)
+}
+
+/**
+ * Handle API errors silently (log only)
+ */
+export const logApiError = (error: unknown, context?: string): void => {
+    console.error(`[${context || 'API Error'}]`, error)
+}
+frontend/src/utils/validators.ts - Reusable validation schemas:
+
+typescript
+import { z } from 'zod'
+
+export const emailSchema = z.string().email('Please enter a valid email address')
+
+export const passwordSchema = z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain an uppercase letter')
+    .regex(/[a-z]/, 'Password must contain a lowercase letter')
+    .regex(/[0-9]/, 'Password must contain a number')
+    .regex(/[^A-Za-z0-9]/, 'Password must contain a special character')
+
+export const nameSchema = z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name is too long')
+
+export const taskTitleSchema = z
+    .string()
+    .min(3, 'Title must be at least 3 characters')
+    .max(200, 'Title is too long')
+
+export const teamNameSchema = z
+    .string()
+    .min(3, 'Team name must be at least 3 characters')
+    .max(100, 'Team name is too long')
+
+export const eventNameSchema = z
+    .string()
+    .min(3, 'Event name must be at least 3 characters')
+    .max(200, 'Event name is too long')
+frontend/src/components/ui/ErrorBoundary.tsx - React error boundary:
+
+typescript
+import { Component, ErrorInfo, ReactNode } from 'react'
+
+interface Props {
+    children: ReactNode
+    fallback?: ReactNode
+}
+
+interface State {
+    hasError: boolean
+    error: Error | null
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+    constructor(props: Props) {
+        super(props)
+        this.state = { hasError: false, error: null }
+    }
+    
+    static getDerivedStateFromError(error: Error): State {
+        return { hasError: true, error }
+    }
+    
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('Error boundary caught:', error, errorInfo)
+        // In production, log to error tracking service
+    }
+    
+    handleReset = () => {
+        this.setState({ hasError: false, error: null })
+    }
+    
+    render() {
+        if (this.state.hasError) {
+            if (this.props.fallback) {
+                return this.props.fallback
+            }
+            
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                    <div className="text-center max-w-md p-6">
+                        <div className="text-6xl mb-4">⚠️</div>
+                        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                            Something went wrong
+                        </h1>
+                        <p className="text-gray-600 mb-6">
+                            We're sorry for the inconvenience. Please try again.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                            <button
+                                onClick={this.handleReset}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            >
+                                Try Again
+                            </button>
+                            <button
+                                onClick={() => window.location.href = '/'}
+                                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            >
+                                Go Home
+                            </button>
+                        </div>
+                        {import.meta.env.DEV && this.state.error && (
+                            <pre className="mt-6 text-xs text-left bg-gray-100 p-4 rounded overflow-auto">
+                                {this.state.error.stack}
+                            </pre>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+        
+        return this.props.children
+    }
+}
+Update frontend/src/App.tsx - Wrap with ErrorBoundary:
+
+typescript
+import { ErrorBoundary } from './components/ui/ErrorBoundary'
+
+// Inside App component:
+<ErrorBoundary>
+    <BrowserRouter>
+        {/* your existing routes */}
+    </BrowserRouter>
+</ErrorBoundary>
+Update frontend/src/services/api.ts - Better error handling:
+
+typescript
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import toast from 'react-hot-toast'
+
+const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000
+})
+
+// Request interceptor
+api.interceptors.request.use(
+    (config: InternalAxiosRequestConfig) => {
+        const token = localStorage.getItem('access_token')
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+    },
+    (error) => Promise.reject(error)
+)
+
+// Response interceptor
+api.interceptors.response.use(
+    (response) => response,
+    async (error: AxiosError) => {
+        const originalRequest = error.config as any
+        
+        // Handle 401 - token expired
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true
+            
+            const refreshToken = localStorage.getItem('refresh_token')
+            if (refreshToken) {
+                try {
+                    const response = await axios.post(
+                        `${api.defaults.baseURL}/auth/refresh`,
+                        { refresh_token: refreshToken }
+                    )
+                    localStorage.setItem('access_token', response.data.access_token)
+                    originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`
+                    return api(originalRequest)
+                } catch (refreshError) {
+                    localStorage.removeItem('access_token')
+                    localStorage.removeItem('refresh_token')
+                    window.location.href = '/login'
+                    return Promise.reject(refreshError)
+                }
+            } else {
+                window.location.href = '/login'
+            }
+        }
+        
+        // Handle network errors
+        if (!error.response) {
+            toast.error('Network error. Check your connection.')
+            return Promise.reject(error)
+        }
+        
+        // Handle 403
+        if (error.response.status === 403) {
+            toast.error('You do not have permission to do this.')
+        }
+        
+        // Handle 500
+        if (error.response.status >= 500) {
+            toast.error('Server error. Please try again later.')
+        }
+        
+        return Promise.reject(error)
+    }
+)
+
+export default api
+Requirements:
+
+Centralized error handling
+
+Reusable validation schemas
+
+React error boundary for uncaught errors
+
+Automatic token refresh on 401
+
+User-friendly error messages
+
+Network error handling
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 8.4: Loading & Empty States
+
+### 🤖 Complete Prompt for Step 8.4:
+Now add polished loading states and empty states throughout the app.
+
+Create/Update these files:
+
+frontend/src/components/ui/LoadingSpinner.tsx:
+
+typescript
+interface LoadingSpinnerProps {
+    size?: 'sm' | 'md' | 'lg' | 'xl'
+    color?: 'primary' | 'white' | 'gray'
+    fullScreen?: boolean
+    text?: string
+}
+
+export const LoadingSpinner = ({ 
+    size = 'md', 
+    color = 'primary',
+    fullScreen = false,
+    text 
+}: LoadingSpinnerProps) => {
+    const sizes = {
+        sm: 'w-4 h-4 border-2',
+        md: 'w-6 h-6 border-2',
+        lg: 'w-8 h-8 border-3',
+        xl: 'w-12 h-12 border-4'
+    }
+    
+    const colors = {
+        primary: 'border-blue-600 border-t-transparent',
+        white: 'border-white border-t-transparent',
+        gray: 'border-gray-400 border-t-transparent'
+    }
+    
+    const spinner = (
+        <div className="flex flex-col items-center gap-3">
+            <div className={`${sizes[size]} ${colors[color]} rounded-full animate-spin`} />
+            {text && <p className="text-sm text-gray-500">{text}</p>}
+        </div>
+    )
+    
+    if (fullScreen) {
+        return (
+            <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+                {spinner}
+            </div>
+        )
+    }
+    
+    return spinner
+}
+frontend/src/components/ui/Skeleton.tsx - Skeleton loaders:
+
+typescript
+interface SkeletonProps {
+    className?: string
+    variant?: 'text' | 'circular' | 'rectangular' | 'rounded'
+    width?: string | number
+    height?: string | number
+}
+
+export const Skeleton = ({ 
+    className = '', 
+    variant = 'text',
+    width,
+    height 
+}: SkeletonProps) => {
+    const variants = {
+        text: 'h-4 rounded',
+        circular: 'rounded-full',
+        rectangular: 'rounded-none',
+        rounded: 'rounded-lg'
+    }
+    
+    return (
+        <div
+            className={`bg-gray-200 animate-pulse ${variants[variant]} ${className}`}
+            style={{ width, height }}
+        />
+    )
+}
+
+// Pre-built skeletons
+export const CardSkeleton = () => (
+    <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <Skeleton className="w-3/4 h-6 mb-3" />
+        <Skeleton className="w-full h-4 mb-2" />
+        <Skeleton className="w-2/3 h-4 mb-4" />
+        <div className="flex gap-2">
+            <Skeleton className="w-20 h-8 rounded" />
+            <Skeleton className="w-20 h-8 rounded" />
+        </div>
+    </div>
+)
+
+export const TableRowSkeleton = () => (
+    <tr className="border-b">
+        <td className="p-4"><Skeleton className="w-32 h-4" /></td>
+        <td className="p-4"><Skeleton className="w-24 h-4" /></td>
+        <td className="p-4"><Skeleton className="w-16 h-4" /></td>
+        <td className="p-4"><Skeleton className="w-20 h-4" /></td>
+    </tr>
+)
+
+export const StatsSkeleton = () => (
+    <div className="grid grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white p-5 rounded-lg border">
+                <Skeleton className="w-20 h-4 mb-3" />
+                <Skeleton className="w-16 h-8 mb-2" />
+                <Skeleton className="w-24 h-3" />
+            </div>
+        ))}
+    </div>
+)
+frontend/src/components/ui/EmptyState.tsx - Improve empty state:
+
+typescript
+import { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+
+interface EmptyStateProps {
+    icon?: ReactNode
+    title: string
+    description?: string
+    action?: {
+        label: string
+        onClick?: () => void
+        to?: string
+    }
+    secondaryAction?: {
+        label: string
+        onClick?: () => void
+        to?: string
+    }
+}
+
+export const EmptyState = ({ 
+    icon = '📭', 
+    title, 
+    description, 
+    action,
+    secondaryAction 
+}: EmptyStateProps) => {
+    const ActionButton = ({ action, variant }: { action: any; variant: 'primary' | 'secondary' }) => {
+        const className = variant === 'primary'
+            ? 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700'
+            : 'px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50'
+        
+        if (action.to) {
+            return <Link to={action.to} className={className}>{action.label}</Link>
+        }
+        return <button onClick={action.onClick} className={className}>{action.label}</button>
+    }
+    
+    return (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="text-6xl mb-4 opacity-50">{icon}</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+            {description && (
+                <p className="text-gray-500 max-w-md mb-6">{description}</p>
+            )}
+            {(action || secondaryAction) && (
+                <div className="flex gap-3">
+                    {action && <ActionButton action={action} variant="primary" />}
+                    {secondaryAction && <ActionButton action={secondaryAction} variant="secondary" />}
+                </div>
+            )}
+        </div>
+    )
+}
+Update pages to use loading states - Show real examples for each list page:
+
+frontend/src/pages/tasks/TasksPage.tsx - Replace loading:
+
+typescript
+import { CardSkeleton } from '../../components/ui/Skeleton'
+
+// Replace loading block with:
+if (isLoading && tasks.length === 0) {
+    return (
+        <div className="space-y-6">
+            <PageHeader title="Tasks" description="Loading..." />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => <CardSkeleton key={i} />)}
+            </div>
+        </div>
+    )
+}
+frontend/src/components/common/RetryButton.tsx - Retry on error:
+
+typescript
+interface RetryButtonProps {
+    onRetry: () => void
+    isLoading?: boolean
+    error?: string
+}
+
+export const RetryButton = ({ onRetry, isLoading, error }: RetryButtonProps) => (
+    <div className="flex flex-col items-center gap-3 p-6">
+        <p className="text-red-600 text-sm">{error || 'Something went wrong'}</p>
+        <button
+            onClick={onRetry}
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+            {isLoading ? 'Retrying...' : 'Try Again'}
+        </button>
+    </div>
+)
+Requirements:
+
+Loading spinners with size variants
+
+Skeleton loaders for lists and cards
+
+Beautiful empty states with actions
+
+Retry mechanism for errors
+
+Consistent across all pages
+
+Generate ALL complete files and show how to use them in each page.
+
+text
+
+---
+
+## 📌 Step 8.5: Accessibility (a11y) Polish
+
+### 🤖 Complete Prompt for Step 8.5:
+Now make the app accessible (WCAG 2.1 AA compliant).
+
+Create/Update these files:
+
+frontend/src/hooks/useKeyboardShortcuts.ts - Keyboard navigation:
+
+typescript
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+interface Shortcut {
+    key: string
+    ctrl?: boolean
+    shift?: boolean
+    alt?: boolean
+    action: () => void
+    description: string
+}
+
+export const useKeyboardShortcuts = (shortcuts: Shortcut[]) => {
+    const navigate = useNavigate()
+    
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Skip if typing in input
+            const target = e.target as HTMLElement
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+            
+            shortcuts.forEach(shortcut => {
+                const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase()
+                const ctrlMatch = shortcut.ctrl ? (e.ctrlKey || e.metaKey) : !(e.ctrlKey || e.metaKey)
+                const shiftMatch = shortcut.shift ? e.shiftKey : !e.shiftKey
+                const altMatch = shortcut.alt ? e.altKey : !e.altKey
+                
+                if (keyMatch && ctrlMatch && shiftMatch && altMatch) {
+                    e.preventDefault()
+                    shortcut.action()
+                }
+            })
+        }
+        
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [shortcuts])
+}
+
+// Global shortcuts component
+export const GlobalKeyboardShortcuts = () => {
+    const navigate = useNavigate()
+    
+    useKeyboardShortcuts([
+        { key: 'd', ctrl: true, action: () => navigate('/dashboard'), description: 'Go to Dashboard' },
+        { key: 'e', ctrl: true, action: () => navigate('/events'), description: 'Go to Events' },
+        { key: 't', ctrl: true, action: () => navigate('/tasks'), description: 'Go to Tasks' },
+        { key: 'k', ctrl: true, action: () => document.getElementById('global-search')?.focus(), description: 'Focus search' },
+        { key: '/', action: () => document.getElementById('global-search')?.focus(), description: 'Focus search' },
+    ])
+    
+    return null
+}
+frontend/src/components/ui/SkipToContent.tsx - Skip navigation:
+
+typescript
+export const SkipToContent = () => (
+    <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg"
+    >
+        Skip to main content
+    </a>
+)
+frontend/src/components/ui/VisuallyHidden.tsx:
+
+typescript
+interface VisuallyHiddenProps {
+    children: React.ReactNode
+    as?: keyof JSX.IntrinsicElements
+}
+
+export const VisuallyHidden = ({ children, as: Component = 'span' }: VisuallyHiddenProps) => (
+    <Component className="absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0">
+        {children}
+    </Component>
+)
+frontend/src/hooks/useFocusTrap.ts - Focus trap for modals:
+
+typescript
+import { useEffect, useRef } from 'react'
+
+export const useFocusTrap = (isActive: boolean) => {
+    const containerRef = useRef<HTMLDivElement>(null)
+    
+    useEffect(() => {
+        if (!isActive || !containerRef.current) return
+        
+        const container = containerRef.current
+        const focusableElements = container.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        const firstElement = focusableElements[0] as HTMLElement
+        const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement
+        
+        // Focus first element
+        firstElement?.focus()
+        
+        const handleTabKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return
+            
+            if (e.shiftKey) {
+                if (document.activeElement === firstElement) {
+                    e.preventDefault()
+                    lastElement?.focus()
+                }
+            } else {
+                if (document.activeElement === lastElement) {
+                    e.preventDefault()
+                    firstElement?.focus()
+                }
+            }
+        }
+        
+        container.addEventListener('keydown', handleTabKey)
+        return () => container.removeEventListener('keydown', handleTabKey)
+    }, [isActive])
+    
+    return containerRef
+}
+Update frontend/src/components/ui/Modal.tsx - Add focus trap, ARIA:
+
+typescript
+import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
+
+interface ModalProps {
+    isOpen: boolean
+    onClose: () => void
+    title: string
+    children: React.ReactNode
+    size?: 'sm' | 'md' | 'lg' | 'xl'
+}
+
+export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalProps) => {
+    const containerRef = useFocusTrap(isOpen)
+    
+    useEffect(() => {
+        if (!isOpen) return
+        
+        // Lock body scroll
+        document.body.style.overflow = 'hidden'
+        
+        // Handle escape key
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose()
+        }
+        document.addEventListener('keydown', handleEscape)
+        
+        return () => {
+            document.body.style.overflow = ''
+            document.removeEventListener('keydown', handleEscape)
+        }
+    }, [isOpen, onClose])
+    
+    if (!isOpen) return null
+    
+    const sizes = {
+        sm: 'max-w-md',
+        md: 'max-w-lg',
+        lg: 'max-w-2xl',
+        xl: 'max-w-4xl'
+    }
+    
+    return createPortal(
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+        >
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                onClick={onClose}
+                aria-hidden="true"
+            />
+            
+            {/* Modal */}
+            <div
+                ref={containerRef}
+                className={`relative bg-white rounded-lg shadow-xl w-full ${sizes[size]}`}
+            >
+                <div className="flex items-center justify-between p-6 border-b">
+                    <h2 id="modal-title" className="text-lg font-semibold">{title}</h2>
+                    <button
+                        onClick={onClose}
+                        aria-label="Close dialog"
+                        className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div className="p-6">{children}</div>
+            </div>
+        </div>,
+        document.body
+    )
+}
+Update frontend/src/components/ui/Input.tsx - Better accessibility:
+
+typescript
+import { forwardRef, useId } from 'react'
+
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+    label?: string
+    error?: string
+    helperText?: string
+    required?: boolean
+}
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+    ({ label, error, helperText, required, className, id, ...props }, ref) => {
+        const autoId = useId()
+        const inputId = id || autoId
+        const errorId = `${inputId}-error`
+        const helperId = `${inputId}-helper`
+        
+        return (
+            <div className="w-full">
+                {label && (
+                    <label 
+                        htmlFor={inputId}
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                        {label}
+                        {required && <span className="text-red-500 ml-1" aria-label="required">*</span>}
+                    </label>
+                )}
+                
+                <input
+                    ref={ref}
+                    id={inputId}
+                    aria-invalid={!!error}
+                    aria-describedby={`${error ? errorId : ''} ${helperText ? helperId : ''}`.trim()}
+                    aria-required={required}
+                    className={`
+                        w-full px-3 py-2 border rounded-lg
+                        focus:outline-none focus:ring-2 focus:ring-blue-500
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                        ${error ? 'border-red-500' : 'border-gray-300'}
+                        ${className || ''}
+                    `}
+                    {...props}
+                />
+                
+                {error && (
+                    <p id={errorId} className="text-sm text-red-500 mt-1" role="alert">
+                        {error}
+                    </p>
+                )}
+                
+                {helperText && !error && (
+                    <p id={helperId} className="text-sm text-gray-500 mt-1">
+                        {helperText}
+                    </p>
+                )}
+            </div>
+        )
+    }
+)
+Update frontend/src/components/layout/MainLayout.tsx - Add landmarks:
+
+typescript
+export const MainLayout = () => {
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <SkipToContent />
+            <GlobalKeyboardShortcuts />
+            
+            <header role="banner">
+                {/* Header component */}
+            </header>
+            
+            <div className="flex">
+                <nav role="navigation" aria-label="Main navigation">
+                    <Sidebar />
+                </nav>
+                
+                <main id="main-content" role="main" className="flex-1 p-6">
+                    <Outlet />
+                </main>
+            </div>
+        </div>
+    )
+}
+Requirements:
+
+Skip to content link
+
+Keyboard shortcuts
+
+Focus trap in modals
+
+ARIA labels, roles, and states
+
+Screen reader friendly forms
+
+Proper heading hierarchy
+
+Reduced motion support
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 8.6: Performance Optimization
+
+### 🤖 Complete Prompt for Step 8.6:
+Now optimize the app's performance with lazy loading, memoization, and bundle splitting.
+
+Create/Update these files:
+
+frontend/src/App.tsx - Lazy load all pages:
+
+typescript
+import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ToastProvider } from './components/ui/Toast'
+import { ErrorBoundary } from './components/ui/ErrorBoundary'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { LoadingSpinner } from './components/ui/LoadingSpinner'
+
+// Lazy load pages
+const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })))
+const RegisterPage = lazy(() => import('./pages/auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
+const EventsPage = lazy(() => import('./pages/events/EventsPage').then(m => ({ default: m.EventsPage })))
+const TasksPage = lazy(() => import('./pages/tasks/TasksPage').then(m => ({ default: m.TasksPage })))
+const TeamsPage = lazy(() => import('./pages/teams/TeamsPage').then(m => ({ default: m.TeamsPage })))
+const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
+
+const PageLoader = () => (
+    <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Loading..." />
+    </div>
+)
+
+function App() {
+    return (
+        <ErrorBoundary>
+            <BrowserRouter>
+                <ToastProvider>
+                    <Suspense fallback={<PageLoader />}>
+                        <Routes>
+                            {/* Your routes */}
+                        </Routes>
+                    </Suspense>
+                </ToastProvider>
+            </BrowserRouter>
+        </ErrorBoundary>
+    )
+}
+frontend/vite.config.ts - Optimize build:
+
+typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+
+export default defineConfig({
+    plugins: [react()],
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, './src')
+        }
+    },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+                    'query-vendor': ['@tanstack/react-query'],
+                    'ui-vendor': ['framer-motion', 'lucide-react'],
+                    'charts': ['recharts'],
+                    'socket': ['socket.io-client'],
+                    'forms': ['react-hook-form', 'zod', '@hookform/resolvers']
+                }
+            }
+        },
+        chunkSizeWarningLimit: 1000
+    },
+    server: {
+        port: 3000,
+        host: true
+    }
+})
+frontend/src/hooks/useDebounce.ts - Debounce hook:
+
+typescript
+import { useEffect, useState } from 'react'
+
+export function useDebounce<T>(value: T, delay: number = 300): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value)
+    
+    useEffect(() => {
+        const handler = setTimeout(() => setDebouncedValue(value), delay)
+        return () => clearTimeout(handler)
+    }, [value, delay])
+    
+    return debouncedValue
+}
+frontend/src/hooks/useSearch.ts - Debounced search:
+
+typescript
+import { useEffect, useState } from 'react'
+import { useDebounce } from './useDebounce'
+
+export const useSearch = <T>(
+    items: T[],
+    searchFields: (keyof T)[],
+    delay: number = 300
+) => {
+    const [query, setQuery] = useState('')
+    const debouncedQuery = useDebounce(query, delay)
+    
+    const filteredItems = debouncedQuery
+        ? items.filter(item =>
+            searchFields.some(field => {
+                const value = item[field]
+                return typeof value === 'string' &&
+                    value.toLowerCase().includes(debouncedQuery.toLowerCase())
+            })
+        )
+        : items
+    
+    return {
+        query,
+        setQuery,
+        results: filteredItems,
+        isSearching: query !== debouncedQuery
+    }
+}
+frontend/src/components/common/OptimizedImage.tsx - Lazy load images:
+
+typescript
+import { useState, useRef, useEffect } from 'react'
+
+interface OptimizedImageProps {
+    src: string
+    alt: string
+    className?: string
+    width?: number
+    height?: number
+    placeholder?: string
+}
+
+export const OptimizedImage = ({ 
+    src, 
+    alt, 
+    className = '', 
+    width, 
+    height,
+    placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%23f3f4f6" width="400" height="300"/%3E%3C/svg%3E'
+}: OptimizedImageProps) => {
+    const [loaded, setLoaded] = useState(false)
+    const [inView, setInView] = useState(false)
+    const imgRef = useRef<HTMLImageElement>(null)
+    
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setInView(true)
+                    observer.disconnect()
+                }
+            },
+            { rootMargin: '200px' }
+        )
+        
+        if (imgRef.current) observer.observe(imgRef.current)
+        return () => observer.disconnect()
+    }, [])
+    
+    return (
+        <img
+            ref={imgRef}
+            src={inView ? src : placeholder}
+            alt={alt}
+            width={width}
+            height={height}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            className={`transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'} ${className}`}
+        />
+    )
+}
+Update react-query config in App.tsx:
+
+typescript
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 5 * 60 * 1000,      // 5 minutes
+            gcTime: 10 * 60 * 1000,         // 10 minutes
+            refetchOnWindowFocus: false,
+            retry: 1,
+            refetchOnMount: false
+        }
+    }
+})
+
+// Wrap App with QueryClientProvider
+Requirements:
+
+Lazy load all pages (code splitting)
+
+Vite chunk optimization
+
+Debounced search inputs
+
+Lazy load images
+
+React Query caching
+
+Prefetch on hover (optional)
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 8.7: Security Hardening
+
+### 🤖 Complete Prompt for Step 8.7:
+Now add security best practices to the backend.
+
+Create/Update these files:
+
+backend/app/core/rate_limit.py - Rate limiting:
+
+python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
+
+def setup_rate_limiting(app):
+    """Setup rate limiting on the FastAPI app"""
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+Add to requirements.txt:
+
+text
+slowapi==0.1.9
+Update backend/app/main.py - Apply security middleware:
+
+python
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.core.rate_limit import setup_rate_limiting
+
+# Setup rate limiting
+setup_rate_limiting(app)
+
+# Trusted host middleware (production only)
+if settings.ENVIRONMENT == "production":
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.ALLOWED_HOSTS
+    )
+
+# GZip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
+        if settings.ENVIRONMENT == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+Add rate limiting to auth routes - Update backend/app/api/v1/auth.py:
+
+python
+from fastapi import Request
+from app.core.rate_limit import limiter
+
+
+@router.post("/login")
+@limiter.limit("5/minute")  # 5 login attempts per minute
+async def login(request: Request, credentials: UserLogin, db: Session = Depends(get_db)):
+    ...
+
+
+@router.post("/register")
+@limiter.limit("3/minute")  # 3 registrations per minute
+async def register(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
+    ...
+Update backend/app/core/config.py - Add security settings:
+
+python
+class Settings(BaseSettings):
+    # ... existing settings ...
+    
+    ENVIRONMENT: str = "development"
+    ALLOWED_HOSTS: list = ["localhost", "127.0.0.1"]
+    
+    # Password requirements
+    PASSWORD_MIN_LENGTH: int = 8
+    PASSWORD_REQUIRE_UPPER: bool = True
+    PASSWORD_REQUIRE_LOWER: bool = True
+    PASSWORD_REQUIRE_NUMBER: bool = True
+    PASSWORD_REQUIRE_SPECIAL: bool = True
+    
+    # Session
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_DURATION_MINUTES: int = 15
+Update backend/app/core/security.py - Stronger password validation:
+
+python
+import re
+from app.core.config import settings
+
+
+def validate_password_strength(password: str) -> tuple[bool, list[str]]:
+    """Validate password and return errors"""
+    errors = []
+    
+    if len(password) < settings.PASSWORD_MIN_LENGTH:
+        errors.append(f"Password must be at least {settings.PASSWORD_MIN_LENGTH} characters")
+    
+    if settings.PASSWORD_REQUIRE_UPPER and not re.search(r'[A-Z]', password):
+        errors.append("Password must contain an uppercase letter")
+    
+    if settings.PASSWORD_REQUIRE_LOWER and not re.search(r'[a-z]', password):
+        errors.append("Password must contain a lowercase letter")
+    
+    if settings.PASSWORD_REQUIRE_NUMBER and not re.search(r'\d', password):
+        errors.append("Password must contain a number")
+    
+    if settings.PASSWORD_REQUIRE_SPECIAL and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        errors.append("Password must contain a special character")
+    
+    # Check against common passwords
+    common_passwords = ['password', '12345678', 'qwerty', 'admin123']
+    if password.lower() in common_passwords:
+        errors.append("Password is too common")
+    
+    return len(errors) == 0, errors
+backend/app/middleware/audit.py - Audit log middleware:
+
+python
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from datetime import datetime
+from app.core.logging import logger
+
+
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """Log sensitive operations for audit"""
+    
+    SENSITIVE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+    SENSITIVE_PATHS = {'/auth', '/users', '/teams'}
+    
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Log sensitive operations
+        if request.method in self.SENSITIVE_METHODS:
+            if any(path in str(request.url.path) for path in self.SENSITIVE_PATHS):
+                logger.info(
+                    "audit_log",
+                    method=request.method,
+                    path=str(request.url.path),
+                    status=response.status_code,
+                    client=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    timestamp=datetime.utcnow().isoformat()
+                )
+        
+        return response
+Add CORS hardening in backend/app/main.py:
+
+python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],  # Explicit methods
+    allow_headers=["Authorization", "Content-Type"],  # Explicit headers
+    expose_headers=["X-Total-Count"]
+)
+Requirements:
+
+Rate limiting on auth endpoints
+
+Security headers
+
+Strong password validation
+
+Audit logging
+
+CORS hardening
+
+Input sanitization
+
+SQL injection prevention (already handled by SQLAlchemy)
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 8.8: Final UI Polish
+
+### 🤖 Complete Prompt for Step 8.8:
+Now add the final UI polish to make the app feel professional.
+
+Create/Update these files:
+
+frontend/src/components/ui/Toast.tsx - Better toasts:
+
+typescript
+import { Toaster } from 'react-hot-toast'
+
+export const ToastProvider = ({ children }: { children: React.ReactNode }) => (
+    <>
+        {children}
+        <Toaster
+            position="bottom-right"
+            toastOptions={{
+                duration: 4000,
+                style: {
+                    background: '#fff',
+                    color: '#363636',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    fontSize: '14px'
+                },
+                success: {
+                    iconTheme: { primary: '#10b981', secondary: '#fff' }
+                },
+                error: {
+                    iconTheme: { primary: '#ef4444', secondary: '#fff' },
+                    duration: 5000
+                }
+            }}
+        />
+    </>
+)
+frontend/src/index.css - Better base styles:
+
+css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Smooth scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Better focus rings */
+*:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Remove default button styles */
+button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* Better text rendering */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Print styles */
+@media print {
+    nav, header, footer, .no-print {
+        display: none !important;
+    }
+}
+frontend/src/components/layout/PageHeader.tsx - Consistent headers:
+
+typescript
+interface PageHeaderProps {
+    title: string
+    description?: string
+    breadcrumbs?: Array<{ label: string; to?: string }>
+    action?: React.ReactNode
+}
+
+export const PageHeader = ({ title, description, breadcrumbs, action }: PageHeaderProps) => (
+    <div className="space-y-4">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+            <nav aria-label="Breadcrumb">
+                <ol className="flex items-center gap-2 text-sm text-gray-500">
+                    {breadcrumbs.map((crumb, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                            {crumb.to ? (
+                                <Link to={crumb.to} className="hover:text-blue-600">{crumb.label}</Link>
+                            ) : (
+                                <span>{crumb.label}</span>
+                            )}
+                            {i < breadcrumbs.length - 1 && <span>›</span>}
+                        </li>
+                    ))}
+                </ol>
+            </nav>
+        )}
+        
+        <div className="flex justify-between items-start">
+            <div>
+                <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+                {description && <p className="text-gray-600 mt-1">{description}</p>}
+            </div>
+            {action && <div>{action}</div>}
+        </div>
+    </div>
+)
+frontend/src/components/ui/Badge.tsx - Add more variants:
+
+typescript
+interface BadgeProps {
+    children: React.ReactNode
+    variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+    size?: 'sm' | 'md' | 'lg'
+    dot?: boolean
+}
+
+export const Badge = ({ children, variant = 'default', size = 'md', dot }: BadgeProps) => {
+    const variants = {
+        default: 'bg-gray-100 text-gray-700',
+        primary: 'bg-blue-100 text-blue-700',
+        success: 'bg-green-100 text-green-700',
+        warning: 'bg-yellow-100 text-yellow-700',
+        danger: 'bg-red-100 text-red-700',
+        info: 'bg-indigo-100 text-indigo-700'
+    }
+    
+    const sizes = {
+        sm: 'px-2 py-0.5 text-xs',
+        md: 'px-2.5 py-1 text-sm',
+        lg: 'px-3 py-1.5 text-base'
+    }
+    
+    const dotColors = {
+        default: 'bg-gray-500',
+        primary: 'bg-blue-500',
+        success: 'bg-green-500',
+        warning: 'bg-yellow-500',
+        danger: 'bg-red-500',
+        info: 'bg-indigo-500'
+    }
+    
+    return (
+        <span className={`inline-flex items-center gap-1.5 font-medium rounded-full ${variants[variant]} ${sizes[size]}`}>
+            {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant]}`} />}
+            {children}
+        </span>
+    )
+}
+frontend/src/components/ui/Button.tsx - Add more features:
+
+typescript
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost' | 'outline'
+    size?: 'sm' | 'md' | 'lg'
+    isLoading?: boolean
+    leftIcon?: React.ReactNode
+    rightIcon?: React.ReactNode
+    fullWidth?: boolean
+}
+frontend/src/components/tasks/TaskBoard.tsx - Add empty column placeholder:
+Already covered in Phase 5 with "Drop tasks here" placeholder.
+
+Add page transitions - frontend/src/components/layout/PageTransition.tsx:
+
+typescript
+import { motion } from 'framer-motion'
+
+export const PageTransition = ({ children }: { children: React.ReactNode }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.2 }}
+    >
+        {children}
+    </motion.div>
+)
+Wrap page content in MainLayout:
+
+typescript
+<main id="main-content" role="main">
+    <PageTransition>
+        <Outlet />
+    </PageTransition>
+</main>
+Requirements:
+
+Better toast styling
+
+Custom scrollbar
+
+Focus visible styles
+
+Reduced motion support
+
+Better typography rendering
+
+Breadcrumbs in page headers
+
+Page transitions
+
+Consistent badge/button variants
+
+Print styles
+
+Generate ALL complete files.
+
+text
+
+---
+
+## 📌 Step 8.9: Run Tests & Coverage
+
+### 🤖 Complete Prompt for Step 8.9:
+Now run all tests and verify quality.
+
+Create backend test script backend/scripts/run_tests.sh:
+
+bash
+#!/bin/bash
+set -e
+
+echo "🧪 Running backend tests..."
+
+# Run tests with coverage
+pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=html
+
+echo ""
+echo "✅ Tests complete! Coverage report at htmlcov/index.html"
+Run tests:
+
+bash
+# Backend tests
+docker-compose exec backend pytest tests/ -v
+
+# With coverage
+docker-compose exec backend pytest --cov=app --cov-report=html
+
+# Frontend tests
+docker-compose exec frontend npm test -- --run
+
+# Frontend coverage
+docker-compose exec frontend npm run test:coverage
+Create GitHub Actions workflow .github/workflows/test.yml:
+
+yaml
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+      
+      - name: Run tests
+        working-directory: ./backend
+        run: pytest tests/ -v --cov=app --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage.xml
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Run tests
+        working-directory: ./frontend
+        run: npm test -- --run --coverage
+      
+      - name: Build
+        working-directory: ./frontend
+        run: npm run build
+Requirements:
+
+All tests passing
+
+70%+ coverage on backend
+
+60%+ coverage on frontend
+
+CI pipeline configured
+
+Coverage reports generated
+
+Run tests and report results.
+
+text
+
+---
+
+## 🎯 Phase 8 Completion Checklist
+
+### ✅ Testing
+- [ ] Backend pytest setup with fixtures
+- [ ] Auth tests (register, login, protected routes)
+- [ ] Team tests (CRUD, authorization)
+- [ ] Task tests (CRUD, dependencies)
+- [ ] Event tests
+- [ ] Frontend Vitest + Testing Library setup
+- [ ] Component tests
+- [ ] Page tests
+- [ ] Store tests
+- [ ] All tests passing
+- [ ] Coverage > 70% (backend)
+- [ ] Coverage > 60% (frontend)
+
+### ✅ Error Handling
+- [ ] Centralized error handler utility
+- [ ] React ErrorBoundary
+- [ ] API interceptor with auto token refresh
+- [ ] Field-level validation errors
+- [ ] Network error handling
+- [ ] Retry mechanism
+
+### ✅ Loading & Empty States
+- [ ] LoadingSpinner component
+- [ ] Skeleton loaders for all lists
+- [ ] EmptyState with actions
+- [ ] Retry button on errors
+- [ ] Loading indicators on all buttons
+- [ ] Consistent loading patterns
+
+### ✅ Accessibility
+- [ ] Skip to content link
+- [ ] Keyboard shortcuts
+- [ ] Focus trap in modals
+- [ ] ARIA labels and roles
+- [ ] Screen reader friendly forms
+- [ ] Proper heading hierarchy
+- [ ] Color contrast WCAG AA
+- [ ] Reduced motion support
+
+### ✅ Performance
+- [ ] Lazy loaded pages (code splitting)
+- [ ] Vite chunk optimization
+- [ ] Debounced search
+- [ ] Lazy loaded images
+- [ ] React Query caching
+- [ ] Memoization where needed
+
+### ✅ Security
+- [ ] Rate limiting on auth endpoints
+- [ ] Security headers
+- [ ] Strong password validation
+- [ ] Audit logging
+- [ ] CORS hardening
+- [ ] Input sanitization
+
+### ✅ UI Polish
+- [ ] Custom scrollbar
+- [ ] Focus visible styles
+- [ ] Page transitions
+- [ ] Breadcrumbs
+- [ ] Better toast styling
+- [ ] Print styles
+- [ ] Consistent spacing
+- [ ] Consistent typography
+
+---
+
+## 📋 What You Should Be Able to Test After Phase 8
+
+### 1. 🧪 Tests
+| Test | Expected |
+|------|----------|
+| `docker-compose exec backend pytest` | All pass |
+| Coverage report | >70% backend |
+| `docker-compose exec frontend npm test` | All pass |
+| GitHub Actions push | CI runs and passes |
+
+### 2. 🚨 Error Handling
+| Test | Expected |
+|------|----------|
+| Stop backend | "Network error" toast |
+| Invalid token | Auto-redirect to login |
+| 403 error | "No permission" toast |
+| Unhandled error | ErrorBoundary catches it |
+| Form validation | Field-level errors |
+
+### 3. ⏳ Loading States
+| Test | Expected |
+|------|----------|
+| Slow API | Loading skeleton shows |
+| Submit form | Button spinner |
+| Page navigation | Lazy load spinner |
+| Empty lists | Empty state with CTA |
+
+### 4. ♿ Accessibility
+| Test | Expected |
+|------|----------|
+| Press Tab | Focus visible on all elements |
+| Press Ctrl+D | Navigate to Dashboard |
+| Press `/` | Focus search input |
+| Open modal | Focus trapped inside |
+| Screen reader | All elements announced |
+
+### 5. ⚡ Performance
+| Test | Expected |
+|------|----------|
+| Load page | Fast initial load (code split) |
+| Type in search | Debounced (300ms) |
+| Navigate pages | Smooth transitions |
+| DevTools Network | Small chunks loaded on demand |
+
+### 6. 🔒 Security
+| Test | Expected |
+|------|----------|
+| 10 login attempts | Rate limited (429) |
+| Check headers | Security headers present |
+| Weak password | Rejected with errors |
+
+---
+
+## 🎬 Quick Test Flow (10 Minutes)
+
+### Step 1: Run Tests
+```bash
+# Backend
+docker-compose exec backend pytest -v
+
+# Frontend
+docker-compose exec frontend npm test -- --run
+
+# Coverage
+docker-compose exec backend pytest --cov=app
+Step 2: Test Error Handling
+Stop backend: docker-compose stop backend
+
+Try to load dashboard
+
+✅ See "Network error" toast
+
+✅ See retry button
+
+Start backend: docker-compose start backend
+
+Click retry
+
+✅ Works
+
+Step 3: Test Loading States
+Open DevTools → Network → Slow 3G
+
+Navigate to Tasks
+
+✅ See skeleton loaders
+
+✅ Then actual content
+
+Step 4: Test Accessibility
+Press Tab repeatedly
+
+✅ Focus visible on all elements
+
+Press Ctrl+D
+
+✅ Navigate to Dashboard
+
+Open a modal
+
+Press Tab
+
+✅ Focus stays inside modal
+
+Press Escape
+
+✅ Modal closes
+
+Step 5: Test Performance
+Build for production: docker-compose exec frontend npm run build
+
+✅ Check dist folder
+
+✅ Multiple chunks (vendor splitting)
+
+Type in search box
+
+✅ Debounced (no API call on every keystroke)
+
+🚨 Common Issues & Fixes
+Issue 1: Tests failing due to DB
+Fix: Ensure SQLite in-memory is used in conftest.py
+
+Issue 2: Coverage below threshold
+Fix: Add more tests OR lower threshold in pytest.ini temporarily
+
+Issue 3: Rate limiting too strict
+Fix: Adjust limits in @limiter.limit() decorators
+
+Issue 4: ErrorBoundary not catching
+Fix: ErrorBoundary only catches render errors, not async — handle async separately
+
+Issue 5: Lazy loading breaks
+Fix: Ensure default exports in all page components
+
+Issue 6: Focus trap broken
+Fix: Ensure modal renders in portal with correct z-index
+

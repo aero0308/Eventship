@@ -3,9 +3,13 @@ import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { createSession, toPublicUser, verifyPassword } from '@/lib/auth'
 import { loginSchema } from '@/lib/schemas'
+import { enforceRateLimit, loginLimiter } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   try {
+    // Brute-force guard: 10 attempts/min/IP, successes and failures alike.
+    enforceRateLimit(loginLimiter, request)
+
     const body = await parseBody(request, loginSchema)
 
     // Email is lowercased by loginSchema; registered emails are stored lowercase.

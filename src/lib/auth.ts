@@ -41,6 +41,8 @@ export async function createSession(userId: string, userAgent?: string | null): 
     sameSite: 'lax',
     path: '/',
     expires: expiresAt,
+    // HTTPS-only transport in production; the sandbox gateway serves HTTP.
+    secure: process.env.NODE_ENV === 'production',
   })
   return token
 }

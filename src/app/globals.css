@@ -451,3 +451,77 @@
     animation: none;
   }
 }
+
+/* ---- App polish — Testing & Polish phase ---------------------------------
+   App-shell-only defaults. The landing (.fora-root) and auth (.fora-auth)
+   scopes define their own focus/scroll behavior and stay unaffected. */
+
+/* Brand-consistent focus ring: emerald, never the browser default (or purple).
+   :focus-visible only — pointer users don't see rings after mouse clicks. */
+:where(:not(.fora-root, .fora-root *, .fora-auth, .fora-auth *)):focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Programmatic focus targets (skip-link destination, route containers)
+   must not paint a ring — they are focused for screen readers, not eyes. */
+:where([tabindex='-1']):focus {
+  outline: none;
+}
+
+/* App-wide scrollbars (dark-aware), matching the thin-list aesthetic. */
+:where(:not(.fora-root)) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 113, 108, 0.35) transparent;
+}
+
+.dark:where(:not(.fora-root *)) {
+  scrollbar-color: rgba(168, 162, 158, 0.25) transparent;
+}
+
+:where(:not(.fora-root))::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+:where(:not(.fora-root))::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:where(:not(.fora-root))::-webkit-scrollbar-thumb {
+  background-color: rgba(120, 113, 108, 0.35);
+  border-radius: 9999px;
+}
+
+:where(:not(.fora-root))::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(120, 113, 108, 0.55);
+}
+
+.dark:where(:not(.fora-root *))::-webkit-scrollbar-thumb {
+  background-color: rgba(168, 162, 158, 0.25);
+}
+
+/* Smoother text rendering for the app shell. */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Print: strip chrome, keep the content. */
+@media print {
+  header,
+  footer,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+}

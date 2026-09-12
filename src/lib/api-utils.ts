@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 import { getSessionUser } from '@/lib/auth'
+import { RateLimitError } from '@/lib/rate-limit'
 import type { User } from '@prisma/client'
 
 export class ApiError extends Error {
@@ -46,6 +47,12 @@ export async function parseBody<T>(request: Request, schema: ZodType<T>): Promis
 
 /** Uniform error mapping for all route handlers. */
 export function handleApiError(error: unknown) {
+  if (error instanceof RateLimitError) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 429, headers: { 'Retry-After': String(error.retryAfterSeconds) } }
+    )
+  }
   if (error instanceof ApiError) {
     return fail(error.message, error.status)
   }

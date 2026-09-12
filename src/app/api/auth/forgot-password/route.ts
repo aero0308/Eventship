@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto'
 import { db } from '@/lib/db'
 import { handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { forgotPasswordSchema } from '@/lib/schemas'
+import { enforceRateLimit, forgotPasswordLimiter } from '@/lib/rate-limit'
 
 /**
  * POST /api/auth/forgot-password
@@ -12,6 +13,9 @@ import { forgotPasswordSchema } from '@/lib/schemas'
  */
 export async function POST(request: Request) {
   try {
+    // Token-mint flood guard: 3 reset links/min/IP.
+    enforceRateLimit(forgotPasswordLimiter, request)
+
     const { email } = await parseBody(request, forgotPasswordSchema)
 
     const user = await db.user.findUnique({ where: { email } })

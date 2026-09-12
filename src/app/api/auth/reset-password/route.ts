@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { hashPassword } from '@/lib/auth'
 import { resetPasswordSchema } from '@/lib/schemas'
+import { enforceRateLimit, resetPasswordLimiter } from '@/lib/rate-limit'
 
 /**
  * POST /api/auth/reset-password
@@ -10,6 +11,9 @@ import { resetPasswordSchema } from '@/lib/schemas'
  */
 export async function POST(request: Request) {
   try {
+    // Token-redemption flood guard: 6 attempts/min/IP.
+    enforceRateLimit(resetPasswordLimiter, request)
+
     const { token, newPassword } = await parseBody(request, resetPasswordSchema)
 
     const reset = await db.passwordResetToken.findUnique({
