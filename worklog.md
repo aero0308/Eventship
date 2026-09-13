@@ -795,3 +795,24 @@ Stage Summary:
 - The app is production-polished per the spec: rate-limited auth + security headers + prod-secure cookies, route/root error boundaries, WCAG-oriented a11y (skip link, landmarks, Alt+1…6 shortcuts, focus rings, print styles), code-split authenticated app, and a real regression suite (64 tests) wired to `bun run test`.
 - Key artifacts: src/lib/{rate-limit,describe-error}.ts, src/app/{error,global-error}.tsx, src/hooks/{use-keyboard-shortcuts,use-debounce}.ts, page.tsx (dynamic imports), Layout.tsx (skip link/shortcuts/main id), next.config.ts (headers), globals.css (focus/scrollbar/print), tests/ (7 files + README), package.json (test scripts).
 - Risks/next: (1) in-memory rate limiter resets on server restart and does not cluster — fine for this single-box demo, swap for a store-backed limiter if multi-instance ever ships; (2) auth tests leave a few qa-* users in the DB (no user-delete API) — acceptable demo noise, noted in tests/README; (3) global-error.tsx is intentionally unstyled inline (it replaces the shell and cannot use fonts/theme); (4) next-phase candidates from the spec backlog: CI workflow file (GitHub Actions test.yml), CSV export coverage test, per-event drill-down dashboard, notification digest emails, PWA offline shell.
+
+---
+Task ID: 23
+Agent: Z.ai Code (main)
+Task: User-reported build error — every route 500'd with `Module not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'` (import trace: Instrument_Serif → src/app/layout.tsx). Root cause: next/font/google downloads font files from fonts.gstatic.com at COMPILE time; the sandbox lost outbound access to it ("Connection timed out when requesting …woff2"), so Turbopack could no longer resolve the generated font modules.
+
+Work Log:
+- layout.tsx: removed ALL next/font/google imports (Geist, Geist_Mono, Inter, Instrument_Serif) and their body-variable classNames. Replaced with a root-layout <head> block: preconnect to fonts.googleapis.com/gstatic + one css2 stylesheet link (Geist 100..900, Geist Mono, Inter ital/opsz/wght, Instrument Serif ital@0;1, display=swap). A <link> is build-safe — the browser fetches fonts at RUNTIME, nothing is downloaded at compile time. eslint-disable-next-line @next/next/no-page-custom-font added (Pages-Router rule false positive; root-layout head IS global in App Router).
+- globals.css: new "Typography tokens" :root block defining --font-geist-sans / --font-geist-mono / --font-inter / --font-instrument-serif, each ending in a full system-stack fallback (ui-sans-serif… / ui-monospace… / Georgia serif) so typography stays deliberate even when the CDN is unreachable; display=swap keeps text visible during load. Updated the stale @theme NOTE (it referenced next/font vars on <body>; tokens now come from :root).
+- Verified only comment references to next/font remain (grep).
+
+Verification:
+- GET :3000/ → 200 (was 500); dev.log: "✓ Compiled", /api/auth/me, /api/auth/login 200, /api/dashboard 200 — zero runtime errors.
+- eslint 0 problems; tsc: only pre-existing mini-services/examples/skills noise (unchanged).
+- agent-browser via :81: landing renders (nav, hero, badge); computed font-family = "Geist, Inter, ui-sans-serif…" on body, h1 spans carry "Instrument Serif", Georgia…; CDN stylesheet loads in-browser (33 font faces; Geist+Inter check=true; serif italic face loaded = true — the hero's editorial italic renders the real webfont, other faces are unicode-range subsets lazily skipped).
+- REGRESSION: #/login renders the fora split-screen shell + form; demo login → #/dashboard "Dashboard" renders with body bg restored to white (light app shell intact). Console: zero errors/warnings. Screenshot .qa/qa-font-fix-dashboard.png.
+
+Stage Summary:
+- Build unblocked: fonts are now runtime CDN + CSS-fallback instead of compile-time next/font — this class of network outage can never 500 the app again.
+- Key artifacts: src/app/layout.tsx (head links + comment documenting why), globals.css (:root Typography tokens + @theme NOTE update).
+- Risks/next: (1) if a production deploy must work fully offline, self-host the woff2 files in public/fonts + local @font-face instead of the CDN link (fonts.gstatic.com is still a third-party dependency for the exact brand typefaces); (2) mini-services realtime-service tsc noise is pre-existing (own package deps).

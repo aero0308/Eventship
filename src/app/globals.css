@@ -3,6 +3,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---- Typography tokens -----------------------------------------------------
+   Webfonts (Geist / Geist Mono / Inter / Instrument Serif) are fetched
+   CLIENT-SIDE from the Google Fonts CDN via <link> tags in layout.tsx.
+   next/font/google is banned here: it downloads font files at compile time
+   and the sandbox has no outbound network to fonts.gstatic.com, which 500s
+   every route ("Module not found: @vercel/turbopack-next/internal/font/google/font").
+   Each token ends in a full system-stack fallback, so if the CDN is
+   unreachable the page still renders with a deliberate, similar-feel stack
+   (display=swap means text is never invisible while loading). */
+:root {
+  --font-geist-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-geist-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-inter: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-instrument-serif: "Instrument Serif", "Georgia", "Times New Roman", serif;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -329,9 +345,9 @@
    @theme (generates bg-fora-bg / text-fora-text / font-fora-serif …
    utilities) so a persisted .dark class can never bleed into — or wash
    out — the design.
-   NOTE: must be `inline` — the font tokens reference next/font variables
-   that are defined on <body>, so they must be substituted per-element,
-   not computed once at :root. */
+   NOTE: must be `inline` — the font tokens reference the :root font vars
+   (defined in the Typography block above, fed by the CDN <link> in
+   layout.tsx), so they are substituted per-element, not computed once. */
 @theme inline {
   --color-fora-bg: #0a0a0a;
   --color-fora-surface: #111111;
