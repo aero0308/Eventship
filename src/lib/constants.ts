@@ -14,6 +14,8 @@ export const ROUTES = {
   REGISTER: '/register',
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password',
+  // Multi-tenant onboarding: mandatory join-or-create screen after signup.
+  ONBOARDING: '/onboarding',
   DASHBOARD: '/dashboard',
   EVENTS: '/events',
   TASKS: '/tasks',
@@ -23,6 +25,8 @@ export const ROUTES = {
   ACTIVITY: '/activity',
   PROFILE: '/profile',
   ADMIN: '/admin',
+  // Owner-only room management (rename, regenerate code/password, members, delete).
+  ROOM_SETTINGS: '/room/settings',
 } as const
 
 export const SESSION_COOKIE = 'ems_session'
@@ -131,6 +135,12 @@ export const ACTIVITY_ACTIONS = {
   USER_ROLE_CHANGED: 'USER_ROLE_CHANGED',
   USER_DEACTIVATED: 'USER_DEACTIVATED',
   USER_REACTIVATED: 'USER_REACTIVATED',
+  ROOM_CREATED: 'ROOM_CREATED',
+  ROOM_JOINED: 'ROOM_JOINED',
+  ROOM_UPDATED: 'ROOM_UPDATED',
+  ROOM_CODE_REGENERATED: 'ROOM_CODE_REGENERATED',
+  ROOM_PASSWORD_REGENERATED: 'ROOM_PASSWORD_REGENERATED',
+  ROOM_DELETED: 'ROOM_DELETED',
   TEAM_CREATED: 'TEAM_CREATED',
   TEAM_UPDATED: 'TEAM_UPDATED',
   TEAM_DELETED: 'TEAM_DELETED',
@@ -157,6 +167,12 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   USER_ROLE_CHANGED: 'Changed a user role',
   USER_DEACTIVATED: 'Deactivated a user',
   USER_REACTIVATED: 'Reactivated a user',
+  ROOM_CREATED: 'Created an event room',
+  ROOM_JOINED: 'Joined an event room',
+  ROOM_UPDATED: 'Updated the room profile',
+  ROOM_CODE_REGENERATED: 'Regenerated the room ID',
+  ROOM_PASSWORD_REGENERATED: 'Regenerated the room password',
+  ROOM_DELETED: 'Deleted the event room',
   TEAM_CREATED: 'Created a team',
   TEAM_UPDATED: 'Updated a team',
   TEAM_DELETED: 'Deleted a team',

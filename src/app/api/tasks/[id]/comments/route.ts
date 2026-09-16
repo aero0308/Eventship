@@ -1,23 +1,25 @@
 import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
-import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody } from '@/lib/api-utils'
 import { createCommentSchema } from '@/lib/schemas'
+import { requireRoomUser } from '@/lib/room'
 import { emitTaskBoardChange } from '@/lib/realtime'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { id: taskId } = await params
     const body = await parseBody(request, createCommentSchema)
 
-    const task = await db.task.findUnique({
-      where: { id: taskId },
+    // Tenant isolation: comment only on tasks inside the caller's room.
+    const task = await db.task.findFirst({
+      where: { id: taskId, roomId },
       include: { event: { select: { teamId: true } } },
     })
     if (!task) throw new ApiError(404, 'Task not found')
 
     const comment = await db.taskComment.create({
-      data: { content: body.content, taskId, userId: user.id },
+      data: { content: body.content, taskId, roomId, userId: user.id },
       include: { user: { select: { id: true, fullName: true, role: true } } },
     })
 
@@ -37,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await logActivity(user.id, ACTIVITY_ACTIONS.COMMENT_ADDED, {
       taskId,
       taskTitle: task.title,
-    })
+    }, roomId)
     // The serialized comment rides the broadcast so open task dialogs on other
     // clients can append it live (plus a typing indicator beforehand).
     emitTaskBoardChange(task.eventId, task.event.teamId, 'comment:added', user.id, {

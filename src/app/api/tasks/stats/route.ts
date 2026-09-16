@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { handleApiError, ok, requireUser } from '@/lib/api-utils'
+import { handleApiError, ok } from '@/lib/api-utils'
+import { requireRoomUser } from '@/lib/room'
 import type { Prisma } from '@prisma/client'
 
 /**
@@ -17,15 +18,16 @@ import type { Prisma } from '@prisma/client'
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const mineScope = new URL(request.url).searchParams.get('scope') === 'mine'
 
-    let where: Prisma.TaskWhereInput = {}
+    // Tenant isolation always applies; role scopes narrow within the room.
+    let where: Prisma.TaskWhereInput = { roomId }
     if (mineScope || user.role === 'EMPLOYEE') {
-      where = { assignedTo: user.id }
+      where = { roomId, assignedTo: user.id }
     } else if (user.role === 'TEAM_LEADER') {
       // A team leader without a team simply sees an empty scope.
-      where = user.teamId ? { event: { teamId: user.teamId } } : { id: '__none__' }
+      where = user.teamId ? { roomId, event: { teamId: user.teamId } } : { id: '__none__' }
     }
 
     const now = new Date()

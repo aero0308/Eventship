@@ -45,7 +45,8 @@ export function LoginPage() {
     try {
       const user: UserDTO = await login({ email: email.trim(), password })
       toast({ title: `Welcome back, ${user.fullName}!`, description: 'You are now signed in.' })
-      navigate(ROUTES.DASHBOARD)
+      // Room-less accounts (pending onboarding) go through the join/create gate.
+      navigate(user.needsOnboarding ? ROUTES.ONBOARDING : ROUTES.DASHBOARD)
     } catch (err) {
       const message = err instanceof ApiClientError ? err.message : 'Unable to sign in. Please try again.'
       setError(message)

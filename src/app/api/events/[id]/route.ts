@@ -1,8 +1,9 @@
 import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
-import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { canManageEvents, assertAccess } from '@/lib/permissions'
 import { updateEventSchema } from '@/lib/schemas'
+import { requireRoomUser } from '@/lib/room'
 import {
   computeTaskStatsMap,
   emptyTaskStats,
@@ -13,9 +14,9 @@ import {
 import { emitBoardChange, emitRealtime } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
-async function fetchEventWithStats(id: string) {
-  const event: EventWithRelations | null = await db.event.findUnique({
-    where: { id },
+async function fetchEventWithStats(id: string, roomId: string) {
+  const event: EventWithRelations | null = await db.event.findFirst({
+    where: { id, roomId },
     include: eventInclude,
   })
   if (!event) return null
@@ -25,9 +26,9 @@ async function fetchEventWithStats(id: string) {
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser()
+    const { roomId } = await requireRoomUser()
     const { id } = await params
-    const event = await fetchEventWithStats(id)
+    const event = await fetchEventWithStats(id, roomId)
     if (!event) throw new ApiError(404, 'Event not found')
     return ok({ event })
   } catch (error) {
@@ -37,9 +38,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { id } = await params
-    const existing = await db.event.findUnique({ where: { id } })
+    const existing = await db.event.findFirst({ where: { id, roomId } })
     if (!existing) throw new ApiError(404, 'Event not found')
     assertAccess(
       canManageEvents(user, existing.teamId),
@@ -55,8 +56,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     if (body.teamId && body.teamId !== existing.teamId) {
-      const team = await db.team.findUnique({ where: { id: body.teamId } })
-      if (!team) throw new ApiError(404, 'Team not found')
+      // Moving an event across teams is only allowed within the same room.
+      const team = await db.team.findFirst({ where: { id: body.teamId, roomId } })
+      if (!team) throw new ApiError(404, 'Team not found in your event room')
     }
 
     const data: Prisma.EventUpdateInput = {}
@@ -98,12 +100,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         eventName,
         from: existing.status,
         to: body.status,
-      })
+      }, roomId)
     } else if (otherChanged) {
-      await logActivity(user.id, ACTIVITY_ACTIONS.EVENT_UPDATED, { eventName })
+      await logActivity(user.id, ACTIVITY_ACTIONS.EVENT_UPDATED, { eventName }, roomId)
     }
 
-    const event = await fetchEventWithStats(id)
+    const event = await fetchEventWithStats(id, roomId)
     if (!event) throw new ApiError(404, 'Event not found')
     return ok({ event })
   } catch (error) {
@@ -113,9 +115,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { id } = await params
-    const existing = await db.event.findUnique({ where: { id }, select: { id: true, teamId: true } })
+    const existing = await db.event.findFirst({ where: { id, roomId }, select: { id: true, teamId: true } })
     if (!existing) throw new ApiError(404, 'Event not found')
     assertAccess(
       canManageEvents(user, existing.teamId),

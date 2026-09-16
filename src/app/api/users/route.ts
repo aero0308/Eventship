@@ -1,27 +1,30 @@
 import { db } from '@/lib/db'
-import { handleApiError, ok, requireUser } from '@/lib/api-utils'
+import { handleApiError, ok } from '@/lib/api-utils'
 import { toPublicUser } from '@/lib/auth'
+import { requireRoomUser } from '@/lib/room'
 
 export async function GET() {
   try {
-    await requireUser()
-    // Contract: return ALL users (frontend filters inactive ones where needed).
+    const { roomId } = await requireRoomUser()
+    // Tenant isolation: only users inside the caller's room.
     const users = await db.user.findMany({
+      where: { roomId },
       orderBy: { fullName: 'asc' },
       include: { team: { select: { id: true, name: true } } },
     })
 
-    // Workload aggregates (single grouped queries instead of per-user counts).
+    // Workload aggregates (single grouped queries instead of per-user counts),
+    // scoped to the room so cross-tenant stats can never leak.
     const [taskGroups, logins] = await Promise.all([
       db.task.groupBy({
         by: ['assignedTo', 'status'],
         _count: { _all: true },
-        where: { assignedTo: { not: null } },
+        where: { assignedTo: { not: null }, roomId },
       }),
       db.activityLog.groupBy({
         by: ['userId'],
         _max: { timestamp: true },
-        where: { action: 'USER_LOGIN' },
+        where: { action: 'USER_LOGIN', user: { roomId } },
       }),
     ])
 
@@ -46,7 +49,7 @@ export async function GET() {
     const overdueGroups = await db.task.groupBy({
       by: ['assignedTo'],
       _count: { _all: true },
-      where: { assignedTo: { not: null }, status: { not: 'COMPLETED' }, dueDate: { lt: new Date() } },
+      where: { assignedTo: { not: null }, roomId, status: { not: 'COMPLETED' }, dueDate: { lt: new Date() } },
     })
     for (const row of overdueGroups) {
       if (!row.assignedTo) continue

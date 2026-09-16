@@ -12,19 +12,20 @@ import {
   notifyUser,
   ok,
   parseBody,
-  requireUser,
 } from '@/lib/api-utils'
 import { createTaskSchema } from '@/lib/schemas'
+import { requireRoomUser } from '@/lib/room'
 import { serializeTask, taskInclude } from '../_lib/tasks'
 import { emitTaskBoardChange } from '@/lib/realtime'
 import type { Prisma } from '@prisma/client'
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { searchParams } = new URL(request.url)
 
-    const where: Prisma.TaskWhereInput = {}
+    // Tenant isolation: only tasks inside the caller's room.
+    const where: Prisma.TaskWhereInput = { roomId }
 
     const eventId = searchParams.get('eventId')
     if (eventId) where.eventId = eventId
@@ -64,19 +65,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const body = await parseBody(request, createTaskSchema)
 
-    const event = await db.event.findUnique({ where: { id: body.eventId } })
-    if (!event) throw new ApiError(404, 'Event not found')
+    // Tenant isolation: the parent event must live in the caller's room.
+    const event = await db.event.findFirst({ where: { id: body.eventId, roomId } })
+    if (!event) throw new ApiError(404, 'Event not found in your event room')
     assertAccess(
       canManageEvents(user, event.teamId),
       'Only event managers or the owning team leader can create tasks for this event'
     )
 
     if (body.assignedTo) {
-      const assignee = await db.user.findUnique({ where: { id: body.assignedTo } })
-      if (!assignee) throw new ApiError(404, 'Assignee not found')
+      const assignee = await db.user.findFirst({ where: { id: body.assignedTo, roomId } })
+      if (!assignee) throw new ApiError(404, 'Assignee not found in your event room')
     }
 
     const created = await db.task.create({
@@ -86,6 +88,7 @@ export async function POST(request: Request) {
         priority: body.priority,
         status: body.status,
         eventId: body.eventId,
+        roomId,
         assignedTo: body.assignedTo ?? null,
         createdBy: user.id,
         startDate: body.startDate ? new Date(body.startDate) : null,
@@ -104,12 +107,12 @@ export async function POST(request: Request) {
         taskId: created.id,
         title: body.title,
         assignedTo: body.assignedTo,
-      })
+      }, roomId)
     }
     await logActivity(user.id, ACTIVITY_ACTIONS.TASK_CREATED, {
       taskId: created.id,
       title: body.title,
-    })
+    }, roomId)
 
     const task = await db.task.findUniqueOrThrow({
       where: { id: created.id },

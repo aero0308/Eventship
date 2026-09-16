@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { handleApiError, ok, requireUser } from '@/lib/api-utils'
+import { handleApiError, ok } from '@/lib/api-utils'
+import { requireRoomUser } from '@/lib/room'
 
 const DEFAULT_LIMIT = 8
 const MAX_LIMIT = 50
@@ -12,7 +13,7 @@ const MAX_LIMIT = 50
  */
 export async function GET(request: Request) {
   try {
-    const current = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { searchParams } = new URL(request.url)
 
     const parsedLimit = Number.parseInt(searchParams.get('limit') ?? '', 10)
@@ -29,9 +30,11 @@ export async function GET(request: Request) {
       .filter(Boolean)
 
     const rawUserId = (searchParams.get('userId') ?? '').trim()
-    const userId = rawUserId === 'me' ? current.id : rawUserId || undefined
+    const userId = rawUserId === 'me' ? user.id : rawUserId || undefined
 
     const where = {
+      // Tenant isolation: the feed only ever shows this room's activity.
+      roomId,
       ...(actions.length > 0 ? { action: { in: actions } } : {}),
       ...(userId ? { userId } : {}),
     }

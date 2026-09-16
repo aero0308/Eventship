@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { MyRoomCard } from '@/components/profile/MyRoomCard'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -341,6 +342,9 @@ export function ProfilePage() {
               View my tasks on the board →
             </Button>
           </section>
+
+          {/* My Room (multi-tenant context) */}
+          <MyRoomCard />
 
           {/* Change password */}
           <Card>

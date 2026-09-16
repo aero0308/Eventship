@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { handleApiError, ok, requireUser } from '@/lib/api-utils'
+import { handleApiError, ok } from '@/lib/api-utils'
+import { requireRoomUser } from '@/lib/room'
 import { serializeTask, taskInclude } from '../_lib/tasks'
 import { eventInclude, serializeEvent } from '../_lib/events'
 import type { Prisma } from '@prisma/client'
@@ -20,7 +21,7 @@ function parseMonthKey(raw: string | null): string | null {
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { searchParams } = new URL(request.url)
 
     const monthKey = parseMonthKey(searchParams.get('month')) ?? (() => {
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
     const assignedTo = searchParams.get('assignedTo')
 
     const taskWhere: Prisma.TaskWhereInput = {
+      roomId,
       dueDate: { gte: rangeStart, lt: rangeEnd },
       ...(teamId ? { event: { teamId } } : {}),
     }
@@ -44,6 +46,7 @@ export async function GET(request: Request) {
     else if (assignedTo) taskWhere.assignedTo = assignedTo
 
     const eventWhere: Prisma.EventWhereInput = {
+      roomId,
       // Overlap: starts before the month ends AND ends on/after the month starts.
       startDate: { lt: rangeEnd },
       endDate: { gte: rangeStart },

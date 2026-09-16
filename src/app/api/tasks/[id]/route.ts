@@ -7,10 +7,10 @@ import {
   notifyUser,
   ok,
   parseBody,
-  requireUser,
 } from '@/lib/api-utils'
 import { updateTaskSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
+import { requireRoomUser } from '@/lib/room'
 import { emitBoardChange, emitTaskBoardChange } from '@/lib/realtime'
 import {
   serializeTaskDetail,
@@ -20,16 +20,16 @@ import {
 } from '../../_lib/tasks'
 import type { Prisma } from '@prisma/client'
 
-async function fetchTaskDetail(id: string): Promise<TaskWithComments | null> {
-  const task = await db.task.findUnique({ where: { id }, include: taskDetailInclude })
+async function fetchTaskDetail(id: string, roomId: string): Promise<TaskWithComments | null> {
+  const task = await db.task.findFirst({ where: { id, roomId }, include: taskDetailInclude })
   return task
 }
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser()
+    const { roomId } = await requireRoomUser()
     const { id } = await params
-    const task = await fetchTaskDetail(id)
+    const task = await fetchTaskDetail(id, roomId)
     if (!task) throw new ApiError(404, 'Task not found')
     return ok({ task: serializeTaskDetail(task) })
   } catch (error) {
@@ -39,10 +39,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { id } = await params
-    const existing = await db.task.findUnique({
-      where: { id },
+    const existing = await db.task.findFirst({
+      where: { id, roomId },
       include: {
         event: { select: { teamId: true } },
         dependencies: { include: { dependsOnTask: { select: { id: true, title: true, status: true } } } },
@@ -69,20 +69,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     if (body.eventId && body.eventId !== existing.eventId) {
-      const event = await db.event.findUnique({ where: { id: body.eventId } })
-      if (!event) throw new ApiError(404, 'Event not found')
+      // Moving a task across events stays inside the room.
+      const event = await db.event.findFirst({ where: { id: body.eventId, roomId } })
+      if (!event) throw new ApiError(404, 'Event not found in your event room')
     }
 
     const assignedToChanged = body.assignedTo !== undefined && body.assignedTo !== existing.assignedTo
     if (assignedToChanged && body.assignedTo) {
-      const assignee = await db.user.findUnique({ where: { id: body.assignedTo } })
-      if (!assignee) throw new ApiError(404, 'Assignee not found')
+      const assignee = await db.user.findFirst({ where: { id: body.assignedTo, roomId } })
+      if (!assignee) throw new ApiError(404, 'Assignee not found in your event room')
     }
 
     if (body.dependsOnTaskIds) {
       const depIds = [...new Set(body.dependsOnTaskIds)]
       if (depIds.includes(id)) throw new ApiError(400, 'A task cannot depend on itself')
-      const found = await db.task.findMany({ where: { id: { in: depIds } }, select: { id: true, title: true } })
+      const found = await db.task.findMany({ where: { id: { in: depIds }, roomId }, select: { id: true, title: true } })
       if (found.length !== depIds.length) {
         throw new ApiError(404, 'One or more dependency tasks not found')
       }
@@ -167,7 +168,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         taskId: id,
         title,
         assignedTo: body.assignedTo,
-      })
+      }, roomId)
     }
 
     const statusChanged = body.status !== undefined && body.status !== existing.status
@@ -189,7 +190,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         await notifyUser(recipientId, notifyType, message)
       }
 
-      await logActivity(user.id, notifyType, { taskId: id, title, from: existing.status, to: body.status })
+      await logActivity(user.id, notifyType, { taskId: id, title, from: existing.status, to: body.status }, roomId)
     }
 
     // Phase 5 statusNote: an optional note attached to a status change becomes
@@ -205,7 +206,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     } | null = null
     if (body.statusNote) {
       const note = await db.taskComment.create({
-        data: { content: body.statusNote, taskId: id, userId: user.id },
+        data: { content: body.statusNote, taskId: id, roomId, userId: user.id },
         include: { user: { select: { id: true, fullName: true, role: true } } },
       })
       statusNoteComment = {
@@ -222,7 +223,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // clients can patch their boards optimistically without refetching.
     // statusChange rides along (Phase 7) so toast layers can announce status
     // moves without spamming every field-level edit.
-    const task = await fetchTaskDetail(id)
+    const task = await fetchTaskDetail(id, roomId)
     if (!task) throw new ApiError(404, 'Task not found')
     const serialized = serializeTaskDetail(task)
     emitTaskBoardChange(
@@ -251,10 +252,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const { id } = await params
-    const existing = await db.task.findUnique({
-      where: { id },
+    const existing = await db.task.findFirst({
+      where: { id, roomId },
       select: { id: true, title: true, eventId: true, createdBy: true, assignedTo: true, event: { select: { teamId: true } } },
     })
     if (!existing) throw new ApiError(404, 'Task not found')

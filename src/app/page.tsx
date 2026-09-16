@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Layout } from '@/components/layout/Layout'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { HomePage } from '@/components/pages/HomePage'
+import { OnboardingPage } from '@/components/pages/OnboardingPage'
 import { LoginPage } from '@/components/pages/LoginPage'
 import { RegisterPage } from '@/components/pages/RegisterPage'
 import { ForgotPasswordPage } from '@/components/pages/ForgotPasswordPage'
@@ -80,6 +81,10 @@ const BlogArticlePage = dynamic(
     ssr: false,
   }
 )
+const RoomSettingsPage = dynamic(
+  () => import('@/components/pages/RoomSettingsPage').then((m) => m.RoomSettingsPage),
+  { loading: PageLoadingFallback, ssr: false }
+)
 
 const PROTECTED_PATHS: readonly string[] = [
   ROUTES.DASHBOARD,
@@ -91,6 +96,7 @@ const PROTECTED_PATHS: readonly string[] = [
   ROUTES.ACTIVITY,
   ROUTES.PROFILE,
   ROUTES.ADMIN,
+  ROUTES.ROOM_SETTINGS,
 ]
 
 const PAGE_TRANSITION = { duration: 0.25, ease: 'easeOut' as const }
@@ -164,16 +170,26 @@ export default function Page() {
   }, [bootstrap])
 
   // Route guards: bounce signed-in users away from public/auth pages and
-  // signed-out users away from protected pages.
+  // signed-out users away from protected pages. Multi-tenant: room-less users
+  // are held at the onboarding gate instead of the dashboard.
   useEffect(() => {
     if (!initialized) return
     const isProtected = PROTECTED_PATHS.includes(pathname) || eventDetailId !== null
     if (user && (pathname === ROUTES.HOME || pathname === ROUTES.LOGIN || pathname === ROUTES.REGISTER)) {
-      navigate(ROUTES.DASHBOARD, true)
+      navigate(user.needsOnboarding ? ROUTES.ONBOARDING : ROUTES.DASHBOARD, true)
       return
     }
-    if (!user && isProtected) {
+    if (!user && (isProtected || pathname === ROUTES.ONBOARDING)) {
       navigate(ROUTES.LOGIN, true)
+      return
+    }
+    if (user && isProtected && user.needsOnboarding) {
+      // Authenticated but no room yet — join/create before any data route.
+      navigate(ROUTES.ONBOARDING, true)
+      return
+    }
+    if (user && !user.needsOnboarding && pathname === ROUTES.ONBOARDING) {
+      navigate(ROUTES.DASHBOARD, true)
     }
   }, [initialized, user, pathname, eventDetailId])
 
@@ -186,6 +202,7 @@ export default function Page() {
   }
 
   const isHome = pathname === ROUTES.HOME
+  const isOnboarding = pathname === ROUTES.ONBOARDING
   const isAuthRoute =
     pathname === ROUTES.LOGIN ||
     pathname === ROUTES.REGISTER ||
@@ -203,6 +220,23 @@ export default function Page() {
     // Public editorial route: #/blog/<slug>. Visible signed-in or not.
     content = <BlogArticlePage slug={blogSlug} />
     transitionKey = `blog-${blogSlug}`
+  } else if (isOnboarding) {
+    // Mandatory multi-tenant gate: requires auth, forbids an existing room
+    // (those users are redirected to the dashboard by the guard above).
+    if (!user) {
+      content = <AuthRedirectPrompt />
+      transitionKey = 'auth-redirect'
+    } else if (user.needsOnboarding) {
+      content = <OnboardingPage />
+      transitionKey = 'onboarding'
+    } else {
+      content = (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <LoadingSpinner label="Entering your room…" />
+        </div>
+      )
+      transitionKey = 'onboarding-redirect'
+    }
   } else if (isAuthRoute) {
     const authMeta: Record<string, { title: string; subtitle: string }> = {
       [ROUTES.LOGIN]: { title: 'Welcome back', subtitle: 'Sign in to keep your events on track.' },
@@ -239,6 +273,7 @@ export default function Page() {
             {eventDetailId === null && pathname === ROUTES.ACTIVITY && <ActivityPage />}
             {eventDetailId === null && pathname === ROUTES.PROFILE && <ProfilePage />}
             {eventDetailId === null && pathname === ROUTES.ADMIN && <AdminPage />}
+            {eventDetailId === null && pathname === ROUTES.ROOM_SETTINGS && <RoomSettingsPage />}
           </MotionPage>
         </Layout>
       )

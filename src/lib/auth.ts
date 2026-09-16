@@ -56,7 +56,12 @@ export async function getSessionUser() {
     const session = await db.session.findUnique({
       where: { token },
       include: {
-        user: { include: { team: { select: { id: true, name: true } } } },
+        user: {
+          include: {
+            team: { select: { id: true, name: true } },
+            room: { select: { id: true, roomCode: true, name: true } },
+          },
+        },
       },
     })
     if (!session) return null
@@ -101,6 +106,8 @@ export function toPublicUser(user: {
   isActive: boolean
   teamId: string | null
   team?: { id: string; name: string } | null
+  roomId?: string | null
+  room?: { id: string; roomCode: string; name: string } | null
   strictDependencyGuard: boolean
   createdAt: Date
   updatedAt: Date
@@ -113,6 +120,10 @@ export function toPublicUser(user: {
     isActive: user.isActive,
     teamId: user.teamId,
     team: user.team ?? null,
+    // Multi-tenant context: null roomId = onboarding pending (join or create).
+    roomId: user.roomId ?? null,
+    room: user.room ?? null,
+    needsOnboarding: !user.roomId,
     strictDependencyGuard: user.strictDependencyGuard,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

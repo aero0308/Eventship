@@ -1,9 +1,10 @@
 import { db } from '@/lib/db'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
-import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { emitTeamChange } from '@/lib/realtime'
 import { updateTeamSchema } from '@/lib/schemas'
 import { canManageTeams, assertAccess } from '@/lib/permissions'
+import { requireRoomUser } from '@/lib/room'
 import {
   computeTeamStats,
   serializeTeamDetail,
@@ -11,8 +12,8 @@ import {
   type TeamWithMembers,
 } from '../../_lib/teams'
 
-async function fetchTeamDetail(id: string): Promise<TeamWithMembers | null> {
-  const team = await db.team.findUnique({ where: { id }, include: teamDetailInclude })
+async function fetchTeamDetail(id: string, roomId: string): Promise<TeamWithMembers | null> {
+  const team = await db.team.findFirst({ where: { id, roomId }, include: teamDetailInclude })
   return team
 }
 
@@ -27,9 +28,9 @@ async function serializeDetailWithStats(team: TeamWithMembers) {
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser()
+    const { roomId } = await requireRoomUser()
     const { id } = await params
-    const team = await fetchTeamDetail(id)
+    const team = await fetchTeamDetail(id, roomId)
     if (!team) throw new ApiError(404, 'Team not found')
     return ok({ team: await serializeDetailWithStats(team) })
   } catch (error) {
@@ -46,11 +47,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     assertAccess(canManageTeams(user), 'Only event managers can delete teams')
     const { id } = await params
 
-    const existing = await fetchTeamDetail(id)
+    const existing = await fetchTeamDetail(id, roomId)
     if (!existing) throw new ApiError(404, 'Team not found')
 
     const deleted = await db.team.delete({ where: { id }, select: { id: true, name: true } })
@@ -59,7 +60,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       teamId: deleted.id,
       name: deleted.name,
       eventCount: existing.events.length,
-    })
+    }, roomId)
 
     return ok({ deleted: true, id: deleted.id })
   } catch (error) {
@@ -69,17 +70,17 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     assertAccess(canManageTeams(user), 'Only event managers can edit teams')
     const { id } = await params
-    const existing = await fetchTeamDetail(id)
+    const existing = await fetchTeamDetail(id, roomId)
     if (!existing) throw new ApiError(404, 'Team not found')
 
     const body = await parseBody(request, updateTeamSchema)
 
     if (body.managerId) {
-      const manager = await db.user.findUnique({ where: { id: body.managerId } })
-      if (!manager) throw new ApiError(404, 'Manager not found')
+      const manager = await db.user.findFirst({ where: { id: body.managerId, roomId } })
+      if (!manager) throw new ApiError(404, 'Manager not found in your event room')
     }
 
     let memberIds: string[] | null = null
@@ -87,11 +88,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       memberIds = [...new Set(body.memberIds)]
       if (memberIds.length > 0) {
         const found = await db.user.findMany({
-          where: { id: { in: memberIds } },
+          where: { id: { in: memberIds }, roomId },
           select: { id: true },
         })
         if (found.length !== memberIds.length) {
-          throw new ApiError(404, 'One or more team members not found')
+          throw new ApiError(404, 'One or more team members are not in your event room')
         }
       }
     }
@@ -108,13 +109,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       },
     })
 
-    await logActivity(user.id, ACTIVITY_ACTIONS.TEAM_UPDATED, { teamId: id, name: body.name ?? existing.name })
+    await logActivity(user.id, ACTIVITY_ACTIONS.TEAM_UPDATED, { teamId: id, name: body.name ?? existing.name }, roomId)
 
     // Phase 7 team rooms: roster/settings changes push live to subscribers
     // (e.g. the teams page refreshes without a manual reload).
     emitTeamChange(id, 'team:updated', { actorId: user.id, name: body.name ?? existing.name })
 
-    const team = await fetchTeamDetail(id)
+    const team = await fetchTeamDetail(id, roomId)
     if (!team) throw new ApiError(404, 'Team not found')
     return ok({ team: await serializeDetailWithStats(team) })
   } catch (error) {

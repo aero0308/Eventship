@@ -15,7 +15,10 @@ export async function POST(request: Request) {
     // Email is lowercased by loginSchema; registered emails are stored lowercase.
     const user = await db.user.findUnique({
       where: { email: body.email },
-      include: { team: { select: { id: true, name: true } } },
+      include: {
+        team: { select: { id: true, name: true } },
+        room: { select: { id: true, roomCode: true, name: true } },
+      },
     })
     if (!user || !verifyPassword(body.password, user.hashedPassword)) {
       throw new ApiError(401, 'Invalid email or password')

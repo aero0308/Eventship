@@ -33,24 +33,39 @@ async function main() {
   await prisma.session.deleteMany()
   await prisma.user.deleteMany()
   await prisma.team.deleteMany()
+  await prisma.room.deleteMany()
+
+  // ---------- Room (multi-tenant: everything below belongs to it) ----------
+  const room = await prisma.room.create({
+    data: {
+      roomCode: 'EVT-DEM258',
+      name: 'EventFlow Demo HQ',
+      description: 'Demo room for the seeded workspace — share EVT-DEM258 / demo1234 to try the join flow.',
+      passwordHash: hashPassword('demo1234'),
+      ownerId: 'seed-placeholder', // patched to the admin below
+    },
+  })
 
   // ---------- Teams ----------
   const ops = await prisma.team.create({
     data: {
       name: 'Operations',
       description: 'Venue logistics, catering and on-site coordination.',
+      roomId: room.id,
     },
   })
   const tech = await prisma.team.create({
     data: {
       name: 'Tech & AV',
       description: 'Staging, sound, lighting, streaming and registration tech.',
+      roomId: room.id,
     },
   })
   const marketing = await prisma.team.create({
     data: {
       name: 'Marketing & Outreach',
       description: 'Promotion, sponsorships, social media and PR.',
+      roomId: room.id,
     },
   })
 
@@ -62,9 +77,12 @@ async function main() {
       fullName: 'Alex Morgan',
       hashedPassword: password,
       role: 'EVENT_MANAGER',
+      roomId: room.id,
       createdAt: daysAgo(60),
     },
   })
+  // The room was created before the owner existed — wire the owner now.
+  await prisma.room.update({ where: { id: room.id }, data: { ownerId: admin.id } })
   const maria = await prisma.user.create({
     data: {
       email: 'maria@eventflow.io',
@@ -72,6 +90,7 @@ async function main() {
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: ops.id,
+      roomId: room.id,
       createdAt: daysAgo(55),
     },
   })
@@ -82,6 +101,7 @@ async function main() {
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: tech.id,
+      roomId: room.id,
       createdAt: daysAgo(54),
     },
   })
@@ -92,6 +112,7 @@ async function main() {
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: marketing.id,
+      roomId: room.id,
       createdAt: daysAgo(52),
     },
   })
@@ -102,6 +123,7 @@ async function main() {
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: ops.id,
+      roomId: room.id,
       createdAt: daysAgo(40),
     },
   })
@@ -112,6 +134,7 @@ async function main() {
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: tech.id,
+      roomId: room.id,
       createdAt: daysAgo(38),
     },
   })
@@ -122,6 +145,7 @@ async function main() {
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: tech.id,
+      roomId: room.id,
       createdAt: daysAgo(30),
     },
   })
@@ -132,6 +156,7 @@ async function main() {
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: marketing.id,
+      roomId: room.id,
       createdAt: daysAgo(28),
     },
   })
@@ -142,6 +167,7 @@ async function main() {
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: ops.id,
+      roomId: room.id,
       createdAt: daysAgo(20),
     },
   })
@@ -162,6 +188,7 @@ async function main() {
       status: 'IN_PROGRESS',
       teamId: ops.id,
       createdBy: admin.id,
+      roomId: room.id,
       createdAt: daysAgo(25),
     },
   })
@@ -174,6 +201,7 @@ async function main() {
       status: 'PLANNING',
       teamId: marketing.id,
       createdBy: admin.id,
+      roomId: room.id,
       createdAt: daysAgo(18),
     },
   })
@@ -186,6 +214,7 @@ async function main() {
       status: 'DRAFT',
       teamId: tech.id,
       createdBy: james.id,
+      roomId: room.id,
       createdAt: daysAgo(10),
     },
   })
@@ -198,6 +227,7 @@ async function main() {
       status: 'COMPLETED',
       teamId: ops.id,
       createdBy: maria.id,
+      roomId: room.id,
       createdAt: daysAgo(50),
     },
   })
@@ -210,6 +240,7 @@ async function main() {
       status: 'PLANNING',
       teamId: tech.id,
       createdBy: admin.id,
+      roomId: room.id,
       createdAt: daysAgo(12),
     },
   })
@@ -222,6 +253,7 @@ async function main() {
       status: 'CANCELLED',
       teamId: marketing.id,
       createdBy: sofia.id,
+      roomId: room.id,
       createdAt: daysAgo(35),
     },
   })
@@ -239,7 +271,7 @@ async function main() {
     estimatedHours?: number | null
     actualHours?: number | null
   }) {
-    return prisma.task.create({ data })
+    return prisma.task.create({ data: { ...data, roomId: room.id } })
   }
 
   const t1 = await task({
@@ -343,12 +375,12 @@ async function main() {
   // ---------- Comments ----------
   await prisma.taskComment.createMany({
     data: [
-      { taskId: t4.id, userId: maria.id, content: 'Blocked on two speakers who need updated invitation letters for visas.', createdAt: daysAgo(2, 3) },
-      { taskId: t4.id, userId: admin.id, content: 'Escalating with the travel agency today. Keep the backup speaker list warm.', createdAt: daysAgo(1, 5) },
-      { taskId: t2.id, userId: david.id, content: 'Tasting scheduled Thursday — vegan menu looks promising with vendor #2.', createdAt: daysAgo(1, 2) },
-      { taskId: t3.id, userId: priya.id, content: 'Encoder config done. Failover test planned for Friday with the venue IT.', createdAt: daysAgo(0, 6) },
-      { taskId: t14.id, userId: priya.id, content: 'Module 1 lab environment is ready; modules 2-3 in review.', createdAt: daysAgo(0, 2) },
-      { taskId: t16.id, userId: lena.id, content: 'Draft sequence in review — 3 emails, 5-day drip.', createdAt: daysAgo(0, 1) },
+      { roomId: room.id, taskId: t4.id, userId: maria.id, content: 'Blocked on two speakers who need updated invitation letters for visas.', createdAt: daysAgo(2, 3) },
+      { roomId: room.id, taskId: t4.id, userId: admin.id, content: 'Escalating with the travel agency today. Keep the backup speaker list warm.', createdAt: daysAgo(1, 5) },
+      { roomId: room.id, taskId: t2.id, userId: david.id, content: 'Tasting scheduled Thursday — vegan menu looks promising with vendor #2.', createdAt: daysAgo(1, 2) },
+      { roomId: room.id, taskId: t3.id, userId: priya.id, content: 'Encoder config done. Failover test planned for Friday with the venue IT.', createdAt: daysAgo(0, 6) },
+      { roomId: room.id, taskId: t14.id, userId: priya.id, content: 'Module 1 lab environment is ready; modules 2-3 in review.', createdAt: daysAgo(0, 2) },
+      { roomId: room.id, taskId: t16.id, userId: lena.id, content: 'Draft sequence in review — 3 emails, 5-day drip.', createdAt: daysAgo(0, 1) },
     ],
   })
 
@@ -369,22 +401,23 @@ async function main() {
   // ---------- Activity log ----------
   await prisma.activityLog.createMany({
     data: [
-      { userId: admin.id, action: 'EVENT_CREATED', details: JSON.stringify({ eventName: conf.name }), timestamp: daysAgo(25) },
-      { userId: maria.id, action: 'TASK_COMPLETED', details: JSON.stringify({ taskTitle: t1.title }), timestamp: daysAgo(9, 2) },
-      { userId: david.id, action: 'TASK_COMPLETED', details: JSON.stringify({ taskTitle: t7.title }), timestamp: daysAgo(3) },
-      { userId: maria.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t4.title, from: 'IN_PROGRESS', to: 'BLOCKED' }), timestamp: daysAgo(2, 3) },
-      { userId: james.id, action: 'EVENT_CREATED', details: JSON.stringify({ eventName: hackathon.name }), timestamp: daysAgo(10) },
-      { userId: priya.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t3.title, from: 'NOT_STARTED', to: 'IN_PROGRESS' }), timestamp: daysAgo(4) },
-      { userId: sofia.id, action: 'EVENT_UPDATED', details: JSON.stringify({ eventName: launch.name }), timestamp: daysAgo(1, 7) },
-      { userId: lena.id, action: 'COMMENT_ADDED', details: JSON.stringify({ taskTitle: t16.title }), timestamp: daysAgo(0, 1) },
-      { userId: admin.id, action: 'TEAM_CREATED', details: JSON.stringify({ teamName: marketing.name }), timestamp: daysAgo(55) },
-      { userId: priya.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t14.title, from: 'NOT_STARTED', to: 'IN_PROGRESS' }), timestamp: daysAgo(1, 2) },
+      { roomId: room.id, userId: admin.id, action: 'EVENT_CREATED', details: JSON.stringify({ eventName: conf.name }), timestamp: daysAgo(25) },
+      { roomId: room.id, userId: maria.id, action: 'TASK_COMPLETED', details: JSON.stringify({ taskTitle: t1.title }), timestamp: daysAgo(9, 2) },
+      { roomId: room.id, userId: david.id, action: 'TASK_COMPLETED', details: JSON.stringify({ taskTitle: t7.title }), timestamp: daysAgo(3) },
+      { roomId: room.id, userId: maria.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t4.title, from: 'IN_PROGRESS', to: 'BLOCKED' }), timestamp: daysAgo(2, 3) },
+      { roomId: room.id, userId: james.id, action: 'EVENT_CREATED', details: JSON.stringify({ eventName: hackathon.name }), timestamp: daysAgo(10) },
+      { roomId: room.id, userId: priya.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t3.title, from: 'NOT_STARTED', to: 'IN_PROGRESS' }), timestamp: daysAgo(4) },
+      { roomId: room.id, userId: sofia.id, action: 'EVENT_UPDATED', details: JSON.stringify({ eventName: launch.name }), timestamp: daysAgo(1, 7) },
+      { roomId: room.id, userId: lena.id, action: 'COMMENT_ADDED', details: JSON.stringify({ taskTitle: t16.title }), timestamp: daysAgo(0, 1) },
+      { roomId: room.id, userId: admin.id, action: 'TEAM_CREATED', details: JSON.stringify({ teamName: marketing.name }), timestamp: daysAgo(55) },
+      { roomId: room.id, userId: priya.id, action: 'TASK_STATUS_CHANGED', details: JSON.stringify({ taskTitle: t14.title, from: 'NOT_STARTED', to: 'IN_PROGRESS' }), timestamp: daysAgo(1, 2) },
     ],
   })
 
   console.log('✅ Seed complete:')
   console.log(`   Teams: 3 | Users: 9 | Events: 6 | Tasks: 16`)
   console.log('   Demo login → admin@eventflow.io / password123')
+  console.log('   Demo room join → EVT-DEM258 / demo1234')
 }
 
 main()

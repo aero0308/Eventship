@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { AlertCircle, Loader2, UserPlus } from 'lucide-react'
-import type { TeamDTO, UserDTO } from '@/types'
-import { ROLES, ROLE_LABELS, ROUTES } from '@/lib/constants'
-import type { Role } from '@/types'
-import { api, ApiClientError } from '@/lib/api-client'
+import type { UserDTO } from '@/types'
+import { ROUTES } from '@/lib/constants'
+import { ApiClientError } from '@/lib/api-client'
 import { scorePassword } from '@/lib/password-strength'
 import { useAuthStore } from '@/stores/auth-store'
 import { navigate } from '@/hooks/use-hash-route'
@@ -14,12 +13,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PasswordInput } from '@/components/shared/PasswordInput'
 import { PasswordMatchHint, PasswordStrength } from '@/components/shared/PasswordStrength'
 
-const NO_TEAM = '__none__'
-
+/*
+ * Sign-up form. Multi-tenant contract: self-registered accounts are members
+ * pending onboarding — the next step is the mandatory "join or create an
+ * event room" gate, which is where roles are granted (create → manager,
+ * join → member). No role/team selection happens here anymore.
+ */
 export function RegisterPage() {
   const register = useAuthStore((s) => s.register)
   const loading = useAuthStore((s) => s.loading)
@@ -29,30 +31,8 @@ export function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [role, setRole] = useState<Role>('EMPLOYEE')
-  const [teamId, setTeamId] = useState<string>(NO_TEAM)
-  const [teams, setTeams] = useState<TeamDTO[]>([])
-  const [teamsLoading, setTeamsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [focusedConfirm, setFocusedConfirm] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    api
-      .get<{ teams: TeamDTO[] }>('/teams')
-      .then((data) => {
-        if (!cancelled) setTeams(data.teams)
-      })
-      .catch(() => {
-        // Non-fatal — registration can continue without a team.
-      })
-      .finally(() => {
-        if (!cancelled) setTeamsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -83,11 +63,10 @@ export function RegisterPage() {
         email: email.trim(),
         fullName: fullName.trim(),
         password,
-        role,
-        teamId: teamId === NO_TEAM ? undefined : teamId,
       })
       toast({ title: `Welcome, ${user.fullName}!`, description: 'Your account has been created.' })
-      navigate(ROUTES.DASHBOARD)
+      // Mandatory onboarding: join an existing room or create a new one.
+      navigate(ROUTES.ONBOARDING)
     } catch (err) {
       const message = err instanceof ApiClientError ? err.message : 'Unable to create your account. Please try again.'
       setError(message)
@@ -163,46 +142,11 @@ export function RegisterPage() {
         <PasswordMatchHint password={password} confirm={confirmPassword} visible={focusedConfirm} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="register-role">Role</Label>
-          <Select value={role} onValueChange={(value) => setRole(value as Role)}>
-            <SelectTrigger id="register-role" className="h-11 w-full" aria-label="Account role">
-              <SelectValue placeholder="Select role" />
-            </SelectTrigger>
-            <SelectContent className="border-fora-border bg-fora-surface-2 text-white">
-              {ROLES.map((r) => (
-                <SelectItem key={r} value={r} className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white">
-                  {ROLE_LABELS[r]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="register-team">Team</Label>
-          <Select value={teamId} onValueChange={setTeamId} disabled={teamsLoading}>
-            <SelectTrigger id="register-team" className="h-11 w-full" aria-label="Team">
-              <SelectValue placeholder={teamsLoading ? 'Loading teams…' : 'Choose a team'} />
-            </SelectTrigger>
-            <SelectContent className="border-fora-border bg-fora-surface-2 text-white">
-              <SelectItem value={NO_TEAM} className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white">
-                No team
-              </SelectItem>
-              {teams.map((team) => (
-                <SelectItem
-                  key={team.id}
-                  value={team.id}
-                  className="focus:bg-white/10 focus:text-white data-[state=checked]:text-white"
-                >
-                  {team.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {/* Next-step teaser: role and team are decided at the room gate. */}
+      <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        Next, you&apos;ll <span className="text-foreground">create a new event room</span> (you become the manager) or{' '}
+        <span className="text-foreground">join one</span> with a Room ID + password.
+      </p>
 
       <Button
         type="submit"

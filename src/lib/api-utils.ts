@@ -71,15 +71,21 @@ export function handleApiError(error: unknown) {
   return fail('Internal server error', 500)
 }
 
-/** Fire-and-forget activity log writer. Never throws. */
+/** Fire-and-forget activity log writer. Never throws. Room-stamped when the actor has a room. */
 export async function logActivity(
   userId: string,
   action: string,
-  details?: Record<string, unknown>
+  details?: Record<string, unknown>,
+  roomId?: string | null
 ): Promise<void> {
   try {
     await (await import('@/lib/db')).db.activityLog.create({
-      data: { userId, action, details: details ? JSON.stringify(details) : null },
+      data: {
+        userId,
+        action,
+        details: details ? JSON.stringify(details) : null,
+        roomId: roomId ?? null,
+      },
     })
   } catch (e) {
     console.error('[activity-log]', e)

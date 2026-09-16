@@ -67,7 +67,7 @@ export class TestClient {
   }
 
   async request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     path: string,
     body?: unknown,
     extraHeaders: Record<string, string> = {}
@@ -105,6 +105,9 @@ export class TestClient {
   }
   patch<T>(path: string, body?: unknown) {
     return this.request<T>('PATCH', path, body)
+  }
+  put<T>(path: string, body?: unknown) {
+    return this.request<T>('PUT', path, body)
   }
   del<T>(path: string) {
     return this.request<T>('DELETE', path)

@@ -23,6 +23,12 @@ model User {
   isActive       Boolean  @default(true)
   teamId         String?
   team           Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  // Multi-tenant room membership. Null = "pending onboarding": the user must
+  // create a room (becoming its owner/EVENT_MANAGER) or join one via
+  // room_code + password before any data endpoint unlocks.
+  roomId         String?
+  room           Room?    @relation("RoomMembers", fields: [roomId], references: [id], onDelete: SetNull)
+  ownedRooms     Room[]   @relation("OwnedRooms")
   // JSON-serialized map of NotificationType -> boolean (enabled). Missing key = enabled.
   notificationPrefs String?
   // Workflow guard: when true, this user cannot mark a task COMPLETED while any
@@ -45,11 +51,47 @@ model User {
   @@index([email])
   @@index([teamId])
   @@index([role])
+  @@index([roomId])
+}
+
+// ============ ROOMS (multi-tenant isolation) ============
+
+/// An isolated tenant workspace. Every team/event/task/user belongs to exactly
+/// one room; all reads and writes are scoped by the caller's roomId.
+model Room {
+  id           String  @id @default(uuid())
+  /// Human-readable share code, e.g. EVT-7X9K2M (no O/0/I/1).
+  roomCode     String  @unique
+  name         String
+  description  String?
+  /// scrypt hash (same scheme as user passwords) — required to join.
+  passwordHash String
+  ownerId      String
+  owner        User    @relation("OwnedRooms", fields: [ownerId], references: [id])
+  isActive     Boolean @default(true)
+  /// Optional membership cap enforced at join time.
+  maxMembers   Int?
+  members      User[]  @relation("RoomMembers")
+
+  teams       Team[]
+  events      Event[]
+  tasks       Task[]
+  comments    TaskComment[]
+  activities  ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([roomCode])
 }
 
 model Team {
   id          String  @id @default(uuid())
-  name        String  @unique
+  // Unique per room (multi-tenant) — two rooms may both have a "Operations".
+  name        String
+  roomId      String?
+  room        Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
   description String?
   managerId   String?
   manager     User?   @relation("ManagedTeams", fields: [managerId], references: [id], onDelete: SetNull)
@@ -59,7 +101,9 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([roomId, name])
   @@index([managerId])
+  @@index([roomId])
 }
 
 // ============ EVENTS ============
@@ -75,6 +119,9 @@ model Event {
   status      String  @default("DRAFT")
   teamId      String
   team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  // Denormalized from team.roomId for cheap room-scoped reads (backfilled).
+  roomId      String?
+  room        Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
   createdBy   String
   creator     User    @relation(fields: [createdBy], references: [id])
   tasks       Task[]
@@ -85,6 +132,7 @@ model Event {
   @@index([teamId])
   @@index([status])
   @@index([startDate])
+  @@index([roomId])
 }
 
 // ============ TASKS ============
@@ -99,6 +147,9 @@ model Task {
   status         String  @default("NOT_STARTED")
   eventId        String
   event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // Denormalized from event.roomId for cheap room-scoped reads (backfilled).
+  roomId         String?
+  room           Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
   assignedTo     String?
   assignee       User?   @relation("AssignedTasks", fields: [assignedTo], references: [id], onDelete: SetNull)
   createdBy      String
@@ -120,6 +171,7 @@ model Task {
   @@index([assignedTo])
   @@index([status])
   @@index([dueDate])
+  @@index([roomId])
 }
 
 model TaskComment {
@@ -127,6 +179,9 @@ model TaskComment {
   content String
   taskId  String
   task    Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // Denormalized from task.roomId — room-scoped comment feeds.
+  roomId  String?
+  room    Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
   userId  String
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -134,6 +189,7 @@ model TaskComment {
 
   @@index([taskId])
   @@index([userId])
+  @@index([roomId])
 }
 
 model TaskDependency {
@@ -171,6 +227,10 @@ model ActivityLog {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   action String
+  // Room the activity belongs to (actor's room at write time) — the org-wide
+  // feed is room-scoped, never global.
+  roomId String?
+  room   Room?  @relation(fields: [roomId], references: [id], onDelete: SetNull)
   // JSON-serialized details (SQLite has no native Json type in Prisma)
   details String?
 
@@ -178,6 +238,7 @@ model ActivityLog {
 
   @@index([userId])
   @@index([timestamp])
+  @@index([roomId])
 }
 
 // ============ AUTH SESSIONS ============

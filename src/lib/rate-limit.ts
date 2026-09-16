@@ -150,3 +150,10 @@ export const resetPasswordLimiter = createRateLimiter({
   windowMs: 60_000,
   max: 6,
 })
+
+/** POST /api/rooms/join — 10 room-password attempts/min/IP (brute-force guard). */
+export const joinRoomLimiter = createRateLimiter({
+  name: 'rooms:join',
+  windowMs: 60_000,
+  max: 10,
+})

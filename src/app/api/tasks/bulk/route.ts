@@ -7,10 +7,10 @@ import {
   notifyUser,
   ok,
   parseBody,
-  requireUser,
 } from '@/lib/api-utils'
 import { bulkTaskActionSchema } from '@/lib/schemas'
 import { canFullyManageTask, assertAccess } from '@/lib/permissions'
+import { requireRoomUser } from '@/lib/room'
 import { emitBoardChange, emitRealtime } from '@/lib/realtime'
 
 /**
@@ -23,7 +23,7 @@ import { emitBoardChange, emitRealtime } from '@/lib/realtime'
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const body = await parseBody(request, bulkTaskActionSchema)
 
     if (body.action === 'status' && !body.status) throw new ApiError(400, 'A target status is required')
@@ -31,13 +31,14 @@ export async function POST(request: Request) {
     if (body.action === 'assign' && !body.assignedTo) throw new ApiError(400, 'Choose who to assign these tasks to')
 
     if (body.assignedTo) {
-      const assignee = await db.user.findUnique({ where: { id: body.assignedTo } })
-      if (!assignee) throw new ApiError(404, 'Assignee not found')
+      const assignee = await db.user.findFirst({ where: { id: body.assignedTo, roomId } })
+      if (!assignee) throw new ApiError(404, 'Assignee not found in your event room')
     }
 
     const ids = [...new Set(body.ids)]
+    // Tenant isolation: ids outside the caller's room simply do not resolve.
     const tasks = await db.task.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, roomId },
       select: {
         id: true,
         title: true,
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
             if (task.assignedTo) recipients.add(task.assignedTo)
             recipients.delete(user.id)
             await Promise.all([...recipients].map((recipientId) => notifyUser(recipientId, notifyType, message)))
-            await logActivity(user.id, notifyType, { taskId: id, title: task.title, from: task.status, to: body.status })
+            await logActivity(user.id, notifyType, { taskId: id, title: task.title, from: task.status, to: body.status }, roomId)
             touch(task)
             updated += 1
           }
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
             taskId: id,
             title: task.title,
             assignedTo: body.assignedTo,
-          })
+          }, roomId)
           touch(task)
           updated += 1
         } else if (body.action === 'unassign' && task.assignedTo !== null) {

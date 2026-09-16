@@ -4,7 +4,8 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from '@/lib/constants'
-import { handleApiError, ok, requireUser } from '@/lib/api-utils'
+import { handleApiError, ok } from '@/lib/api-utils'
+import { requireRoomUser } from '@/lib/room'
 import { serializeEvent, computeTaskStatsMap, emptyTaskStats } from '../_lib/events'
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -80,11 +81,13 @@ function serializeFocusTask(task: {
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    // Everything below is tenant-scoped: the dashboard only ever aggregates
+    // the caller's own room.
+    const { user, roomId } = await requireRoomUser()
     const { searchParams } = new URL(request.url)
     // focus=mine scopes the three focus buckets to tasks assigned to the caller.
     const focusMine = searchParams.get('focus') === 'mine'
-    const focusWhere = focusMine ? { assignedTo: user.id } : {}
+    const focusWhere = focusMine ? { roomId, assignedTo: user.id } : { roomId }
     const now = new Date()
     const weekFromNow = new Date(now.getTime() + WEEK_MS)
     const windowStart = startOfDay(new Date(now.getTime() - (PROGRESS_DAYS - 1) * 86400000))
@@ -107,21 +110,21 @@ export async function GET(request: Request) {
       eventStatusGroups,
       teamMemberGroups,
     ] = await Promise.all([
-      db.event.count(),
-      db.event.count({ where: { status: { in: ['IN_PROGRESS', 'PLANNING'] } } }),
-      db.task.count(),
-      db.task.count({ where: { status: 'COMPLETED' } }),
-      db.task.count({ where: { status: 'BLOCKED' } }),
-      db.task.count({ where: { dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } } }),
-      db.team.count(),
-      db.user.count({ where: { isActive: true } }),
+      db.event.count({ where: { roomId } }),
+      db.event.count({ where: { roomId, status: { in: ['IN_PROGRESS', 'PLANNING'] } } }),
+      db.task.count({ where: { roomId } }),
+      db.task.count({ where: { roomId, status: 'COMPLETED' } }),
+      db.task.count({ where: { roomId, status: 'BLOCKED' } }),
+      db.task.count({ where: { roomId, dueDate: { lt: startOfDay(now) }, status: { not: 'COMPLETED' } } }),
+      db.team.count({ where: { roomId } }),
+      db.user.count({ where: { roomId, isActive: true } }),
       db.task.count({
-        where: { dueDate: { gte: now, lte: weekFromNow }, status: { not: 'COMPLETED' } },
+        where: { roomId, dueDate: { gte: now, lte: weekFromNow }, status: { not: 'COMPLETED' } },
       }),
-      db.task.groupBy({ by: ['status'], _count: { _all: true } }),
-      db.task.groupBy({ by: ['priority'], _count: { _all: true } }),
-      db.event.groupBy({ by: ['status'], _count: { _all: true } }),
-      db.user.groupBy({ by: ['teamId'], where: { teamId: { not: null }, isActive: true }, _count: { _all: true } }),
+      db.task.groupBy({ by: ['status'], where: { roomId }, _count: { _all: true } }),
+      db.task.groupBy({ by: ['priority'], where: { roomId }, _count: { _all: true } }),
+      db.event.groupBy({ by: ['status'], where: { roomId }, _count: { _all: true } }),
+      db.user.groupBy({ by: ['teamId'], where: { teamId: { not: null }, isActive: true, roomId }, _count: { _all: true } }),
     ])
 
     const statusCounts = new Map(taskStatusGroups.map((g) => [g.status, g._count._all]))
@@ -131,7 +134,7 @@ export async function GET(request: Request) {
     const [upcomingEvents, upcomingDeadlineTasks, recentActivityLogs, teams, allTasks, blockerTasks, progressRows, performerRows, focusQueries] =
       await Promise.all([
         db.event.findMany({
-          where: { startDate: { gte: now } },
+          where: { roomId, startDate: { gte: now } },
           orderBy: { startDate: 'asc' },
           take: 5,
           include: {
@@ -141,7 +144,7 @@ export async function GET(request: Request) {
           },
         }),
         db.task.findMany({
-          where: { dueDate: { gte: now }, status: { not: 'COMPLETED' } },
+          where: { roomId, dueDate: { gte: now }, status: { not: 'COMPLETED' } },
           orderBy: { dueDate: 'asc' },
           take: 5,
           include: {
@@ -150,18 +153,20 @@ export async function GET(request: Request) {
           },
         }),
         db.activityLog.findMany({
+          where: { roomId },
           orderBy: { timestamp: 'desc' },
           take: 12,
           include: { user: { select: { id: true, fullName: true } } },
         }),
         db.team.findMany({
+          where: { roomId },
           orderBy: { name: 'asc' },
           select: { id: true, name: true, events: { select: { id: true } } },
         }),
-        db.task.findMany({ select: { eventId: true, status: true } }),
+        db.task.findMany({ where: { roomId }, select: { eventId: true, status: true } }),
         // ---- Phase 6: blockers (blocked tasks + latest blocker comment) ----
         db.task.findMany({
-          where: { status: 'BLOCKED' },
+          where: { roomId, status: 'BLOCKED' },
           orderBy: { updatedAt: 'desc' },
           take: 6,
           include: {
@@ -177,6 +182,7 @@ export async function GET(request: Request) {
         // ---- Phase 6: 30-day progress trend (created vs completed per day) ----
         db.task.findMany({
           where: {
+            roomId,
             OR: [{ createdAt: { gte: windowStart } }, { status: 'COMPLETED', updatedAt: { gte: windowStart } }],
           },
           select: { createdAt: true, updatedAt: true, status: true },
@@ -184,7 +190,7 @@ export async function GET(request: Request) {
         // ---- Phase 6: per-assignee performance rows (role-gated, cheap scan) ----
         canSeePerformance
           ? db.task.findMany({
-              where: isLeader && user.teamId ? { event: { teamId: user.teamId } } : undefined,
+              where: isLeader && user.teamId ? { roomId, event: { teamId: user.teamId } } : { roomId },
               select: { assignedTo: true, status: true },
             })
           : Promise.resolve([] as { assignedTo: string | null; status: string }[]),
@@ -298,7 +304,7 @@ export async function GET(request: Request) {
     const performerUserIds = [...perfByUser.keys()]
     const performerUsers = performerUserIds.length
       ? await db.user.findMany({
-          where: { id: { in: performerUserIds }, isActive: true },
+          where: { id: { in: performerUserIds }, isActive: true, roomId },
           select: { id: true, fullName: true, email: true },
         })
       : []

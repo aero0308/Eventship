@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
   Bell,
+  Building2,
   CalendarDays,
   CalendarRange,
   CheckCircle2,
@@ -567,6 +568,10 @@ export function Layout({ children }: LayoutProps) {
                 <DropdownMenuItem onClick={() => handleNavigate(ROUTES.PROFILE)}>
                   <User className="mr-2 h-4 w-4" aria-hidden="true" />
                   Profile &amp; settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleNavigate(ROUTES.ROOM_SETTINGS)}>
+                  <Building2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                  My Room
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

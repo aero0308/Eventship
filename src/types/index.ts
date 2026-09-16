@@ -23,8 +23,29 @@ export interface UserDTO {
   isActive: boolean
   teamId: string | null
   team?: Pick<TeamDTO, 'id' | 'name'> | null
+  /** Multi-tenant room membership. Null = onboarding pending (join or create). */
+  roomId: string | null
+  room?: Pick<RoomDTO, 'id' | 'roomCode' | 'name'> | null
+  /** Convenience flag from the server: true while the user has no room. */
+  needsOnboarding: boolean
   /** Workflow guard: block completing tasks whose dependencies are unfinished. */
   strictDependencyGuard: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/** Multi-tenant room (GET /api/rooms, GET /api/rooms/[id]). */
+export interface RoomDTO {
+  id: string
+  roomCode: string
+  name: string
+  description: string | null
+  ownerId: string
+  owner?: Pick<UserDTO, 'id' | 'fullName' | 'email'> | null
+  isActive: boolean
+  maxMembers: number | null
+  memberCount?: number | null
+  members?: { id: string; fullName: string; email: string; role: Role; teamId: string | null }[]
   createdAt: string
   updatedAt: string
 }

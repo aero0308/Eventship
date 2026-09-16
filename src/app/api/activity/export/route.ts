@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { ApiError, handleApiError, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError } from '@/lib/api-utils'
+import { requireRoomUser } from '@/lib/room'
 
 const MAX_ROWS = 5000
 
@@ -10,7 +11,7 @@ const MAX_ROWS = 5000
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     if (user.role !== 'EVENT_MANAGER') {
       throw new ApiError(403, 'Only event managers can export the audit log')
     }
@@ -32,6 +33,8 @@ export async function GET(request: Request) {
 
     const logs = await db.activityLog.findMany({
       where: {
+        // Tenant isolation: the export only ever contains this room's audit trail.
+        roomId,
         ...(actions.length > 0 ? { action: { in: actions } } : {}),
         ...(userId ? { userId } : {}),
         ...(from || to

@@ -1,8 +1,9 @@
 import { db } from '@/lib/db'
 import { EVENT_STATUSES, ACTIVITY_ACTIONS } from '@/lib/constants'
-import { ApiError, handleApiError, logActivity, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError, logActivity, ok, parseBody } from '@/lib/api-utils'
 import { canManageEvents, assertAccess } from '@/lib/permissions'
 import { createEventSchema } from '@/lib/schemas'
+import { requireRoomUser } from '@/lib/room'
 import {
   computeTaskStatsMap,
   emptyTaskStats,
@@ -13,10 +14,10 @@ import type { Prisma } from '@prisma/client'
 
 export async function GET(request: Request) {
   try {
-    await requireUser()
+    const { roomId } = await requireRoomUser()
     const { searchParams } = new URL(request.url)
 
-    const where: Prisma.EventWhereInput = {}
+    const where: Prisma.EventWhereInput = { roomId }
     const status = searchParams.get('status')
     if (status && (EVENT_STATUSES as readonly string[]).includes(status)) where.status = status
     const teamId = searchParams.get('teamId')
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser()
+    const { user, roomId } = await requireRoomUser()
     const body = await parseBody(request, createEventSchema)
 
     const startDate = new Date(body.startDate)
@@ -63,8 +64,9 @@ export async function POST(request: Request) {
       throw new ApiError(400, 'End date must be on or after start date')
     }
 
-    const team = await db.team.findUnique({ where: { id: body.teamId } })
-    if (!team) throw new ApiError(404, 'Team not found')
+    // Tenant isolation: the owning team must live in the caller's room.
+    const team = await db.team.findFirst({ where: { id: body.teamId, roomId } })
+    if (!team) throw new ApiError(404, 'Team not found in your event room')
     assertAccess(
       canManageEvents(user, team.id),
       'Only event managers or the owning team leader can create events for this team'
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
         endDate,
         status: body.status,
         teamId: body.teamId,
+        roomId,
         createdBy: user.id,
       },
     })
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
     await logActivity(user.id, ACTIVITY_ACTIONS.EVENT_CREATED, {
       eventId: created.id,
       name: created.name,
-    })
+    }, roomId)
 
     const event = await db.event.findUniqueOrThrow({
       where: { id: created.id },

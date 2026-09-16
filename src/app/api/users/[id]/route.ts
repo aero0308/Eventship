@@ -1,21 +1,26 @@
 import { db } from '@/lib/db'
 import { assertAccess, isEventManager } from '@/lib/permissions'
-import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody, requireUser } from '@/lib/api-utils'
+import { ApiError, handleApiError, logActivity, notifyUser, ok, parseBody } from '@/lib/api-utils'
 import { updateUserSchema } from '@/lib/schemas'
 import { ACTIVITY_ACTIONS } from '@/lib/constants'
 import { toPublicUser } from '@/lib/auth'
+import { requireRoomUser } from '@/lib/room'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    const admin = await requireUser()
+    const { user: admin, roomId } = await requireRoomUser()
     assertAccess(isEventManager(admin), 'Only event managers can manage user accounts')
 
     const { id } = await context.params
     const body = await parseBody(request, updateUserSchema)
 
-    const target = await db.user.findUnique({ where: { id }, include: { team: { select: { id: true, name: true } } } })
+    // Tenant isolation: admins manage only users inside their own room.
+    const target = await db.user.findFirst({
+      where: { id, roomId },
+      include: { team: { select: { id: true, name: true } } },
+    })
     if (!target) throw new ApiError(404, 'User not found')
 
     // ---- guardrails -------------------------------------------------------
@@ -29,16 +34,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (body.role !== undefined && body.role !== target.role && target.role === 'EVENT_MANAGER') {
-      // Demoting a manager: make sure at least one ACTIVE manager remains.
-      const activeManagers = await db.user.count({ where: { role: 'EVENT_MANAGER', isActive: true } })
+      // Demoting a manager: make sure at least one ACTIVE manager remains in the room.
+      const activeManagers = await db.user.count({ where: { role: 'EVENT_MANAGER', isActive: true, roomId } })
       if (activeManagers <= 1) {
         throw new ApiError(400, 'At least one active event manager is required — promote someone else first')
       }
     }
 
     if (body.teamId) {
-      const team = await db.team.findUnique({ where: { id: body.teamId } })
-      if (!team) throw new ApiError(404, 'Team not found')
+      const team = await db.team.findFirst({ where: { id: body.teamId, roomId } })
+      if (!team) throw new ApiError(404, 'Team not found in your event room')
     }
 
     // ---- apply ------------------------------------------------------------
@@ -70,21 +75,21 @@ export async function PATCH(request: Request, context: RouteContext) {
         ...detailBase,
         from: target.role,
         to: updated.role,
-      })
+      }, roomId)
       await notifyUser(id, 'TASK_ASSIGNED', `Your role was changed to ${updated.role.replace(/_/g, ' ').toLowerCase()} by an administrator`)
     }
     if (deactivating) {
-      await logActivity(admin.id, ACTIVITY_ACTIONS.USER_DEACTIVATED, detailBase)
+      await logActivity(admin.id, ACTIVITY_ACTIONS.USER_DEACTIVATED, detailBase, roomId)
     }
     if (reactivating) {
-      await logActivity(admin.id, ACTIVITY_ACTIONS.USER_REACTIVATED, detailBase)
+      await logActivity(admin.id, ACTIVITY_ACTIONS.USER_REACTIVATED, detailBase, roomId)
     }
     if (body.teamId !== undefined && body.teamId !== target.teamId) {
       await logActivity(admin.id, ACTIVITY_ACTIONS.USER_UPDATED, {
         ...detailBase,
         from: target.team?.name ?? null,
         to: updated.team?.name ?? null,
-      })
+      }, roomId)
     }
 
     return ok({ user: toPublicUser(updated) })

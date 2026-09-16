@@ -100,6 +100,55 @@ export const updateSelfSchema = z
     message: 'Nothing to update',
   })
 
+// ============ rooms (multi-tenant onboarding) ============
+
+/** Room join/create password: lighter than the user policy, but not trivial. */
+export const roomPassword = z
+  .string()
+  .min(6, 'Room password must be at least 6 characters')
+  .max(128, 'Room password must be at most 128 characters')
+
+/** POST /api/rooms — create a room; the caller becomes its owner/EVENT_MANAGER. */
+export const createRoomSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Room name must be at least 2 characters')
+    .max(80, 'Room name must be at most 80 characters'),
+  password: roomPassword,
+  description: nullableText(500),
+})
+
+/** POST /api/rooms/join — join an existing room with its share code + password. */
+export const joinRoomSchema = z.object({
+  roomCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^EVT-[A-Z2-9]{6}$/, 'Room ID must look like EVT-7X9K2M'),
+  password: z.string().min(1, 'Room password is required'),
+})
+
+/** PUT /api/rooms/[id] — owner-only room profile updates. */
+export const updateRoomSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, 'Room name must be at least 2 characters')
+      .max(80, 'Room name must be at most 80 characters')
+      .optional(),
+    description: nullableText(500),
+  })
+  .refine((data) => data.name !== undefined || data.description !== undefined, {
+    message: 'Nothing to update',
+  })
+
+/** POST /api/rooms/regenerate-password — owner-only; omit password to auto-generate. */
+export const regenerateRoomPasswordSchema = z.object({
+  password: roomPassword.optional(),
+})
+
 // ============ teams ============
 
 export const createTeamSchema = z.object({
