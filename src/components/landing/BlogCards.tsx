@@ -1,38 +1,14 @@
 import Image from 'next/image'
-import { ArrowRight, ArrowUpRight, Clock } from 'lucide-react'
+import { ArrowUpRight, Clock } from 'lucide-react'
 import { FadeIn } from '@/components/landing/FadeIn'
 import { SectionLabel } from '@/components/landing/SectionLabel'
-
-const POSTS = [
-  {
-    category: 'Playbooks',
-    readTime: '6 min read',
-    title: 'How to run a 200-person event without losing your mind',
-    excerpt: 'The checklist system, the comms cadence and the 72-hour runbook that keep big events calm.',
-    image: '/images/landing/blog-1.png',
-    alt: 'Event crew with headsets coordinating a live show from laptops on the venue floor',
-  },
-  {
-    category: 'Operations',
-    readTime: '4 min read',
-    title: 'The 5 blockers that kill event timelines',
-    excerpt: 'Vendor sign-offs, venue access, printed assets — where launches actually get stuck, and how to pre-empt them.',
-    image: '/images/landing/blog-2.png',
-    alt: 'Planning wall covered in timeline notes under desk lamps, one red flag card lit up in the middle',
-  },
-  {
-    category: 'Product',
-    readTime: '5 min read',
-    title: 'Why real-time dashboards beat status meetings',
-    excerpt: 'Status meetings are a polling loop. Live dashboards are an event stream. The math favors one of them.',
-    image: '/images/landing/blog-3.png',
-    alt: 'Live analytics dashboard with charts glowing on a monitor in a dark office at night',
-  },
-] as const
+import { BLOG_POSTS } from '@/content/blog-posts'
 
 /**
- * Blog preview cards: AI-generated editorial photography, category tag,
- * title, excerpt and a coming-soon read-more affordance.
+ * Blog preview cards. Content comes from the single editorial source
+ * (src/content/blog-posts.ts) so the landing grid and the article routes can
+ * never drift apart. Each card is a real link to #/blog/<slug> — native
+ * anchor navigation means keyboard focus and middle-click work for free.
  */
 export function BlogCards() {
   return (
@@ -59,14 +35,18 @@ export function BlogCards() {
         </div>
 
         <div className="mt-14 grid gap-5 md:mt-16 md:grid-cols-3">
-          {POSTS.map((post, index) => (
-            <FadeIn key={post.title} delay={index * 0.08} className="h-full">
-              <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-fora-border bg-fora-surface transition-all duration-300 hover:-translate-y-1 hover:border-fora-border-hover hover:shadow-[0_16px_48px_-16px_rgba(0,0,0,0.8)]">
+          {BLOG_POSTS.map((post, index) => (
+            <FadeIn key={post.slug} delay={index * 0.08} className="h-full">
+              <a
+                href={`#/blog/${post.slug}`}
+                aria-label={`Read article: ${post.title}`}
+                className="group flex h-full flex-col overflow-hidden rounded-2xl border border-fora-border bg-fora-surface transition-all duration-300 hover:-translate-y-1 hover:border-fora-border-hover hover:shadow-[0_16px_48px_-16px_rgba(0,0,0,0.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fora-accent"
+              >
                 {/* Editorial photo header */}
                 <div className="relative h-44 overflow-hidden md:h-48">
                   <Image
                     src={post.image}
-                    alt={post.alt}
+                    alt={post.imageAlt}
                     fill
                     sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
@@ -100,10 +80,13 @@ export function BlogCards() {
                   <p className="mt-2.5 flex-1 text-sm leading-relaxed text-fora-text-2">{post.excerpt}</p>
                   <p className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-fora-text-2 transition-colors duration-300 group-hover:text-white">
                     Read more
-                    <ArrowRight aria-hidden="true" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    <ArrowUpRight
+                      aria-hidden="true"
+                      className="h-4 w-4 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                    />
                   </p>
                 </div>
-              </article>
+              </a>
             </FadeIn>
           ))}
         </div>
@@ -111,7 +94,7 @@ export function BlogCards() {
         <FadeIn delay={0.15}>
           <p className="mt-10 flex items-center justify-center gap-2 text-center text-xs text-fora-muted">
             <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-            The full publication ships with the public beta — join the waitlist below.
+            Every article is live — more field notes ship every week.
           </p>
         </FadeIn>
       </div>

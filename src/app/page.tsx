@@ -69,6 +69,17 @@ const ProfilePage = dynamic(
   () => import('@/components/pages/ProfilePage').then((m) => m.ProfilePage),
   { loading: PageLoadingFallback, ssr: false }
 )
+const BlogArticlePage = dynamic(
+  () => import('@/components/landing/BlogArticlePage').then((m) => m.BlogArticlePage),
+  {
+    loading: () => (
+      <div className="flex min-h-screen items-center justify-center bg-[#faf8f3]">
+        <LoadingSpinner label="Loading article…" />
+      </div>
+    ),
+    ssr: false,
+  }
+)
 
 const PROTECTED_PATHS: readonly string[] = [
   ROUTES.DASHBOARD,
@@ -142,6 +153,7 @@ export default function Page() {
   const path = useHashRoute()
   const pathname = path.split('?')[0] || '/'
   const eventDetailId = pathname.match(/^\/events\/([^/]+)$/)?.[1] ?? null
+  const blogSlug = pathname.match(/^\/blog\/([^/?]+)$/)?.[1] ?? null
   const isMyTasks = pathname === ROUTES.MY_TASKS
   const user = useAuthStore((s) => s.user)
   const initialized = useAuthStore((s) => s.initialized)
@@ -187,6 +199,10 @@ export default function Page() {
   if (isHome) {
     content = <HomePage />
     transitionKey = 'home'
+  } else if (blogSlug !== null) {
+    // Public editorial route: #/blog/<slug>. Visible signed-in or not.
+    content = <BlogArticlePage slug={blogSlug} />
+    transitionKey = `blog-${blogSlug}`
   } else if (isAuthRoute) {
     const authMeta: Record<string, { title: string; subtitle: string }> = {
       [ROUTES.LOGIN]: { title: 'Welcome back', subtitle: 'Sign in to keep your events on track.' },

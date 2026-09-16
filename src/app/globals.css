@@ -473,11 +473,33 @@
    scopes define their own focus/scroll behavior and stay unaffected. */
 
 /* Brand-consistent focus ring: emerald, never the browser default (or purple).
-   :focus-visible only — pointer users don't see rings after mouse clicks. */
-:where(:not(.fora-root, .fora-root *, .fora-auth, .fora-auth *)):focus-visible {
+   :focus-visible only — pointer users don't see rings after mouse clicks.
+   The landing (.fora-root), auth (.fora-auth) and blog article (.blog-article)
+   scopes define their own focus treatment and stay unaffected. */
+:where(:not(.fora-root, .fora-root *, .fora-auth, .fora-auth *, .blog-article, .blog-article *)):focus-visible {
   outline: 2px solid #059669;
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* ---- Blog article — light editorial scope -------------------------------
+   The article page is a warm-cream publication shell (deliberately NOT the
+   dark landing or the app shell). Ink-colored focus ring + dark-on-cream
+   selection keep the scope visually coherent. Text inputs (newsletter
+   mini-card) rely on the wrapper's focus-within border instead of a ring. */
+.blog-article :focus-visible {
+  outline: 2px solid #1c1917;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.blog-article ::selection {
+  background: #1c1917;
+  color: #faf8f3;
+}
+
+.blog-article input:focus-visible {
+  outline: none;
 }
 
 /* Programmatic focus targets (skip-link destination, route containers)
