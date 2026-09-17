@@ -1,0 +1,624 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useRef, useState } from 'react'
+     4→import Image from 'next/image'
+     5→import {
+     6→  ArrowLeft,
+     7→  ArrowRight,
+     8→  ArrowUpRight,
+     9→  Check,
+    10→  ChevronRight,
+    11→  Clock,
+    12→  Link2,
+    13→  Linkedin,
+    14→  Mail,
+    15→  Send,
+    16→} from 'lucide-react'
+    17→import { navigate } from '@/hooks/use-hash-route'
+    18→import { getBlogPost, getRelatedPosts, type BlogPost } from '@/content/blog-posts'
+    19→
+    20→/*
+    21→ * Blog article page — light editorial design (warm cream canvas, Instrument
+    22→ * Serif display headlines, sticky share + table-of-contents rail) matching
+    23→ * the user's reference layout: breadcrumb, headline-left / image-right hero,
+    24→ * byline, then a two-column body with a "Share this Article" + "In this
+    25→ * Article" sidebar and a professional typeset article column.
+    26→ *
+    27→ * Scoped with .blog-article so the landing (.fora-root) and app focus rings
+    28→ * never leak in; the body canvas is painted cream while mounted (same
+    29→ * pattern HomePage uses for its dark canvas).
+    30→ */
+    31→
+    32→const INK = '#1c1917'
+    33→
+    34→/** Share target builders — resolved at click time so the URL is always current. */
+    35→function shareTargets(title: string) {
+    36→  return {
+    37→    x: () => {
+    38→      const url = encodeURIComponent(window.location.href)
+    39→      const text = encodeURIComponent(title)
+    40→      window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank', 'noopener,noreferrer')
+    41→    },
+    42→    linkedin: () => {
+    43→      const url = encodeURIComponent(window.location.href)
+    44→      window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank', 'noopener,noreferrer')
+    45→    },
+    46→    mail: () => {
+    47→      const url = window.location.href
+    48→      window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`I thought you might enjoy this article: ${url}`)}`
+    49→    },
+    50→  }
+    51→}
+    52→
+    53→function XIcon({ className }: { className?: string }) {
+    54→  return (
+    55→    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    56→      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    57→    </svg>
+    58→  )
+    59→}
+    60→
+    61→/* ------------------------------------------------------------------ */
+    62→/* Share rail                                                          */
+    63→/* ------------------------------------------------------------------ */
+    64→
+    65→function ShareButtons({ title, layout }: { title: string; layout: 'stack' | 'row' }) {
+    66→  const [copied, setCopied] = useState(false)
+    67→  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    68→
+    69→  useEffect(() => () => {
+    70→    if (timer.current) clearTimeout(timer.current)
+    71→  }, [])
+    72→
+    73→  const copy = async () => {
+    74→    const url = window.location.href
+    75→    // Primary: async Clipboard API. Fallback: hidden-textarea execCommand for
+    76→    // contexts where clipboard-write permission is restricted (older browsers,
+    77→    // embedded webviews). Both failing stays silent — a copy button may lose.
+    78→    try {
+    79→      await navigator.clipboard.writeText(url)
+    80→      setCopied(true)
+    81→    } catch {
+    82→      try {
+    83→        const ta = document.createElement('textarea')
+    84→        ta.value = url
+    85→        ta.setAttribute('readonly', '')
+    86→        ta.style.position = 'fixed'
+    87→        ta.style.opacity = '0'
+    88→        document.body.appendChild(ta)
+    89→        ta.select()
+    90→        document.execCommand('copy')
+    91→        document.body.removeChild(ta)
+    92→        setCopied(true)
+    93→      } catch {
+    94→        /* clipboard unavailable — no feedback shown */
+    95→        return
+    96→      }
+    97→    }
+    98→    if (timer.current) clearTimeout(timer.current)
+    99→    timer.current = setTimeout(() => setCopied(false), 2200)
+   100→  }
+   101→
+   102→  const targets = shareTargets(title)
+   103→  const btn =
+   104→    'flex h-10 w-10 items-center justify-center rounded-lg bg-[#1c1917] text-[#faf8f3] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#3f3a35] hover:shadow-[0_8px_20px_-8px_rgba(28,25,23,0.5)]'
+   105→
+   106→  return (
+   107→    <div className={layout === 'row' ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5'}>
+   108→      <button type="button" className={btn} aria-label="Share on X (Twitter)" title="Share on X" onClick={targets.x}>
+   109→        <XIcon className="h-4 w-4" />
+   110→      </button>
+   111→      <button type="button" className={btn} aria-label="Share on LinkedIn" title="Share on LinkedIn" onClick={targets.linkedin}>
+   112→        <Linkedin aria-hidden="true" className="h-4 w-4" />
+   113→      </button>
+   114→      <button type="button" className={btn} aria-label="Share by email" title="Share by email" onClick={targets.mail}>
+   115→        <Mail aria-hidden="true" className="h-4 w-4" />
+   116→      </button>
+   117→      <button
+   118→        type="button"
+   119→        className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#e3dcd0] bg-transparent text-[#6e675f] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1c1917] hover:text-[#1c1917]"
+   120→        aria-label={copied ? 'Link copied' : 'Copy link'}
+   121→        title={copied ? 'Copied!' : 'Copy link'}
+   122→        onClick={() => void copy()}
+   123→      >
+   124→        {copied ? <Check aria-hidden="true" className="h-4 w-4 text-emerald-700" /> : <Link2 aria-hidden="true" className="h-4 w-4" />}
+   125→      </button>
+   126→      <span aria-live="polite" className="sr-only">
+   127→        {copied ? 'Article link copied to clipboard' : ''}
+   128→      </span>
+   129→    </div>
+   130→  )
+   131→}
+   132→
+   133→/* ------------------------------------------------------------------ */
+   134→/* Table of contents (scroll-spy)                                      */
+   135→/* ------------------------------------------------------------------ */
+   136→
+   137→function TableOfContents({
+   138→  post,
+   139→  activeId,
+   140→  onNavigate,
+   141→}: {
+   142→  post: BlogPost
+   143→  activeId: string
+   144→  onNavigate: (id: string) => void
+   145→}) {
+   146→  return (
+   147→    <nav aria-label="Table of contents">
+   148→      <p className="text-sm font-semibold text-[#1c1917]">In this Article</p>
+   149→      <ol className="mt-3 space-y-0.5">
+   150→        {post.sections.map((section, index) => {
+   151→          const active = section.id === activeId
+   152→          return (
+   153→            <li key={section.id}>
+   154→              <button
+   155→                type="button"
+   156→                onClick={() => onNavigate(section.id)}
+   157→                aria-current={active ? 'location' : undefined}
+   158→                className={`group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug transition-colors duration-150 ${
+   159→                  active ? 'bg-[#e9e2d5] font-medium text-[#1c1917]' : 'text-[#8a8177] hover:bg-[#efe9dd] hover:text-[#1c1917]'
+   160→                }`}
+   161→              >
+   162→                {active ? (
+   163→                  <span
+   164→                    aria-hidden="true"
+   165→                    className="flex shrink-0 items-center justify-center rounded-full bg-[#1c1917]"
+   166→                    style={{ height: 18, width: 18 }}
+   167→                  >
+   168→                    <ChevronRight className="h-2.5 w-2.5 text-[#faf8f3]" strokeWidth={3} />
+   169→                  </span>
+   170→                ) : (
+   171→                  <span aria-hidden="true" className="w-[18px] shrink-0 text-center text-[11px] tabular-nums text-[#b3a99b]">
+   172→                    {index + 1}.
+   173→                  </span>
+   174→                )}
+   175→                <span className="line-clamp-2">{section.heading}</span>
+   176→              </button>
+   177→            </li>
+   178→          )
+   179→        })}
+   180→      </ol>
+   181→    </nav>
+   182→  )
+   183→}
+   184→
+   185→/* ------------------------------------------------------------------ */
+   186→/* Newsletter mini-card (sidebar)                                      */
+   187→/* ------------------------------------------------------------------ */
+   188→
+   189→function NewsletterCard() {
+   190→  const [email, setEmail] = useState('')
+   191→  const [done, setDone] = useState(false)
+   192→
+   193→  return (
+   194→    <div className="rounded-xl bg-[#f1ece2] p-5">
+   195→      <p className="text-sm font-semibold text-[#1c1917]">Field notes, monthly.</p>
+   196→      <p className="mt-1.5 text-xs leading-relaxed text-[#6e675f]">
+   197→        One email a month — new playbooks, blocker patterns and product updates. No noise.
+   198→      </p>
+   199→      {done ? (
+   200→        <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#1c1917] px-3 py-1.5 text-xs font-medium text-[#faf8f3]">
+   201→          <Check aria-hidden="true" className="h-3.5 w-3.5" /> You&apos;re on the list
+   202→        </p>
+   203→      ) : (
+   204→        <form
+   205→          className="mt-3"
+   206→          onSubmit={(e) => {
+   207→            e.preventDefault()
+   208→            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) setDone(true)
+   209→          }}
+   210→        >
+   211→          <div className="flex items-center gap-1.5 rounded-lg border border-[#ddd5c7] bg-white/70 p-1 transition-colors focus-within:border-[#1c1917]">
+   212→            <label htmlFor="blog-newsletter" className="sr-only">
+   213→              Email address
+   214→            </label>
+   215→            <input
+   216→              id="blog-newsletter"
+   217→              type="email"
+   218→              required
+   219→              value={email}
+   220→              onChange={(e) => setEmail(e.target.value)}
+   221→              placeholder="you@company.com"
+   222→              className="w-full bg-transparent px-2.5 text-xs text-[#1c1917] outline-none placeholder:text-[#b3a99b]"
+   223→            />
+   224→            <button
+   225→              type="submit"
+   226→              aria-label="Subscribe"
+   227→              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#1c1917] text-[#faf8f3] transition-transform hover:scale-105"
+   228→            >
+   229→              <Send aria-hidden="true" className="h-3.5 w-3.5" />
+   230→            </button>
+   231→          </div>
+   232→        </form>
+   233→      )}
+   234→    </div>
+   235→  )
+   236→}
+   237→
+   238→/* ------------------------------------------------------------------ */
+   239→/* Article page                                                        */
+   240→/* ------------------------------------------------------------------ */
+   241→
+   242→export function BlogArticlePage({ slug }: { slug: string }) {
+   243→  const post = getBlogPost(slug)
+   244→  const [activeId, setActiveId] = useState('')
+   245→  const [progress, setProgress] = useState(0)
+   246→
+   247→  // Paint the document canvas cream while the article is mounted (mirrors
+   248→  // HomePage's dark-canvas pattern) so overscroll never flashes the app shell.
+   249→  useEffect(() => {
+   250→    const previous = document.body.style.backgroundColor
+   251→    document.body.style.backgroundColor = '#faf8f3'
+   252→    return () => {
+   253→      document.body.style.backgroundColor = previous
+   254→    }
+   255→  }, [])
+   256→
+   257→  // Fresh article = fresh scroll position. (activeId/progress re-measure via
+   258→  // the scroll effect below; the AnimatePresence transition remounts per slug.)
+   259→  useEffect(() => {
+   260→    window.scrollTo(0, 0)
+   261→  }, [slug])
+   262→
+   263→  // Reading progress + scroll-spy, rAF-throttled on one passive listener.
+   264→  useEffect(() => {
+   265→    if (!post) return
+   266→    let raf = 0
+   267→    const measure = () => {
+   268→      const doc = document.documentElement
+   269→      const total = doc.scrollHeight - window.innerHeight
+   270→      setProgress(total > 0 ? Math.min(100, Math.max(0, (window.scrollY / total) * 100)) : 0)
+   271→
+   272→      const probe = window.scrollY + 168
+   273→      let current = ''
+   274→      for (const section of post.sections) {
+   275→        const el = document.getElementById(section.id)
+   276→        if (el && el.offsetTop <= probe) current = section.id
+   277→      }
+   278→      const nearBottom = window.innerHeight + window.scrollY >= doc.scrollHeight - 8
+   279→      if (nearBottom && post.sections.length > 0) current = post.sections[post.sections.length - 1].id
+   280→      setActiveId(current)
+   281→    }
+   282→    const onScroll = () => {
+   283→      cancelAnimationFrame(raf)
+   284→      raf = requestAnimationFrame(measure)
+   285→    }
+   286→    measure()
+   287→    window.addEventListener('scroll', onScroll, { passive: true })
+   288→    window.addEventListener('resize', onScroll)
+   289→    return () => {
+   290→      cancelAnimationFrame(raf)
+   291→      window.removeEventListener('scroll', onScroll)
+   292→      window.removeEventListener('resize', onScroll)
+   293→    }
+   294→  }, [post])
+   295→
+   296→  const scrollToSection = (id: string) => {
+   297→    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+   298→  }
+   299→
+   300→  /** Back to the landing's blog grid (hash router owns location.hash). */
+   301→  const goToBlogIndex = () => {
+   302→    navigate('/')
+   303→    // The route transition (AnimatePresence "wait") mounts the landing ~250ms
+   304→    // after navigation, so #blog may not exist yet — retry until it does.
+   305→    const tryScroll = (delay: number) => {
+   306→      window.setTimeout(() => {
+   307→        const el = document.getElementById('blog')
+   308→        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+   309→      }, delay)
+   310→    }
+   311→    tryScroll(420)
+   312→    tryScroll(950) // safety net — re-targeting an existing smooth scroll is idempotent
+   313→  }
+   314→
+   315→  /* ---------------- Unknown slug ---------------- */
+   316→  if (!post) {
+   317→    return (
+   318→      <div className="blog-article flex min-h-screen flex-col items-center justify-center bg-[#faf8f3] px-6 font-fora-sans text-[#1c1917] antialiased">
+   319→        <p className="font-fora-serif text-6xl italic text-[#c9c0b0]">404</p>
+   320→        <h1 className="mt-4 text-xl font-semibold">This article does not exist (yet).</h1>
+   321→        <p className="mt-2 max-w-sm text-center text-sm text-[#6e675f]">
+   322→          The piece you are looking for may have moved, or the link is wrong.
+   323→        </p>
+   324→        <button
+   325→          type="button"
+   326→          onClick={goToBlogIndex}
+   327→          className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#1c1917] px-6 text-sm font-medium text-[#faf8f3] transition-transform hover:scale-[1.03]"
+   328→        >
+   329→          <ArrowLeft aria-hidden="true" className="h-4 w-4" /> Back to the blog
+   330→        </button>
+   331→      </div>
+   332→    )
+   333→  }
+   334→
+   335→  const related = getRelatedPosts(post.slug)
+   336→
+   337→  return (
+   338→    <div className="blog-article min-h-screen bg-[#faf8f3] font-fora-sans text-[#1c1917] antialiased">
+   339→      {/* Reading progress */}
+   340→      <div aria-hidden="true" className="fixed inset-x-0 top-0 z-[95] h-[3px] bg-transparent">
+   341→        <div className="h-full bg-[#1c1917] transition-[width] duration-150 ease-out" style={{ width: `${progress}%` }} />
+   342→      </div>
+   343→
+   344→      {/* Slim header */}
+   345→      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+   346→        <button
+   347→          type="button"
+   348→          onClick={() => navigate('/')}
+   349→          className="text-sm font-bold tracking-[0.24em] text-[#1c1917] transition-opacity hover:opacity-70"
+   350→        >
+   351→          EVENT OS
+   352→        </button>
+   353→        <button
+   354→          type="button"
+   355→          onClick={goToBlogIndex}
+   356→          className="inline-flex min-h-11 items-center gap-2 text-sm text-[#6e675f] transition-colors hover:text-[#1c1917]"
+   357→        >
+   358→          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+   359→          Back to blog
+   360→        </button>
+   361→      </header>
+   362→
+   363→      <main className="mx-auto max-w-6xl px-6 pb-24 pt-4">
+   364→        {/* Breadcrumb */}
+   365→        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[13px] text-[#8a8177]">
+   366→          <button type="button" onClick={goToBlogIndex} className="rounded transition-colors hover:text-[#1c1917]">
+   367→            Blog
+   368→          </button>
+   369→          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-[#c9c0b0]" />
+   370→          <span>{post.category}</span>
+   371→          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-[#c9c0b0]" />
+   372→          <span aria-current="page" className="max-w-[180px] truncate font-medium text-[#1c1917] sm:max-w-none">
+   373→            {post.title}
+   374→          </span>
+   375→        </nav>
+   376→
+   377→        {/* Hero: headline left, editorial image right */}
+   378→        <div className="mt-8 grid items-start gap-10 md:grid-cols-[1fr_400px]">
+   379→          <div>
+   380→            <h1 className="font-fora-serif text-[clamp(2.4rem,4.8vw,3.6rem)] leading-[1.06] tracking-[-0.01em]">
+   381→              {post.title}
+   382→            </h1>
+   383→            <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2">
+   384→              <Image
+   385→                src={post.author.avatar}
+   386→                alt={`Portrait of ${post.author.name}`}
+   387→                width={40}
+   388→                height={40}
+   389→                unoptimized
+   390→                className="h-10 w-10 rounded-full object-cover ring-1 ring-[#e3dcd0]"
+   391→              />
+   392→              <span className="text-sm font-medium">{post.author.name}</span>
+   393→              <span aria-hidden="true" className="h-4 w-px bg-[#ddd5c7]" />
+   394→              <span className="text-sm text-[#8a8177]">Last updated on {post.updatedOn}</span>
+   395→              <span aria-hidden="true" className="h-4 w-px bg-[#ddd5c7]" />
+   396→              <span className="inline-flex items-center gap-1.5 text-sm text-[#8a8177]">
+   397→                <Clock aria-hidden="true" className="h-3.5 w-3.5" /> {post.readTime}
+   398→              </span>
+   399→            </div>
+   400→            {/* Mobile share row (the sticky rail is desktop-only) */}
+   401→            <div className="mt-6 lg:hidden">
+   402→              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a8177]">Share this article</p>
+   403→              <ShareButtons title={post.title} layout="row" />
+   404→            </div>
+   405→          </div>
+   406→          <figure className="relative">
+   407→            <div className="overflow-hidden rounded-2xl ring-1 ring-[#e3dcd0]">
+   408→              <Image
+   409→                src={post.image}
+   410→                alt={post.imageAlt}
+   411→                width={800}
+   412→                height={600}
+   413→                priority
+   414→                unoptimized
+   415→                sizes="(max-width: 768px) 100vw, 400px"
+   416→                className="aspect-[4/3] w-full object-cover"
+   417→              />
+   418→            </div>
+   419→            <figcaption className="mt-2.5 text-xs leading-relaxed text-[#a39b8f]">
+   420→              {post.category} · The EVENT OS publication
+   421→            </figcaption>
+   422→          </figure>
+   423→        </div>
+   424→
+   425→        {/* Body: sticky rail + article column */}
+   426→        <div className="mt-14 grid gap-12 lg:grid-cols-[248px_1fr]">
+   427→          {/* Desktop sidebar */}
+   428→          <aside aria-label="Article sidebar" className="hidden lg:block">
+   429→            <div className="sticky top-8 space-y-6">
+   430→              <div>
+   431→                <p className="mb-3 text-sm font-semibold text-[#1c1917]">Share this Article</p>
+   432→                <ShareButtons title={post.title} layout="stack" />
+   433→              </div>
+   434→              <div className="rounded-xl bg-[#f1ece2] p-5">
+   435→                <TableOfContents post={post} activeId={activeId} onNavigate={scrollToSection} />
+   436→              </div>
+   437→              <NewsletterCard />
+   438→            </div>
+   439→          </aside>
+   440→
+   441→          {/* Article */}
+   442→          <article className="max-w-[680px]">
+   443→            {/* Mobile TOC (collapsed) */}
+   444→            <details className="group mb-10 rounded-xl bg-[#f1ece2] p-5 lg:hidden">
+   445→              <summary className="cursor-pointer list-none text-sm font-semibold text-[#1c1917] [&::-webkit-details-marker]:hidden">
+   446→                <span className="inline-flex items-center gap-2">
+   447→                  In this Article
+   448→                  <ChevronRight aria-hidden="true" className="h-4 w-4 transition-transform duration-200 group-open:rotate-90" />
+   449→                </span>
+   450→              </summary>
+   451→              <div className="mt-3">
+   452→                <TableOfContents post={post} activeId={activeId} onNavigate={scrollToSection} />
+   453→              </div>
+   454→            </details>
+   455→
+   456→            {/* Intro — set slightly larger, editorial style */}
+   457→            {post.intro.map((paragraph) => (
+   458→              <p key={paragraph.slice(0, 24)} className="mt-6 text-[17px] leading-[1.8] text-[#3e3833] first:mt-0 md:text-[18px]">
+   459→                {paragraph}
+   460→              </p>
+   461→            ))}
+   462→
+   463→            {post.sections.map((section, index) => (
+   464→              <section key={section.id} aria-labelledby={`heading-${section.id}`}>
+   465→                <h2
+   466→                  id={section.id}
+   467→                  className="mt-12 scroll-mt-14 text-[22px] font-semibold leading-snug tracking-tight md:text-2xl"
+   468→                >
+   469→                  <span aria-hidden="true" className="mr-3 font-fora-serif italic text-[#b3a99b]">
+   470→                    {String(index + 1).padStart(2, '0')}
+   471→                  </span>
+   472→                  {section.heading}
+   473→                  <span id={`heading-${section.id}`} className="sr-only">
+   474→                    — section {index + 1}
+   475→                  </span>
+   476→                </h2>
+   477→                {section.paragraphs.map((paragraph) => (
+   478→                  <p key={paragraph.slice(0, 24)} className="mt-5 text-[16px] leading-[1.8] text-[#3e3833] md:text-[17px]">
+   479→                    {paragraph}
+   480→                  </p>
+   481→                ))}
+   482→                {section.list && (
+   483→                  <ul className="mt-6 space-y-3">
+   484→                    {section.list.map((item) => (
+   485→                      <li key={item.slice(0, 24)} className="flex gap-3 text-[16px] leading-[1.7] text-[#3e3833] md:text-[17px]">
+   486→                        <span aria-hidden="true" className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1c1917]" />
+   487→                        <span>{item}</span>
+   488→                      </li>
+   489→                    ))}
+   490→                  </ul>
+   491→                )}
+   492→
+   493→                {/* Pull quote — mid-article editorial break */}
+   494→                {index === 1 && (
+   495→                  <figure className="my-12 border-l-2 border-[#1c1917] pl-6 md:pl-8">
+   496→                    <blockquote className="font-fora-serif text-[clamp(1.5rem,2.6vw,2rem)] italic leading-[1.3] text-[#1c1917]">
+   497→                      “{post.quote.text}”
+   498→                    </blockquote>
+   499→                    <figcaption className="mt-3 text-sm text-[#8a8177]">— {post.quote.cite}</figcaption>
+   500→                  </figure>
+   501→                )}
+   502→              </section>
+   503→            ))}
+   504→
+   505→            {/* Closing */}
+   506→            {post.closing.map((paragraph) => (
+   507→              <p key={paragraph.slice(0, 24)} className="mt-10 border-t border-[#e8e1d6] pt-8 text-[17px] font-medium leading-[1.8] text-[#1c1917] md:text-[18px]">
+   508→                {paragraph}
+   509→              </p>
+   510→            ))}
+   511→
+   512→            {/* Tags */}
+   513→            <div className="mt-10 flex flex-wrap items-center gap-2">
+   514→              {post.tags.map((tag) => (
+   515→                <span
+   516→                  key={tag}
+   517→                  className="rounded-full border border-[#e3dcd0] px-3 py-1 text-xs font-medium text-[#6e675f] transition-colors hover:border-[#1c1917] hover:text-[#1c1917]"
+   518→                >
+   519→                  #{tag}
+   520→                </span>
+   521→              ))}
+   522→            </div>
+   523→
+   524→            {/* End share strip */}
+   525→            <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-[#f1ece2] p-5">
+   526→              <p className="text-sm font-semibold text-[#1c1917]">Enjoyed the read? Pass it on.</p>
+   527→              <ShareButtons title={post.title} layout="row" />
+   528→            </div>
+   529→
+   530→            {/* Author card */}
+   531→            <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-[#e8e1d6] bg-white/50 p-6 sm:flex-row">
+   532→              <Image
+   533→                src={post.author.avatar}
+   534→                alt={`Portrait of ${post.author.name}`}
+   535→                width={56}
+   536→                height={56}
+   537→                unoptimized
+   538→                className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-[#e3dcd0]"
+   539→              />
+   540→              <div>
+   541→                <p className="text-[15px] font-semibold text-[#1c1917]">{post.author.name}</p>
+   542→                <p className="text-xs uppercase tracking-[0.12em] text-[#a39b8f]">{post.author.role}</p>
+   543→                <p className="mt-2.5 text-sm leading-relaxed text-[#6e675f]">{post.author.bio}</p>
+   544→              </div>
+   545→            </div>
+   546→          </article>
+   547→        </div>
+   548→
+   549→        {/* Related articles */}
+   550→        <section aria-labelledby="related-title" className="mt-24 border-t border-[#e8e1d6] pt-14">
+   551→          <h2 id="related-title" className="text-[clamp(1.6rem,3vw,2.2rem)] font-semibold tracking-tight">
+   552→            Keep <span className="font-fora-serif font-normal italic text-[#8a8177]">reading.</span>
+   553→          </h2>
+   554→          <div className="mt-8 grid gap-6 md:grid-cols-2">
+   555→            {related.map((rel) => (
+   556→              <a
+   557→                key={rel.slug}
+   558→                href={`#/blog/${rel.slug}`}
+   559→                className="group overflow-hidden rounded-2xl border border-[#e8e1d6] bg-white/50 transition-all duration-300 hover:-translate-y-1 hover:border-[#d5cbbc] hover:shadow-[0_20px_40px_-24px_rgba(28,25,23,0.35)]"
+   560→              >
+   561→                <div className="relative aspect-[16/9] overflow-hidden">
+   562→                  <Image
+   563→                    src={rel.image}
+   564→                    alt={rel.imageAlt}
+   565→                    width={640}
+   566→                    height={360}
+   567→                    unoptimized
+   568→                    sizes="(max-width: 768px) 100vw, 400px"
+   569→                    className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
+   570→                  />
+   571→                </div>
+   572→                <div className="p-6">
+   573→                  <div className="flex items-center gap-3 text-xs">
+   574→                    <span className="rounded-full border border-[#e3dcd0] px-2.5 py-1 font-medium uppercase tracking-[0.12em] text-[#6e675f]">
+   575→                      {rel.category}
+   576→                    </span>
+   577→                    <span className="inline-flex items-center gap-1.5 text-[#a39b8f]">
+   578→                      <Clock aria-hidden="true" className="h-3 w-3" /> {rel.readTime}
+   579→                    </span>
+   580→                  </div>
+   581→                  <h3 className="mt-3 text-lg font-semibold leading-snug tracking-tight text-[#1c1917]">{rel.title}</h3>
+   582→                  <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#6e675f]">{rel.excerpt}</p>
+   583→                  <p className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#1c1917]">
+   584→                    Read article
+   585→                    <ArrowRight aria-hidden="true" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+   586→                  </p>
+   587→                </div>
+   588→              </a>
+   589→            ))}
+   590→          </div>
+   591→        </section>
+   592→
+   593→        {/* Bottom CTA */}
+   594→        <div className="mt-16 flex flex-col items-center gap-4 rounded-2xl bg-[#1c1917] px-8 py-12 text-center">
+   595→          <p className="font-fora-serif text-[clamp(1.6rem,3vw,2.4rem)] italic leading-tight text-[#faf8f3]">
+   596→            Ready to run calmer events?
+   597→          </p>
+   598→          <p className="max-w-md text-sm leading-relaxed text-[#b3a99b]">
+   599→            EventFlow gives your team the live board, the dashboards and the blocker feed — so the system does the remembering.
+   600→          </p>
+   601→          <button
+   602→            type="button"
+   603→            onClick={() => navigate('/register')}
+   604→            className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#faf8f3] px-6 text-sm font-semibold text-[#1c1917] transition-transform hover:scale-[1.04]"
+   605→          >
+   606→            Start free <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+   607→          </button>
+   608→        </div>
+   609→      </main>
+   610→
+   611→      {/* Minimal footer */}
+   612→      <footer className="border-t border-[#e8e1d6]">
+   613→        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-[#a39b8f] sm:flex-row">
+   614→          <span className="font-bold tracking-[0.24em] text-[#1c1917]">EVENT OS</span>
+   615→          <span>© {new Date().getFullYear()} EventFlow — Field notes for event teams.</span>
+   616→          <button type="button" onClick={() => navigate('/')} className="rounded transition-colors hover:text-[#1c1917]">
+   617→            eventflow.io
+   618→          </button>
+   619→        </div>
+   620→      </footer>
+   621→    </div>
+   622→  )
+   623→}
+   624→

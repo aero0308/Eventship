@@ -865,3 +865,23 @@ Stage Summary:
 - The app is genuinely multi-tenant: no API returns cross-room data (proven by tests), onboarding is mandatory and cannot be bypassed, owners control identity/credentials/membership, and existing accounts were preserved via the Default Room.
 - Key artifacts: prisma/schema.prisma (Room + roomIds), prisma/migrate-rooms.ts, src/lib/room.ts, src/app/api/rooms/** (5 routes) + api/auth/onboarding-status, auth/register+login+me updates, 11 scoped data endpoints, src/components/pages/{OnboardingPage,RoomSettingsPage,RegisterPage}, src/components/profile/MyRoomCard.tsx, page.tsx guards, tests/rooms.test.ts.
 - Risks/next: (1) users cannot switch rooms by design — a "leave room" owner-transfer flow is the spec's stated next step; (2) maxMembers exists in schema but has no owner UI yet (join enforcement is live); (3) realtime service rooms are user/team-scoped, not room-scoped — cross-room events can't leak user data but a room: prefix would tidy the model; (4) room deletion is permanent by design — consider soft-delete + restore window before production; (5) next candidates: owner transfer/leave, room member roles UI (promote inside room), per-room branding, invite links with encoded password.
+
+---
+Task ID: 26
+Agent: Z.ai Code (main)
+Task: Blog content cleanup per user request — remove all fictional/fake elements from the three blog article pages, rebrand authorship to "Sachin Gupta" with the latest date, and fix navigation labels.
+
+Work Log:
+- blog-posts.ts: removed the BlogAuthor interface + AUTHORS record (Maya Chen / Daniel Reyes / Priya Nair personas); `author` is now a plain string — all three posts set to 'Sachin Gupta'; quote model dropped `cite` (pull quotes now unattributed — "— Maya Chen" style fake attributions gone); all three `updatedOn` dates set to '17 September 2026' (today, Asia/Calcutta).
+- BlogArticlePage.tsx: (1) breadcrumb is now `Blog › {title}` — the category crumb ("Playbooks"/"Operations"/"Product") removed; (2) header button + 404 button relabeled "Back to blog" → "Back to Home" with a new `goHome()` (navigate('/') + idempotent scroll-to-top retries at 420/950ms for the AnimatePresence mount delay); the breadcrumb "Blog" crumb keeps goToBlogIndex (scrolls to the blog grid); (3) hero figcaption "Playbooks · The EVENT OS publication" removed; (4) byline avatar <Image> removed — byline is now text-only: Sachin Gupta | Last updated on 17 September 2026 | read time; (5) bottom author card (name/role/bio/avatar) removed entirely; pull-quote cite line removed.
+- Deliberately untouched: category chips on landing/related cards (topical, not fake) and the `#Playbooks` tag pill; fake first names inside landing product mockups (KanbanMockup/BentoGrid/CommentMockup/Testimonials) are demo UI content, out of the blog scope.
+Verification:
+- eslint 0 problems; tsc clean.
+- agent-browser DOM asserts on all three articles: breadcrumb exact (`Blog > …`), byline ["Sachin Gupta","Last updated on 17 September 2026", read time], zero occurrences of Maya/Daniel/Priya/roles/bios/"Portrait of"/"EVENT OS publication", author name appears exactly once per page (card gone), pull quote has no cite.
+- "Back to Home" click E2E: hash → #/, scrollY=0, landing hero mounted.
+- Screenshots: .qa/qa-blog-cleaned-{top,bottom,mobile}.png (390×844 mobile via `agent-browser set viewport`).
+- Regression: landing #blog grid renders 3 cards with no author info; console 0 errors; dev.log clean.
+Stage Summary:
+- Blogs are de-fictionalized: single real author (Sachin Gupta), latest date, no photos, no personas/roles/bios/quote attributions, no "Playbooks" crumb or publication strapline, and navigation reads "Back to Home".
+- Files: src/content/blog-posts.ts, src/components/landing/BlogArticlePage.tsx.
+- Next candidates: author initials monogram could be re-added if user wants a visual byline; landing mockup personas can be neutralized on request; multi-tenant follow-ups from Task 25 remain the larger backlog.

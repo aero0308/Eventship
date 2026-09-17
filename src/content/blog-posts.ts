@@ -1,11 +1,12 @@
 /**
- * Editorial content for the EVENT OS publication.
+ * Editorial content for the blog.
  *
  * Each post is a complete, self-contained article: intro paragraphs, numbered
  * sections (which drive the "In this Article" table of contents), a pull
- * quote, tag pills and an author card. The article page renders this data
- * 1:1 — add a post here and it automatically appears in the landing grid and
- * gets its own route at #/blog/<slug>.
+ * quote and tag pills. All posts are authored by the site owner — no fictional
+ * personas. The article page renders this data 1:1 — add a post here and it
+ * automatically appears in the landing grid and gets its own route at
+ * #/blog/<slug>.
  */
 
 export interface BlogSection {
@@ -15,13 +16,6 @@ export interface BlogSection {
   paragraphs: string[]
   /** Optional bulleted list rendered after the paragraphs. */
   list?: string[]
-}
-
-export interface BlogAuthor {
-  name: string
-  role: string
-  avatar: string
-  bio: string
 }
 
 export interface BlogPost {
@@ -34,33 +28,13 @@ export interface BlogPost {
   excerpt: string
   image: string
   imageAlt: string
-  author: BlogAuthor
+  /** Real author display name — no fictional personas. */
+  author: string
   tags: string[]
   intro: string[]
-  quote: { text: string; cite: string }
+  quote: { text: string }
   sections: BlogSection[]
   closing: string[]
-}
-
-const AUTHORS: Record<string, BlogAuthor> = {
-  maya: {
-    name: 'Maya Chen',
-    role: 'Head of Event Operations',
-    avatar: '/images/landing/author-1.png',
-    bio: 'Maya has produced conferences, product launches and multi-day summits for teams from 40 to 400 people. She writes about the operating systems behind calm events.',
-  },
-  daniel: {
-    name: 'Daniel Reyes',
-    role: 'Field Operations Lead',
-    avatar: '/images/landing/author-2.png',
-    bio: 'Daniel spent a decade on venue floors before moving into event operations. He writes field notes on timelines, vendors and the art of the pre-mortem.',
-  },
-  priya: {
-    name: 'Priya Nair',
-    role: 'Product Lead, EventFlow',
-    avatar: '/images/landing/author-3.png',
-    bio: 'Priya leads product at EventFlow, where her team builds the live dashboards and real-time tooling she writes about.',
-  },
 }
 
 export const BLOG_POSTS: BlogPost[] = [
@@ -68,14 +42,14 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: 'run-200-person-event',
     category: 'Playbooks',
     readTime: '6 min read',
-    updatedOn: '4 April 2025',
+    updatedOn: '17 September 2026',
     title: 'How to run a 200-person event without losing your mind',
     excerpt:
       'The checklist system, the comms cadence and the 72-hour runbook that keep big events calm.',
     image: '/images/landing/blog-1.png',
     imageAlt:
       'Event crew with headsets coordinating a live show from laptops on the venue floor',
-    author: AUTHORS.maya,
+    author: 'Sachin Gupta',
     tags: ['Planning', 'Teams', 'Playbooks'],
     intro: [
       'Somewhere between your 40th-person meetup and your first 200-person conference, the job changes. It stops being a big to-do list and becomes a distributed system: vendors, volunteers, speakers, venues and a thousand small commitments that all land on the same day.',
@@ -83,7 +57,6 @@ export const BLOG_POSTS: BlogPost[] = [
     ],
     quote: {
       text: 'Calm events are not lucky. They are rehearsed.',
-      cite: 'Maya Chen',
     },
     sections: [
       {
@@ -139,14 +112,14 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: 'event-timeline-blockers',
     category: 'Operations',
     readTime: '4 min read',
-    updatedOn: '26 March 2025',
+    updatedOn: '17 September 2026',
     title: 'The 5 blockers that kill event timelines',
     excerpt:
       'Vendor sign-offs, venue access, printed assets — where launches actually get stuck, and how to pre-empt them.',
     image: '/images/landing/blog-2.png',
     imageAlt:
       'Planning wall covered in timeline notes under desk lamps, one red flag card lit up in the middle',
-    author: AUTHORS.daniel,
+    author: 'Sachin Gupta',
     tags: ['Operations', 'Vendors', 'Timelines'],
     intro: [
       'After enough events, you notice the timeline does not die from surprises. It dies from the same five blockers, every time, wearing slightly different costumes.',
@@ -154,7 +127,6 @@ export const BLOG_POSTS: BlogPost[] = [
     ],
     quote: {
       text: 'A blocker flagged on Monday costs an email. The same blocker flagged on load-in day costs the keynote.',
-      cite: 'Daniel Reyes',
     },
     sections: [
       {
@@ -206,14 +178,14 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: 'real-time-dashboards-beat-status-meetings',
     category: 'Product',
     readTime: '5 min read',
-    updatedOn: '12 March 2025',
+    updatedOn: '17 September 2026',
     title: 'Why real-time dashboards beat status meetings',
     excerpt:
       'Status meetings are a polling loop. Live dashboards are an event stream. The math favors one of them.',
     image: '/images/landing/blog-3.png',
     imageAlt:
       'Live analytics dashboard with charts glowing on a monitor in a dark office at night',
-    author: AUTHORS.priya,
+    author: 'Sachin Gupta',
     tags: ['Product', 'Real-time', 'Teams'],
     intro: [
       'Every status meeting ever scheduled follows the same script: eight people, sixty minutes, and the first forty minutes spent answering a question that has an answer already — “how are things going?”',
@@ -221,7 +193,6 @@ export const BLOG_POSTS: BlogPost[] = [
     ],
     quote: {
       text: 'Progress you can see is progress you do not have to ask about.',
-      cite: 'Priya Nair',
     },
     sections: [
       {

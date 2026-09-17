@@ -312,6 +312,17 @@ export function BlogArticlePage({ slug }: { slug: string }) {
     tryScroll(950) // safety net — re-targeting an existing smooth scroll is idempotent
   }
 
+  /** Back to the top of the landing page ("Back to Home"). */
+  const goHome = () => {
+    navigate('/')
+    // Same AnimatePresence mount delay — re-scrolling to top is idempotent.
+    const tryTop = (delay: number) => {
+      window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), delay)
+    }
+    tryTop(420)
+    tryTop(950)
+  }
+
   /* ---------------- Unknown slug ---------------- */
   if (!post) {
     return (
@@ -323,10 +334,10 @@ export function BlogArticlePage({ slug }: { slug: string }) {
         </p>
         <button
           type="button"
-          onClick={goToBlogIndex}
+          onClick={goHome}
           className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#1c1917] px-6 text-sm font-medium text-[#faf8f3] transition-transform hover:scale-[1.03]"
         >
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" /> Back to the blog
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" /> Back to Home
         </button>
       </div>
     )
@@ -352,22 +363,20 @@ export function BlogArticlePage({ slug }: { slug: string }) {
         </button>
         <button
           type="button"
-          onClick={goToBlogIndex}
+          onClick={goHome}
           className="inline-flex min-h-11 items-center gap-2 text-sm text-[#6e675f] transition-colors hover:text-[#1c1917]"
         >
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-          Back to blog
+          Back to Home
         </button>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-24 pt-4">
-        {/* Breadcrumb */}
+        {/* Breadcrumb — Blog only; the category chip lives on the cards, not here */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[13px] text-[#8a8177]">
           <button type="button" onClick={goToBlogIndex} className="rounded transition-colors hover:text-[#1c1917]">
             Blog
           </button>
-          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-[#c9c0b0]" />
-          <span>{post.category}</span>
           <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-[#c9c0b0]" />
           <span aria-current="page" className="max-w-[180px] truncate font-medium text-[#1c1917] sm:max-w-none">
             {post.title}
@@ -381,15 +390,7 @@ export function BlogArticlePage({ slug }: { slug: string }) {
               {post.title}
             </h1>
             <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <Image
-                src={post.author.avatar}
-                alt={`Portrait of ${post.author.name}`}
-                width={40}
-                height={40}
-                unoptimized
-                className="h-10 w-10 rounded-full object-cover ring-1 ring-[#e3dcd0]"
-              />
-              <span className="text-sm font-medium">{post.author.name}</span>
+              <span className="text-sm font-semibold">{post.author}</span>
               <span aria-hidden="true" className="h-4 w-px bg-[#ddd5c7]" />
               <span className="text-sm text-[#8a8177]">Last updated on {post.updatedOn}</span>
               <span aria-hidden="true" className="h-4 w-px bg-[#ddd5c7]" />
@@ -416,9 +417,6 @@ export function BlogArticlePage({ slug }: { slug: string }) {
                 className="aspect-[4/3] w-full object-cover"
               />
             </div>
-            <figcaption className="mt-2.5 text-xs leading-relaxed text-[#a39b8f]">
-              {post.category} · The EVENT OS publication
-            </figcaption>
           </figure>
         </div>
 
@@ -496,7 +494,6 @@ export function BlogArticlePage({ slug }: { slug: string }) {
                     <blockquote className="font-fora-serif text-[clamp(1.5rem,2.6vw,2rem)] italic leading-[1.3] text-[#1c1917]">
                       “{post.quote.text}”
                     </blockquote>
-                    <figcaption className="mt-3 text-sm text-[#8a8177]">— {post.quote.cite}</figcaption>
                   </figure>
                 )}
               </section>
@@ -525,23 +522,6 @@ export function BlogArticlePage({ slug }: { slug: string }) {
             <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-[#f1ece2] p-5">
               <p className="text-sm font-semibold text-[#1c1917]">Enjoyed the read? Pass it on.</p>
               <ShareButtons title={post.title} layout="row" />
-            </div>
-
-            {/* Author card */}
-            <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-[#e8e1d6] bg-white/50 p-6 sm:flex-row">
-              <Image
-                src={post.author.avatar}
-                alt={`Portrait of ${post.author.name}`}
-                width={56}
-                height={56}
-                unoptimized
-                className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-[#e3dcd0]"
-              />
-              <div>
-                <p className="text-[15px] font-semibold text-[#1c1917]">{post.author.name}</p>
-                <p className="text-xs uppercase tracking-[0.12em] text-[#a39b8f]">{post.author.role}</p>
-                <p className="mt-2.5 text-sm leading-relaxed text-[#6e675f]">{post.author.bio}</p>
-              </div>
             </div>
           </article>
         </div>
