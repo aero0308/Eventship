@@ -143,7 +143,7 @@ export function ProfilePage() {
         // We just signed ourselves out — reset the store and bounce to login.
         setUser(null)
         navigate(ROUTES.LOGIN)
-        toast({ title: 'Signed out', description: 'This device was signed out of EventFlow.' })
+        toast({ title: 'Signed out', description: 'This device was signed out of Eventship.' })
         return
       }
       toast({ title: 'Device signed out', description: 'That session can no longer access your account.' })

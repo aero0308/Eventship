@@ -4,23 +4,23 @@ import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "next-themes";
 
 export const metadata: Metadata = {
-  title: "EventFlow — Event Management System",
+  title: "Eventship — Event Management System",
   description:
-    "EventFlow brings event planning, team coordination, task boards and notifications together — run flawless events from one place.",
-  keywords: ["EventFlow", "event management", "teams", "tasks", "kanban", "planning", "Next.js"],
-  authors: [{ name: "EventFlow" }],
+    "Eventship brings event planning, team coordination, task boards and notifications together — run flawless events from one place.",
+  keywords: ["Eventship", "event management", "teams", "tasks", "kanban", "planning", "Next.js"],
+  authors: [{ name: "Eventship" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "EventFlow — Event Management System",
+    title: "Eventship — Event Management System",
     description: "Plan events. Coordinate teams. Ship on time.",
-    siteName: "EventFlow",
+    siteName: "Eventship",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "EventFlow — Event Management System",
+    title: "Eventship — Event Management System",
     description: "Plan events. Coordinate teams. Ship on time.",
   },
 };

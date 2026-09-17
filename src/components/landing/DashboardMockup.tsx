@@ -39,7 +39,7 @@ export function DashboardMockup() {
   return (
     <div
       role="img"
-      aria-label="Preview of the Event OS dashboard: stat cards, live progress chart and task list"
+      aria-label="Preview of the Eventship dashboard: stat cards, live progress chart and task list"
       className="relative overflow-hidden rounded-xl border border-fora-border bg-fora-surface text-left shadow-[0_50px_140px_-30px_rgba(0,0,0,0.9)]"
     >
       {/* Browser chrome */}
@@ -51,7 +51,7 @@ export function DashboardMockup() {
         </div>
         <div className="mx-auto flex h-6 w-full max-w-[240px] items-center justify-center gap-1.5 rounded-md border border-fora-border bg-fora-bg px-3 text-[10px] text-fora-muted">
           <Lock className="h-2.5 w-2.5" aria-hidden="true" />
-          eventos.app/dashboard
+          eventship.app/dashboard
         </div>
         <div aria-hidden="true" className="hidden gap-3 text-fora-muted sm:flex">
           <Search className="h-3 w-3" />
@@ -67,7 +67,7 @@ export function DashboardMockup() {
         >
           <div className="mb-4 flex items-center gap-2 px-2 pt-1">
             <span className="h-2 w-2 rotate-45 rounded-[2px] bg-fora-accent" />
-            <span className="text-[11px] font-semibold tracking-tight text-white">EVENT OS</span>
+            <span className="text-[11px] font-semibold tracking-tight text-white">EVENTSHIP</span>
           </div>
           <nav className="space-y-1">
             {SIDEBAR_ITEMS.map((item) => (

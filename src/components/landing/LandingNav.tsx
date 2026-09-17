@@ -78,13 +78,13 @@ export function LandingNav() {
             scrollToTop()
           }}
           className="flex items-center gap-2.5 justify-self-start"
-          aria-label="Event OS — back to top"
+          aria-label="Eventship — back to top"
         >
           <span
             aria-hidden="true"
             className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
           />
-          <span className="text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
+          <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
         </button>
 
         {/* Center links (desktop) — dead-center of the viewport */}
@@ -148,7 +148,7 @@ export function LandingNav() {
             <div className="flex h-16 items-center justify-between px-6">
               <span className="flex items-center gap-2.5">
                 <span aria-hidden="true" className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent" />
-                <span className="text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
+                <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
               </span>
               <button
                 type="button"

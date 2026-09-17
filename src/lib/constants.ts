@@ -3,7 +3,7 @@
  * Used by both API routes (validation) and frontend (rendering).
  */
 
-export const APP_NAME = 'EventFlow'
+export const APP_NAME = 'Eventship'
 export const APP_TAGLINE = 'Plan events. Coordinate teams. Ship on time.'
 export const API_BASE = '/api'
 

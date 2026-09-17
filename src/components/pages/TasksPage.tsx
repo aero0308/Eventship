@@ -1563,7 +1563,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                     task.commentCount ?? 0,
                   ]),
                 ]
-                downloadCsv(scope === 'mine' ? `eventflow-my-tasks-${csvDateStamp()}` : `eventflow-tasks-${csvDateStamp()}`, rows)
+                downloadCsv(scope === 'mine' ? `eventship-my-tasks-${csvDateStamp()}` : `eventship-tasks-${csvDateStamp()}`, rows)
                 toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
               }}
               disabled={tasks.length === 0}

@@ -72,7 +72,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
               aria-hidden="true"
               className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
             />
-            <span className="text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
+            <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
           </div>
 
           {/* Editorial pitch */}
@@ -140,7 +140,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
             aria-hidden="true"
             className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
           />
-          <span className="auth-brand-name text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
+          <span className="auth-brand-name text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
         </div>
 
         <motion.div

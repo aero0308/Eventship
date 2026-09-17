@@ -935,3 +935,20 @@ Stage Summary:
 - Dark-mode graphs now match the balanced calibration: clearly saturated, never neon, never gray. The per-theme hex palettes are the knobs if further tuning is requested (STATUS_CHART_COLORS / TREND_COLORS / PRIORITY_CHART_COLORS in DashboardPage.tsx).
 - Files: src/components/pages/DashboardPage.tsx (dark palettes only), .qa/oklch-to-hex.ts (throwaway converter).
 - Next candidates: consolidate all chart colors into CSS vars (--chart-*) so theme retunes never require hex edits again; area-gradient under the trend lines; per-room accent color theming.
+
+---
+Task ID: 30
+Agent: Z.ai Code (main)
+Task: User request — rebrand the whole project to "Eventship" as the official name of the website and project ("change it everywhere where it is necessary").
+
+Work Log:
+- FULL BRAND SWEEP (verified zero leftovers): EventFlow→Eventship, EVENT OS→EVENTSHIP (wordmarks: LandingNav ×2, LandingFooter, AuthLayout ×2, OnboardingPage, DashboardMockup, BlogArticlePage header+footer), Event OS→Eventship (aria-labels/comments), eventflow→eventship lowercase (emails, download filenames: events/tasks/my-tasks/audit CSVs + ICS month export + UID domain + PRODID + calName default), eventos.co→eventship.io (FAQ + footer contact), eventos.app→eventship.app (DashboardMockup URL). Metadata in layout.tsx (title/description/keywords/authors/OG/Twitter), package.json name → "eventship", APP_NAME constant, CommandPalette "Search Eventship", ProfilePage sign-out toast, page.tsx loading label + register subtitle, global-error "Eventship hit a snag", blog body copy (2 mentions), lib comments. Left "EVT-" room-code prefix (generic) and worklog history untouched. Bonus: footer newsletter kicker "Event ops, monthly" → "Field notes, monthly" (was rendering as EVENT OPS, MONTHLY — brand-confusing).
+- SEED REBRAND + FK FIX: prisma/seed.ts emails → @eventship.io (9 users), room name → "Eventship Demo HQ". Running the seed exposed a latent bug: it created Room with ownerId:'seed-placeholder' patched after admin creation — worked on old Prisma/SQLite, but FK enforcement now rejects it (P2003). Restructured: teams (no roomId) → users (no roomId, keep teamId) → room (ownerId: admin.id for real) → updateMany links users+teams to room → rest unchanged. Delete order also fixed (passwordResetToken + room before users; children-first for restrict FKs). migrate-rooms.ts rebranded too (script-only).
+- DB re-seeded: demo accounts are now admin@eventship.io / david@eventship.io (password123), room EVT-DEM258 / demo1234; LoginPage demo hint updated to match.
+Verification:
+- rg across src/prisma/tests/mini-services: zero EventFlow/EVENT OS/eventos/eventflow tokens remain; eslint 0 problems; tsc clean; bun test → 82 pass / 0 fail / 257 assertions (helpers use the new emails).
+- agent-browser: browser tab title "Eventship — Event Management System"; landing nav wordmark EVENTSHIP; footer hello@eventship.io + "© 2026 Eventship" + Field notes, monthly; login shows EVENTSHIP + admin@eventship.io hint → demo login works → #/dashboard header "Eventship" + footer "© 2026 Eventship..."; blog article footer EVENTSHIP + eventship.io; logo aria-label "Eventship home". Console clean; dev.log clean.
+Stage Summary:
+- The product is now "Eventship" end-to-end: UI wordmarks, metadata/SEO, emails, export filenames, ICS PRODID, package name, seed data and tests all agree. Seed script is now FK-safe on enforcing engines (unblocks the Postgres/Vercel migration path from the deployment guide).
+- Files: ~25 files across src/**, prisma/seed.ts, prisma/migrate-rooms.ts, mini-services comment, package.json, tests.
+- Next candidates: favicon/logo.svg still generic (could brand an "E" mark); OG image asset missing; deployment guide demo emails are now @eventship.io.

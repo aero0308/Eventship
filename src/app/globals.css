@@ -343,7 +343,7 @@
   background-color: rgba(120, 113, 108, 0.55);
 }
 
-/* ---- EVENT OS landing — Fora-inspired dark editorial design system -------
+/* ---- EVENTSHIP landing — Fora-inspired dark editorial design system -------
    Namespaced (fora-*) so nothing leaks into the app shell. The landing is a
    fixed-dark, layered-surface editorial design: explicit hex tokens via
    @theme (generates bg-fora-bg / text-fora-text / font-fora-serif …

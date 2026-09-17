@@ -161,7 +161,7 @@ export function ActivityPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `eventflow-audit-${csvDateStamp()}.csv`
+      link.download = `eventship-audit-${csvDateStamp()}.csv`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

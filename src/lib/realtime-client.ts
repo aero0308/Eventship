@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Browser singleton for the EventFlow realtime service (socket.io).
+ * Browser singleton for the Eventship realtime service (socket.io).
  *
  * - Connects through the Caddy gateway: io('/?XTransformPort=3003', path '/').
  * - Rooms are grouped by "scope" (one per consuming component) so multiple

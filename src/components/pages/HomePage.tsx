@@ -20,7 +20,7 @@ import { Testimonials } from '@/components/landing/Testimonials'
 import { TrustBar } from '@/components/landing/TrustBar'
 
 /**
- * EVENT OS — public landing (Fora-inspired dark editorial design).
+ * EVENTSHIP — public landing (Fora-inspired dark editorial design).
  * Assembles the twelve landing sections over a fixed-dark surface that is
  * immune to the app's light/dark theme (explicit hex tokens, fora-* scope).
  */

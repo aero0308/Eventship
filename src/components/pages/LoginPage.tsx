@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/shared/PasswordInput'
 
-const DEMO_EMAIL = 'admin@eventflow.io'
+const DEMO_EMAIL = 'admin@eventship.io'
 const DEMO_PASSWORD = 'password123'
 
 export function LoginPage() {

@@ -23,49 +23,38 @@ const daysAgo = (d: number, hourOffset = 0) => new Date(now - d * day - hourOffs
 async function main() {
   console.log('🌱 Seeding Event Management System...')
 
-  // Clean slate (order matters for FKs)
+  // Clean slate (order matters for FKs: PasswordResetToken → user,
+  // Room.ownerId / Event.createdBy / Task.createdBy restrict → children first,
+  // room before users it references).
   await prisma.activityLog.deleteMany()
   await prisma.notification.deleteMany()
   await prisma.taskDependency.deleteMany()
   await prisma.taskComment.deleteMany()
   await prisma.task.deleteMany()
   await prisma.event.deleteMany()
+  await prisma.passwordResetToken.deleteMany()
   await prisma.session.deleteMany()
-  await prisma.user.deleteMany()
   await prisma.team.deleteMany()
   await prisma.room.deleteMany()
+  await prisma.user.deleteMany()
 
-  // ---------- Room (multi-tenant: everything below belongs to it) ----------
-  const room = await prisma.room.create({
-    data: {
-      roomCode: 'EVT-DEM258',
-      name: 'EventFlow Demo HQ',
-      description: 'Demo room for the seeded workspace — share EVT-DEM258 / demo1234 to try the join flow.',
-      passwordHash: hashPassword('demo1234'),
-      ownerId: 'seed-placeholder', // patched to the admin below
-    },
-  })
-
-  // ---------- Teams ----------
+  // ---------- Teams (roomId linked after room + owner exist below) ----------
   const ops = await prisma.team.create({
     data: {
       name: 'Operations',
       description: 'Venue logistics, catering and on-site coordination.',
-      roomId: room.id,
     },
   })
   const tech = await prisma.team.create({
     data: {
       name: 'Tech & AV',
       description: 'Staging, sound, lighting, streaming and registration tech.',
-      roomId: room.id,
     },
   })
   const marketing = await prisma.team.create({
     data: {
       name: 'Marketing & Outreach',
       description: 'Promotion, sponsorships, social media and PR.',
-      roomId: room.id,
     },
   })
 
@@ -73,103 +62,111 @@ async function main() {
   const password = hashPassword('password123')
   const admin = await prisma.user.create({
     data: {
-      email: 'admin@eventflow.io',
+      email: 'admin@eventship.io',
       fullName: 'Alex Morgan',
       hashedPassword: password,
       role: 'EVENT_MANAGER',
-      roomId: room.id,
       createdAt: daysAgo(60),
     },
   })
-  // The room was created before the owner existed — wire the owner now.
-  await prisma.room.update({ where: { id: room.id }, data: { ownerId: admin.id } })
   const maria = await prisma.user.create({
     data: {
-      email: 'maria@eventflow.io',
+      email: 'maria@eventship.io',
       fullName: 'Maria Chen',
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: ops.id,
-      roomId: room.id,
       createdAt: daysAgo(55),
     },
   })
   const james = await prisma.user.create({
     data: {
-      email: 'james@eventflow.io',
+      email: 'james@eventship.io',
       fullName: 'James Patel',
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: tech.id,
-      roomId: room.id,
       createdAt: daysAgo(54),
     },
   })
   const sofia = await prisma.user.create({
     data: {
-      email: 'sofia@eventflow.io',
+      email: 'sofia@eventship.io',
       fullName: 'Sofia Reyes',
       hashedPassword: password,
       role: 'TEAM_LEADER',
       teamId: marketing.id,
-      roomId: room.id,
       createdAt: daysAgo(52),
     },
   })
   const david = await prisma.user.create({
     data: {
-      email: 'david@eventflow.io',
+      email: 'david@eventship.io',
       fullName: 'David Kim',
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: ops.id,
-      roomId: room.id,
       createdAt: daysAgo(40),
     },
   })
   const priya = await prisma.user.create({
     data: {
-      email: 'priya@eventflow.io',
+      email: 'priya@eventship.io',
       fullName: 'Priya Sharma',
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: tech.id,
-      roomId: room.id,
       createdAt: daysAgo(38),
     },
   })
   const tom = await prisma.user.create({
     data: {
-      email: 'tom@eventflow.io',
+      email: 'tom@eventship.io',
       fullName: 'Tom Becker',
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: tech.id,
-      roomId: room.id,
       createdAt: daysAgo(30),
     },
   })
   const lena = await prisma.user.create({
     data: {
-      email: 'lena@eventflow.io',
+      email: 'lena@eventship.io',
       fullName: 'Lena Fischer',
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: marketing.id,
-      roomId: room.id,
       createdAt: daysAgo(28),
     },
   })
   const omar = await prisma.user.create({
     data: {
-      email: 'omar@eventflow.io',
+      email: 'omar@eventship.io',
       fullName: 'Omar Haddad',
       hashedPassword: password,
       role: 'EMPLOYEE',
       teamId: ops.id,
-      roomId: room.id,
       createdAt: daysAgo(20),
     },
+  })
+
+  // ---------- Room (multi-tenant: owner now exists, so create + link) ----------
+  const room = await prisma.room.create({
+    data: {
+      roomCode: 'EVT-DEM258',
+      name: 'Eventship Demo HQ',
+      description: 'Demo room for the seeded workspace — share EVT-DEM258 / demo1234 to try the join flow.',
+      passwordHash: hashPassword('demo1234'),
+      ownerId: admin.id,
+    },
+  })
+  await prisma.user.updateMany({
+    where: { id: { in: [admin.id, maria.id, james.id, sofia.id, david.id, priya.id, tom.id, lena.id, omar.id] } },
+    data: { roomId: room.id },
+  })
+  await prisma.team.updateMany({
+    where: { id: { in: [ops.id, tech.id, marketing.id] } },
+    data: { roomId: room.id },
   })
 
   // Team managers
@@ -416,7 +413,7 @@ async function main() {
 
   console.log('✅ Seed complete:')
   console.log(`   Teams: 3 | Users: 9 | Events: 6 | Tasks: 16`)
-  console.log('   Demo login → admin@eventflow.io / password123')
+  console.log('   Demo login → admin@eventship.io / password123')
   console.log('   Demo room join → EVT-DEM258 / demo1234')
 }
 

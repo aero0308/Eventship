@@ -161,7 +161,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 sm:max-w-xl" showCloseButton={false}>
         <DialogHeader className="sr-only">
-          <DialogTitle>Search EventFlow</DialogTitle>
+          <DialogTitle>Search Eventship</DialogTitle>
           <DialogDescription>Jump to a page or search across events, tasks, teams and people.</DialogDescription>
         </DialogHeader>
         <Command shouldFilter={false} className="[&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4">

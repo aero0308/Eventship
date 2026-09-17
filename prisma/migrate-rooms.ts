@@ -4,7 +4,7 @@
  *
  * Strategy = spec "Option A" (no disruption):
  *  1. Ensure a Default Room exists (owner = first active EVENT_MANAGER, else
- *     admin@eventflow.io). Its join password is fixed and printed here.
+ *     admin@eventship.io). Its join password is fixed and printed here.
  *  2. Assign EVERY room-less user to the Default Room.
  *  3. Backfill denormalized room ids: teams (manager/member room), events
  *     (team room), tasks (event room), comments (task room), activity
@@ -42,7 +42,7 @@ async function main() {
   if (!defaultRoom) {
     const owner =
       (await prisma.user.findFirst({ where: { role: 'EVENT_MANAGER', isActive: true }, orderBy: { createdAt: 'asc' } })) ??
-      (await prisma.user.findFirst({ where: { email: 'admin@eventflow.io' } })) ??
+      (await prisma.user.findFirst({ where: { email: 'admin@eventship.io' } })) ??
       (await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } }))
     if (!owner) {
       console.log('   No users found — nothing to migrate.')
@@ -58,7 +58,7 @@ async function main() {
     defaultRoom = await prisma.room.create({
       data: {
         roomCode,
-        name: 'EventFlow HQ (Default Room)',
+        name: 'Eventship HQ (Default Room)',
         description:
           'Auto-created migration room. Every pre-existing account was placed here — share the Room ID + password to let teammates join, or delete this room from Room Settings once everyone has a home.',
         passwordHash: hashPassword(DEFAULT_ROOM_PASSWORD),

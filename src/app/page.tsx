@@ -196,7 +196,7 @@ export default function Page() {
   if (!initialized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <LoadingSpinner size="h-8 w-8" label="Loading EventFlow…" />
+        <LoadingSpinner size="h-8 w-8" label="Loading Eventship…" />
       </div>
     )
   }
@@ -240,7 +240,7 @@ export default function Page() {
   } else if (isAuthRoute) {
     const authMeta: Record<string, { title: string; subtitle: string }> = {
       [ROUTES.LOGIN]: { title: 'Welcome back', subtitle: 'Sign in to keep your events on track.' },
-      [ROUTES.REGISTER]: { title: 'Create your account', subtitle: 'Join EventFlow and start planning in minutes.' },
+      [ROUTES.REGISTER]: { title: 'Create your account', subtitle: 'Join Eventship and start planning in minutes.' },
       [ROUTES.FORGOT_PASSWORD]: { title: 'Reset your password', subtitle: "We'll help you get back into your account." },
       [ROUTES.RESET_PASSWORD]: { title: 'Choose a new password', subtitle: 'Pick something strong — you will use it to sign back in.' },
     }

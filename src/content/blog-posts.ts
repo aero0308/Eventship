@@ -53,7 +53,7 @@ export const BLOG_POSTS: BlogPost[] = [
     tags: ['Planning', 'Teams', 'Playbooks'],
     intro: [
       'Somewhere between your 40th-person meetup and your first 200-person conference, the job changes. It stops being a big to-do list and becomes a distributed system: vendors, volunteers, speakers, venues and a thousand small commitments that all land on the same day.',
-      'The organizers who make it look easy are not calmer people. They run a system — a checklist architecture, a communication cadence and a runbook for the final 72 hours — so that no single person ever becomes the bottleneck. Here is the system we use, and the one we now build EventFlow around.',
+      'The organizers who make it look easy are not calmer people. They run a system — a checklist architecture, a communication cadence and a runbook for the final 72 hours — so that no single person ever becomes the bottleneck. Here is the system we use, and the one we now build Eventship around.',
     ],
     quote: {
       text: 'Calm events are not lucky. They are rehearsed.',
@@ -228,7 +228,7 @@ export const BLOG_POSTS: BlogPost[] = [
         heading: 'Blockers surface in minutes, not Mondays',
         paragraphs: [
           'The highest-leverage difference is latency on bad news. In a polling world, a blocked task waits on average half a meeting-cycle before the right person sees it. On a live board, the flag, the comment and the escalation all happen in the same place the work lives.',
-          'When we shipped live dashboards into EventFlow, the first thing teams told us was not “the charts are pretty.” It was that Monday meetings got shorter — and that blocked work stopped waiting for Monday at all.',
+          'When we shipped live dashboards into Eventship, the first thing teams told us was not “the charts are pretty.” It was that Monday meetings got shorter — and that blocked work stopped waiting for Monday at all.',
         ],
       },
       {

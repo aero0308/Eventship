@@ -331,7 +331,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
       ]
       }),
     ]
-    downloadCsv(`eventflow-events-${csvDateStamp()}`, rows)
+    downloadCsv(`eventship-events-${csvDateStamp()}`, rows)
     toast({ title: 'Export ready', description: `${events.length} event(s) exported to CSV.` })
   }
 

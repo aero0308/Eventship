@@ -16,7 +16,7 @@ const ITEMS = [
 export function MarqueeStrip() {
   return (
     <section
-      aria-label="What Event OS covers"
+      aria-label="What Eventship covers"
       className="evos-marquee overflow-hidden border-y border-evos-line bg-evos-bg py-7 md:py-10"
     >
       <div className="evos-marquee-track flex w-max items-center">

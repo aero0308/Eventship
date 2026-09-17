@@ -1,5 +1,5 @@
 /**
- * EventFlow realtime service (socket.io)
+ * Eventship realtime service (socket.io)
  *
  * Public : port 3003 — websocket endpoint reached through the Caddy gateway as
  *          `io('/?XTransformPort=3003')` (path must stay '/').

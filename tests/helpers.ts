@@ -15,8 +15,8 @@ import { expect } from 'bun:test'
 export const BASE_URL = process.env.TEST_BASE_URL ?? 'http://localhost:3000'
 
 /** Seed accounts (prisma/seed.ts). */
-export const MANAGER = { email: 'admin@eventflow.io', password: 'password123' }
-export const EMPLOYEE = { email: 'david@eventflow.io', password: 'password123' }
+export const MANAGER = { email: 'admin@eventship.io', password: 'password123' }
+export const EMPLOYEE = { email: 'david@eventship.io', password: 'password123' }
 
 let xffCounter = 0
 export function newXff(): string {
@@ -25,7 +25,7 @@ export function newXff(): string {
 }
 
 export function uniqueEmail(prefix = 'qa'): string {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10_000)}@qa.eventflow.io`
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10_000)}@qa.eventship.io`
 }
 
 export interface ApiResponse<T = unknown> {

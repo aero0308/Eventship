@@ -1,5 +1,5 @@
 /**
- * Typed fetch wrapper for the EventFlow API.
+ * Typed fetch wrapper for the Eventship API.
  * - Base path: /api
  * - Sends/receives JSON, includes session cookie (credentials: 'include').
  * - Non-2xx responses throw ApiClientError with the server-provided message.

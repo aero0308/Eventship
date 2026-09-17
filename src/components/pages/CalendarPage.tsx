@@ -365,9 +365,9 @@ export function CalendarPage() {
         status: event.status === 'CANCELLED' ? 'CANCELLED' : event.status === 'DRAFT' ? 'TENTATIVE' : 'CONFIRMED',
         url: `${window.location.origin}/#/events/${event.id}`,
       })),
-      `EventFlow — ${monthLabel}`
+      `Eventship — ${monthLabel}`
     )
-    downloadIcs(`eventflow-${monthKey}.ics`, ics)
+    downloadIcs(`eventship-${monthKey}.ics`, ics)
     toast({ title: 'Calendar exported', description: `${events.length} event(s) exported for ${monthLabel}.` })
   }
 

@@ -136,8 +136,8 @@ export function FAQ() {
           </div>
           <p className="mt-8 text-center text-sm text-fora-muted">
             Still curious? Write to{' '}
-            <a href="mailto:hello@eventos.co" className="text-fora-glow transition-colors hover:text-white">
-              hello@eventos.co
+            <a href="mailto:hello@eventship.io" className="text-fora-glow transition-colors hover:text-white">
+              hello@eventship.io
             </a>
           </p>
         </FadeIn>

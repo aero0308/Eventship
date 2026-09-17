@@ -171,7 +171,7 @@ export function OnboardingPage() {
             aria-hidden="true"
             className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
           />
-          <span className="text-[15px] font-semibold tracking-tight text-white">EVENT OS</span>
+          <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="hidden text-xs text-fora-muted sm:inline">

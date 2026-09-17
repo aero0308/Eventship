@@ -16,7 +16,7 @@ export interface IcsEventInput {
   /** ISO end date (inclusive in the app; exported as exclusive all-day end). */
   end: string
   status?: 'CONFIRMED' | 'TENTATIVE' | 'CANCELLED'
-  /** Absolute URL back to the event in EventFlow (optional). */
+  /** Absolute URL back to the event in Eventship (optional). */
   url?: string
 }
 
@@ -89,12 +89,12 @@ export function googleCalendarUrl(event: IcsEventInput, appUrl?: string): string
  * Build a full VCALENDAR document from the given all-day events.
  * Each event gets a 1-day-before VALARM reminder.
  */
-export function buildIcs(events: IcsEventInput[], calName = 'EventFlow events'): string {
+export function buildIcs(events: IcsEventInput[], calName = 'Eventship events'): string {
   const now = toUtcStamp(new Date())
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//EventFlow//Event Management System//EN',
+    'PRODID:-//Eventship//Event Management System//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${escapeText(calName)}`,
@@ -105,7 +105,7 @@ export function buildIcs(events: IcsEventInput[], calName = 'EventFlow events'):
     // DTEND is exclusive for DATE values → move to the day after the app's inclusive end.
     const end = toDateStamp(new Date(new Date(event.end).getTime() + 24 * 60 * 60 * 1000).toISOString())
     lines.push('BEGIN:VEVENT')
-    lines.push(`UID:${event.uid}@eventflow`)
+    lines.push(`UID:${event.uid}@eventship`)
     lines.push(`DTSTAMP:${now}`)
     lines.push(`DTSTART;VALUE=DATE:${start}`)
     lines.push(`DTEND;VALUE=DATE:${end}`)

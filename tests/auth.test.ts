@@ -88,7 +88,7 @@ describe('POST /api/auth/login', () => {
 
   it('rejects an unknown account with 401 (no user enumeration)', async () => {
     const res = await new TestClient().post('/auth/login', {
-      email: 'ghost-who-never-was@qa.eventflow.io',
+      email: 'ghost-who-never-was@qa.eventship.io',
       password: 'Whatever!1x',
     })
     expect(res.status).toBe(401)

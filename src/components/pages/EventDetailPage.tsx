@@ -666,7 +666,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
           url: `${window.location.origin}/#/events/${event.id}`,
         },
       ],
-      `EventFlow — ${event.name}`
+      `Eventship — ${event.name}`
     )
     downloadIcs(`${slugifyFilename(event.name)}.ics`, ics)
     toast({ title: 'Calendar file downloaded', description: `Import “${event.name}.ics” into any calendar app.` })
@@ -845,7 +845,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
         task.commentCount ?? 0,
       ]),
     ]
-    downloadCsv(`eventflow-tasks-${event?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? 'event'}-${csvDateStamp()}`, rows)
+    downloadCsv(`eventship-tasks-${event?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? 'event'}-${csvDateStamp()}`, rows)
     toast({ title: 'Export ready', description: `${tasks.length} task(s) exported to CSV.` })
   }
 

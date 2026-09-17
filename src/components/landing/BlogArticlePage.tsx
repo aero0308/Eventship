@@ -359,7 +359,7 @@ export function BlogArticlePage({ slug }: { slug: string }) {
           onClick={() => navigate('/')}
           className="text-sm font-bold tracking-[0.24em] text-[#1c1917] transition-opacity hover:opacity-70"
         >
-          EVENT OS
+          EVENTSHIP
         </button>
         <button
           type="button"
@@ -576,7 +576,7 @@ export function BlogArticlePage({ slug }: { slug: string }) {
             Ready to run calmer events?
           </p>
           <p className="max-w-md text-sm leading-relaxed text-[#b3a99b]">
-            EventFlow gives your team the live board, the dashboards and the blocker feed — so the system does the remembering.
+            Eventship gives your team the live board, the dashboards and the blocker feed — so the system does the remembering.
           </p>
           <button
             type="button"
@@ -591,10 +591,10 @@ export function BlogArticlePage({ slug }: { slug: string }) {
       {/* Minimal footer */}
       <footer className="border-t border-[#e8e1d6]">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-[#a39b8f] sm:flex-row">
-          <span className="font-bold tracking-[0.24em] text-[#1c1917]">EVENT OS</span>
-          <span>© {new Date().getFullYear()} EventFlow — Field notes for event teams.</span>
+          <span className="font-bold tracking-[0.24em] text-[#1c1917]">EVENTSHIP</span>
+          <span>© {new Date().getFullYear()} Eventship — Field notes for event teams.</span>
           <button type="button" onClick={() => navigate('/')} className="rounded transition-colors hover:text-[#1c1917]">
-            eventflow.io
+            eventship.io
           </button>
         </div>
       </footer>

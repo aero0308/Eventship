@@ -49,7 +49,7 @@ export default function GlobalError({
             boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
           }}
         >
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>EventFlow hit a snag</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Eventship hit a snag</h1>
           <p style={{ margin: '0.75rem 0 0', fontSize: 14, color: '#78716c' }}>
             {describeError(error)}
           </p>

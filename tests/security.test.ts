@@ -31,7 +31,7 @@ describe('security response headers (next.config headers())', () => {
 describe('auth rate limiting (per-IP sliding window)', () => {
   it('forgot-password allows 3/min then answers 429 with Retry-After', async () => {
     const client = new TestClient('10.99.31.7') // dedicated bucket
-    const payload = { email: 'ratelimit-probe@qa.eventflow.io' }
+    const payload = { email: 'ratelimit-probe@qa.eventship.io' }
 
     for (let i = 0; i < 3; i += 1) {
       const res = await client.post('/auth/forgot-password', payload)
@@ -46,7 +46,7 @@ describe('auth rate limiting (per-IP sliding window)', () => {
 
   it('login allows 10/min then answers 429 with Retry-After', async () => {
     const client = new TestClient('10.99.31.8') // dedicated bucket
-    const payload = { email: 'ratelimit-login@qa.eventflow.io', password: 'Wrong!Pass1' }
+    const payload = { email: 'ratelimit-login@qa.eventship.io', password: 'Wrong!Pass1' }
 
     for (let i = 0; i < 10; i += 1) {
       const res = await client.post('/auth/login', payload)
@@ -61,7 +61,7 @@ describe('auth rate limiting (per-IP sliding window)', () => {
   it('a different IP is unaffected by another bucket being full', async () => {
     const fresh = new TestClient('10.99.31.9')
     const res = await fresh.post('/auth/login', {
-      email: 'ratelimit-other@qa.eventflow.io',
+      email: 'ratelimit-other@qa.eventship.io',
       password: 'Wrong!Pass1',
     })
     expect(res.status).toBe(401) // processed normally, NOT 429

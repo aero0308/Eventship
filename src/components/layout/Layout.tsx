@@ -354,12 +354,12 @@ export function Layout({ children }: LayoutProps) {
               type="button"
               onClick={() => handleNavigate(ROUTES.DASHBOARD)}
               className="flex min-h-11 items-center gap-2.5 rounded-md"
-              aria-label="EventFlow home"
+              aria-label="Eventship home"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                 <CalendarRange className="h-5 w-5" aria-hidden="true" />
               </span>
-              <span className="text-lg font-bold tracking-tight text-foreground">EventFlow</span>
+              <span className="text-lg font-bold tracking-tight text-foreground">Eventship</span>
             </button>
 
             <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -599,7 +599,7 @@ export function Layout({ children }: LayoutProps) {
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
                       <CalendarRange className="h-5 w-5" aria-hidden="true" />
                     </span>
-                    <span className="text-lg font-bold tracking-tight">EventFlow</span>
+                    <span className="text-lg font-bold tracking-tight">Eventship</span>
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Mobile">
@@ -658,8 +658,8 @@ export function Layout({ children }: LayoutProps) {
 
       <footer className="mt-auto border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
-          <span className="font-medium text-muted-foreground">EventFlow — Event Management System</span>
-          <span>© {new Date().getFullYear()} EventFlow. Plan events. Coordinate teams. Ship on time.</span>
+          <span className="font-medium text-muted-foreground">Eventship — Event Management System</span>
+          <span>© {new Date().getFullYear()} Eventship. Plan events. Coordinate teams. Ship on time.</span>
         </div>
       </footer>
     </div>
