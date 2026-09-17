@@ -70,20 +70,20 @@ const STATUS_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
     BLOCKED: '#ef4444', // red-500
     COMPLETED: '#10b981', // emerald-500
   },
-  // Dark theme: same hues, chroma pulled way down so bars don't glow on black
-  // (values chosen to match the .dark palette overrides in globals.css).
+  // Dark theme: the exact sRGB equivalents of the calibrated .dark oklch
+  // palette in globals.css (balance pass) — clearly lively, never neon.
   dark: {
-    NOT_STARTED: '#a8a29e',
-    IN_PROGRESS: '#d3a04c',
-    BLOCKED: '#cf6f66',
-    COMPLETED: '#31af8c',
+    NOT_STARTED: '#9c9890',
+    IN_PROGRESS: '#f2b100',
+    BLOCKED: '#fb7570',
+    COMPLETED: '#2acf94',
   },
 }
 
 /** Progress-trend series colors (created / completed / cumulative), per theme. */
 const TREND_COLORS: Record<'light' | 'dark', { created: string; completed: string; cumulative: string }> = {
   light: { created: '#f59e0b', completed: '#10b981', cumulative: '#78716c' },
-  dark: { created: '#d3a04c', completed: '#31af8c', cumulative: '#a8a29e' },
+  dark: { created: '#f2b100', completed: '#2acf94', cumulative: '#a9a49b' },
 }
 
 const PRIORITY_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
@@ -93,9 +93,9 @@ const PRIORITY_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = 
     LOW: '#a8a29e', // stone-400
   },
   dark: {
-    HIGH: '#cf6f66',
-    MEDIUM: '#d3a04c',
-    LOW: '#a8a29e',
+    HIGH: '#fb7570',
+    MEDIUM: '#f2b100',
+    LOW: '#9c9890',
   },
 }
 

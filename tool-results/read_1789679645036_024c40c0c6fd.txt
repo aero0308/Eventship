@@ -1,0 +1,1259 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useState } from 'react'
+     4→import type { CSSProperties } from 'react'
+     5→import { AnimatePresence, motion } from 'framer-motion'
+     6→import {
+     7→  Activity as ActivityIcon,
+     8→  AlertTriangle,
+     9→  ArrowRight,
+    10→  ArrowUpRight,
+    11→  CalendarDays,
+    12→  CalendarRange,
+    13→  CheckCircle2,
+    14→  ChevronDown,
+    15→  Clock,
+    16→  ListTodo,
+    17→  MapPin,
+    18→  RefreshCw,
+    19→  Sparkles,
+    20→  Siren,
+    21→  TrendingUp,
+    22→  Trophy,
+    23→  UserCheck,
+    24→  Users,
+    25→} from 'lucide-react'
+    26→import type { LucideIcon } from 'lucide-react'
+    27→import { differenceInCalendarDays, format, formatDistanceToNow } from 'date-fns'
+    28→import {
+    29→  Bar,
+    30→  BarChart,
+    31→  CartesianGrid,
+    32→  Cell,
+    33→  Line,
+    34→  LineChart,
+    35→  ResponsiveContainer,
+    36→  Tooltip,
+    37→  XAxis,
+    38→  YAxis,
+    39→} from 'recharts'
+    40→import type { ActivityLogDTO, DashboardStatsDTO, EventDTO, ProgressOverTimeDTO, TaskDTO } from '@/types'
+    41→import { getRealtimeSocket, type RealtimeDataEcho } from '@/lib/realtime-client'
+    42→import { useTheme } from 'next-themes'
+    43→import {
+    44→  EVENT_STATUS_CLASSES,
+    45→  EVENT_STATUS_LABELS,
+    46→  PRIORITY_CLASSES,
+    47→  PRIORITY_LABELS,
+    48→  ROUTES,
+    49→  TASK_STATUS_LABELS,
+    50→} from '@/lib/constants'
+    51→import { api } from '@/lib/api-client'
+    52→import { navigate } from '@/hooks/use-hash-route'
+    53→import { useAuthStore } from '@/stores/auth-store'
+    54→import { cn } from '@/lib/utils'
+    55→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+    56→import { Button } from '@/components/ui/button'
+    57→import { Progress } from '@/components/ui/progress'
+    58→import { Skeleton } from '@/components/ui/skeleton'
+    59→import { Badge } from '@/components/ui/badge'
+    60→import { EmptyState } from '@/components/shared/EmptyState'
+    61→import { PageHeader } from '@/components/shared/PageHeader'
+    62→import { StatCard } from '@/components/shared/StatCard'
+    63→import { ActivityItem } from '@/components/shared/ActivityFeed'
+    64→import { initialsOf } from '@/components/layout/Layout'
+    65→
+    66→const STATUS_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
+    67→  light: {
+    68→    NOT_STARTED: '#a8a29e', // stone-400
+    69→    IN_PROGRESS: '#f59e0b', // amber-500
+    70→    BLOCKED: '#ef4444', // red-500
+    71→    COMPLETED: '#10b981', // emerald-500
+    72→  },
+    73→  // Dark theme: same hues, chroma pulled way down so bars don't glow on black
+    74→  // (values chosen to match the .dark palette overrides in globals.css).
+    75→  dark: {
+    76→    NOT_STARTED: '#a8a29e',
+    77→    IN_PROGRESS: '#d3a04c',
+    78→    BLOCKED: '#cf6f66',
+    79→    COMPLETED: '#31af8c',
+    80→  },
+    81→}
+    82→
+    83→/** Progress-trend series colors (created / completed / cumulative), per theme. */
+    84→const TREND_COLORS: Record<'light' | 'dark', { created: string; completed: string; cumulative: string }> = {
+    85→  light: { created: '#f59e0b', completed: '#10b981', cumulative: '#78716c' },
+    86→  dark: { created: '#d3a04c', completed: '#31af8c', cumulative: '#a8a29e' },
+    87→}
+    88→
+    89→const PRIORITY_CHART_COLORS: Record<'light' | 'dark', Record<string, string>> = {
+    90→  light: {
+    91→    HIGH: '#ef4444', // red-500
+    92→    MEDIUM: '#f59e0b', // amber-500
+    93→    LOW: '#a8a29e', // stone-400
+    94→  },
+    95→  dark: {
+    96→    HIGH: '#cf6f66',
+    97→    MEDIUM: '#d3a04c',
+    98→    LOW: '#a8a29e',
+    99→  },
+   100→}
+   101→
+   102→/** Theme-aware chart palette (defaults to light until next-themes mounts). */
+   103→function useChartScheme(): 'light' | 'dark' {
+   104→  const { resolvedTheme } = useTheme()
+   105→  return resolvedTheme === 'dark' ? 'dark' : 'light'
+   106→}
+   107→
+   108→/** Outer → inner ring order for the priority rings (most critical first). */
+   109→const PRIORITY_RING_ORDER = ['HIGH', 'MEDIUM', 'LOW'] as const
+   110→
+   111→/** Deterministic avatar tone per team name (stable across renders/visits). */
+   112→const TEAM_TONES = [
+   113→  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+   114→  'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
+   115→  'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+   116→  'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+   117→  'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+   118→  'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300',
+   119→]
+   120→
+   121→function teamTone(name: string): string {
+   122→  let hash = 0
+   123→  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 997
+   124→  return TEAM_TONES[hash % TEAM_TONES.length]
+   125→}
+   126→
+   127→/** Completion pill tone: emerald when mostly done, amber when started, neutral at 0. */
+   128→function completionPill(percent: number): string {
+   129→  if (percent >= 75) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+   130→  if (percent > 0) return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+   131→  return 'bg-muted text-muted-foreground'
+   132→}
+   133→
+   134→// ============ Priority rings (concentric activity-style donut) ============
+   135→
+   136→interface RingEntry {
+   137→  key: string
+   138→  name: string
+   139→  value: number
+   140→}
+   141→
+   142→/**
+   143→ * Concentric "activity rings" for the priority breakdown: one ring per
+   144→ * priority (HIGH outer → LOW inner), each filled by its share of all tasks,
+   145→ * with the total count in the middle. Animated on mount, respects colors
+   146→ * from PRIORITY_CHART_COLORS.
+   147→ */
+   148→function PriorityRings({ data }: { data: RingEntry[] }) {
+   149→  const total = data.reduce((sum, entry) => sum + entry.value, 0)
+   150→  const size = 208
+   151→  const stroke = 15
+   152→  const ringGap = 9
+   153→  const scheme = useChartScheme()
+   154→  const colors = PRIORITY_CHART_COLORS[scheme]
+   155→
+   156→  const rings = data.map((entry, index) => {
+   157→    const radius = size / 2 - stroke / 2 - index * (stroke + ringGap)
+   158→    const circumference = 2 * Math.PI * radius
+   159→    return {
+   160→      ...entry,
+   161→      radius,
+   162→      circumference,
+   163→      share: total > 0 ? entry.value / total : 0,
+   164→    }
+   165→  })
+   166→
+   167→  return (
+   168→    <div className="relative shrink-0" style={{ width: size, height: size }}>
+   169→      <svg
+   170→        viewBox={`0 0 ${size} ${size}`}
+   171→        className="h-full w-full -rotate-90"
+   172→        role="img"
+   173→        aria-label={`Priority breakdown of ${total} tasks: ${data
+   174→          .map((entry) => `${entry.value} ${entry.name.toLowerCase()}`)
+   175→          .join(', ')}`}
+   176→      >
+   177→        {rings.map((ring) => (
+   178→          <g key={ring.key}>
+   179→            {/* Track */}
+   180→            <circle cx={size / 2} cy={size / 2} r={ring.radius} fill="none" stroke="var(--muted)" strokeWidth={stroke} />
+   181→            {/* Value arc — starts at 12 o'clock (svg rotated -90°) */}
+   182→            <motion.circle
+   183→              cx={size / 2}
+   184→              cy={size / 2}
+   185→              r={ring.radius}
+   186→              fill="none"
+   187→              stroke={colors[ring.key] ?? '#a8a29e'}
+   188→              strokeWidth={stroke}
+   189→              strokeLinecap="round"
+   190→              strokeDasharray={ring.circumference}
+   191→              initial={{ strokeDashoffset: ring.circumference }}
+   192→              animate={{ strokeDashoffset: ring.circumference * (1 - ring.share) }}
+   193→              transition={{ duration: 0.9, ease: 'easeOut', delay: 0.15 }}
+   194→            />
+   195→          </g>
+   196→        ))}
+   197→      </svg>
+   198→      <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
+   199→        <span className="text-[2rem] font-bold leading-none tabular-nums text-foreground">{total}</span>
+   200→        <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">tasks</span>
+   201→      </div>
+   202→    </div>
+   203→  )
+   204→}
+   205→
+   206→/** Legend row for the priority rings: dot, label, count, share % and a mini bar. */
+   207→function PriorityLegendRow({ entry, total }: { entry: RingEntry; total: number }) {
+   208→  const share = total > 0 ? Math.round((entry.value / total) * 100) : 0
+   209→  const scheme = useChartScheme()
+   210→  const color = PRIORITY_CHART_COLORS[scheme][entry.key] ?? '#a8a29e'
+   211→  return (
+   212→    <li className="space-y-1.5">
+   213→      <div className="flex items-center gap-2 text-sm">
+   214→        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+   215→        <span className="text-muted-foreground">{entry.name}</span>
+   216→        <span className="ml-auto font-semibold tabular-nums text-foreground">{entry.value}</span>
+   217→        <span className="w-11 text-right text-xs tabular-nums text-muted-foreground">{share}%</span>
+   218→      </div>
+   219→      <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+   220→        <motion.div
+   221→          className="h-full rounded-full"
+   222→          style={{ backgroundColor: color }}
+   223→          initial={{ width: 0 }}
+   224→          animate={{ width: `${share}%` }}
+   225→          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+   226→        />
+   227→      </div>
+   228→    </li>
+   229→  )
+   230→}
+   231→
+   232→function greeting(): string {
+   233→  const hour = new Date().getHours()
+   234→  if (hour < 12) return 'Good morning'
+   235→  if (hour < 18) return 'Good afternoon'
+   236→  return 'Good evening'
+   237→}
+   238→
+   239→// ============ Phase 6: 30-day progress trend chart ============
+   240→
+   241→const TREND_TOOLTIP_STYLE: CSSProperties = {
+   242→  borderRadius: 10,
+   243→  border: '1px solid var(--border)',
+   244→  backgroundColor: 'var(--card)',
+   245→  color: 'var(--foreground)',
+   246→  fontSize: 13,
+   247→  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+   248→}
+   249→
+   250→/**
+   251→ * Created vs. completed per day over the last 30 days, plus the cumulative
+   252→ * completed line (Phase 6 "progress over time"). Series colors follow the
+   253→ * active theme so nothing glows on the dark canvas.
+   254→ */
+   255→function ProgressTrendChart({ data, scheme }: { data: ProgressOverTimeDTO[]; scheme: 'light' | 'dark' }) {
+   256→  const colors = TREND_COLORS[scheme]
+   257→  const chartData = data.map((day) => ({
+   258→    date: format(new Date(`${day.date}T00:00:00`), 'MMM d'),
+   259→    Created: day.created,
+   260→    Completed: day.completed,
+   261→    'Total done': day.cumulativeCompleted,
+   262→  }))
+   263→
+   264→  const totalCreated = data.reduce((sum, day) => sum + day.created, 0)
+   265→  const totalCompleted = data.reduce((sum, day) => sum + day.completed, 0)
+   266→
+   267→  return (
+   268→    <div>
+   269→      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground" aria-hidden="true">
+   270→        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.created }} /> Created ({totalCreated})</span>
+   271→        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.completed }} /> Completed ({totalCompleted})</span>
+   272→        <span className="flex items-center gap-1.5"><span className="h-0 w-3 border-t-2 border-dashed" style={{ borderColor: colors.cumulative }} /> Total done</span>
+   273→      </div>
+   274→      <div className="h-64 w-full">
+   275→        <ResponsiveContainer width="100%" height="100%">
+   276→          <LineChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+   277→            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+   278→            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={4} />
+   279→            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+   280→            <Tooltip contentStyle={TREND_TOOLTIP_STYLE} labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }} itemStyle={{ color: 'var(--muted-foreground)' }} />
+   281→            <Line type="monotone" dataKey="Created" stroke={colors.created} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+   282→            <Line type="monotone" dataKey="Completed" stroke={colors.completed} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+   283→            <Line type="monotone" dataKey="Total done" stroke={colors.cumulative} strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 3 }} />
+   284→          </LineChart>
+   285→        </ResponsiveContainer>
+   286→      </div>
+   287→    </div>
+   288→  )
+   289→}
+   290→
+   291→type FocusKey = 'dueToday' | 'dueThisWeek' | 'overdue'
+   292→
+   293→const FOCUS_META: Record<FocusKey, { label: string; hint: string; dot: string; activeChip: string }> = {
+   294→  dueToday: {
+   295→    label: 'Due today',
+   296→    hint: 'Deadline is today',
+   297→    dot: 'bg-amber-500',
+   298→    activeChip: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200',
+   299→  },
+   300→  dueThisWeek: {
+   301→    label: 'Due next 7 days',
+   302→    hint: 'Coming up this week',
+   303→    dot: 'bg-emerald-500',
+   304→    activeChip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200',
+   305→  },
+   306→  overdue: {
+   307→    label: 'Overdue',
+   308→    hint: 'Past the deadline',
+   309→    dot: 'bg-red-500',
+   310→    activeChip: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+   311→  },
+   312→}
+   313→
+   314→function focusDueLabel(dueDate: string | null): string {
+   315→  if (!dueDate) return 'No due date'
+   316→  const diff = differenceInCalendarDays(new Date(dueDate), new Date())
+   317→  if (diff === 0) return 'Due today'
+   318→  if (diff === 1) return 'Due tomorrow'
+   319→  if (diff < 0) return `Overdue by ${Math.abs(diff)}d`
+   320→  return `Due ${format(new Date(dueDate), 'EEE, MMM d')}`
+   321→}
+   322→
+   323→function FocusStrip({
+   324→  myFocus,
+   325→  scope,
+   326→  pending,
+   327→  onScopeChange,
+   328→}: {
+   329→  myFocus: DashboardStatsDTO['myFocus']
+   330→  scope: 'all' | 'mine'
+   331→  pending: boolean
+   332→  onScopeChange: (scope: 'all' | 'mine') => void
+   333→}) {
+   334→  const [open, setOpen] = useState<FocusKey | null>(null)
+   335→
+   336→  const buckets: { key: FocusKey; count: number; tasks: TaskDTO[] }[] = [
+   337→    { key: 'dueToday', count: myFocus.dueToday.count, tasks: myFocus.dueToday.tasks },
+   338→    { key: 'dueThisWeek', count: myFocus.dueThisWeek.count, tasks: myFocus.dueThisWeek.tasks },
+   339→    { key: 'overdue', count: myFocus.overdue.count, tasks: myFocus.overdue.tasks },
+   340→  ]
+   341→  const active = buckets.find((b) => b.key === open) ?? null
+   342→
+   343→  return (
+   344→    <section
+   345→      aria-label="My focus"
+   346→      className={cn(
+   347→        'overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-card to-amber-50 shadow-sm transition-opacity dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-card dark:to-amber-500/10',
+   348→        pending && 'opacity-60'
+   349→      )}
+   350→    >
+   351→      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+   352→        <div className="flex min-w-0 items-center gap-2.5">
+   353→          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+   354→            <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
+   355→          </span>
+   356→          <div className="min-w-0">
+   357→            <h2 className="text-sm font-semibold text-foreground">My focus</h2>
+   358→            <p className="text-xs text-muted-foreground">Tap a bucket to see what needs attention.</p>
+   359→          </div>
+   360→        </div>
+   361→        {/* Scope toggle: everyone's tasks vs. only mine */}
+   362→        <div
+   363→          className="inline-flex h-8 shrink-0 items-center rounded-full border border-border/70 bg-card/80 p-0.5"
+   364→          role="group"
+   365→          aria-label="Focus scope"
+   366→        >
+   367→          {(
+   368→            [
+   369→              { value: 'all', label: 'All tasks', icon: Users },
+   370→              { value: 'mine', label: 'Mine only', icon: UserCheck },
+   371→            ] as const
+   372→          ).map((option) => (
+   373→            <button
+   374→              key={option.value}
+   375→              type="button"
+   376→              aria-pressed={scope === option.value}
+   377→              onClick={() => onScopeChange(option.value)}
+   378→              className={cn(
+   379→                'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-all',
+   380→                scope === option.value
+   381→                  ? 'bg-emerald-600 text-white shadow-sm'
+   382→                  : 'text-muted-foreground hover:text-foreground'
+   383→              )}
+   384→            >
+   385→              <option.icon className="h-3 w-3" aria-hidden="true" />
+   386→              {option.label}
+   387→            </button>
+   388→          ))}
+   389→        </div>
+   390→        <div className="flex flex-1 flex-wrap items-center justify-start gap-2 sm:justify-end" role="group" aria-label="Focus buckets">
+   391→          {buckets.map((bucket) => {
+   392→            const meta = FOCUS_META[bucket.key]
+   393→            const isActive = open === bucket.key
+   394→            return (
+   395→              <button
+   396→                key={bucket.key}
+   397→                type="button"
+   398→                aria-pressed={isActive}
+   399→                onClick={() => setOpen(isActive ? null : bucket.key)}
+   400→                className={cn(
+   401→                  'group flex min-h-11 items-center gap-2.5 rounded-xl border px-3.5 py-2 text-left transition-all',
+   402→                  isActive
+   403→                    ? 'border-transparent shadow-sm ' + meta.activeChip
+   404→                    : 'border-border/70 bg-card/80 text-foreground hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-sm dark:hover:border-emerald-500/40'
+   405→                )}
+   406→              >
+   407→                <span className={cn('h-2 w-2 shrink-0 rounded-full', meta.dot, bucket.count === 0 && 'opacity-30')} aria-hidden="true" />
+   408→                <span className="text-xl font-bold leading-none tabular-nums">{bucket.count}</span>
+   409→                <span className="text-xs font-medium leading-tight">{meta.label}</span>
+   410→                <ChevronDown
+   411→                  className={cn('h-3.5 w-3.5 shrink-0 opacity-50 transition-transform', isActive && 'rotate-180 opacity-80')}
+   412→                  aria-hidden="true"
+   413→                />
+   414→              </button>
+   415→            )
+   416→          })}
+   417→        </div>
+   418→      </div>
+   419→
+   420→      <AnimatePresence initial={false}>
+   421→        {active ? (
+   422→          <motion.div
+   423→            key={active.key}
+   424→            initial={{ height: 0, opacity: 0 }}
+   425→            animate={{ height: 'auto', opacity: 1 }}
+   426→            exit={{ height: 0, opacity: 0 }}
+   427→            transition={{ duration: 0.22, ease: 'easeOut' }}
+   428→            className="overflow-hidden border-t border-border/60 bg-card/60"
+   429→          >
+   430→            {active.tasks.length === 0 ? (
+   431→              <p className="px-4 py-4 text-sm text-muted-foreground">Nothing here right now — enjoy the calm.</p>
+   432→            ) : (
+   433→              <ul className="max-h-72 divide-y divide-border/60 overflow-y-auto" role="list">
+   434→                {active.tasks.map((task) => (
+   435→                  <li key={task.id}>
+   436→                    <button
+   437→                      type="button"
+   438→                      onClick={() => navigate(`/events/${task.eventId}`)}
+   439→                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-emerald-50/60 dark:hover:bg-emerald-500/10"
+   440→                    >
+   441→                      <span
+   442→                        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-stone-400')}
+   443→                        aria-hidden="true"
+   444→                      />
+   445→                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{task.title}</span>
+   446→                      {task.event ? (
+   447→                        <span className="hidden max-w-44 truncate text-xs text-muted-foreground sm:block">{task.event.name}</span>
+   448→                      ) : null}
+   449→                      {task.assignee ? (
+   450→                        <span className="hidden text-xs text-muted-foreground md:block">{task.assignee.fullName}</span>
+   451→                      ) : null}
+   452→                      <span
+   453→                        className={cn(
+   454→                          'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+   455→                          active.key === 'overdue'
+   456→                            ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+   457→                            : active.key === 'dueToday'
+   458→                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
+   459→                              : 'bg-muted text-muted-foreground'
+   460→                        )}
+   461→                      >
+   462→                        {focusDueLabel(task.dueDate)}
+   463→                      </span>
+   464→                      <span className={cn('hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline-flex', PRIORITY_CLASSES[task.priority] ?? '')}>
+   465→                        {PRIORITY_LABELS[task.priority] ?? task.priority}
+   466→                      </span>
+   467→                    </button>
+   468→                  </li>
+   469→                ))}
+   470→              </ul>
+   471→            )}
+   472→            {active.count > active.tasks.length ? (
+   473→              <p className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+   474→                Showing {active.tasks.length} of {active.count} — {FOCUS_META[active.key].hint.toLowerCase()}
+   475→                {' · '}
+   476→                <button type="button" className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-300" onClick={() => navigate(ROUTES.CALENDAR)}>
+   477→                  View calendar
+   478→                </button>
+   479→              </p>
+   480→            ) : null}
+   481→          </motion.div>
+   482→        ) : null}
+   483→      </AnimatePresence>
+   484→    </section>
+   485→  )
+   486→}
+   487→
+   488→export function DashboardPage() {
+   489→  const user = useAuthStore((s) => s.user)
+   490→  const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
+   491→  const [loading, setLoading] = useState(true)
+   492→  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+   493→  const [, setTick] = useState(0) // re-render loop for the "updated X ago" label
+   494→  const scheme = useChartScheme()
+   495→
+   496→  // Phase 6 role gating: only managers/leaders get the performance widgets.
+   497→  const canSeePerformance = user?.role === 'EVENT_MANAGER' || user?.role === 'TEAM_LEADER'
+   498→
+   499→  // Focus strip scope — "All tasks" or "Mine only". Persisted per browser.
+   500→  const [focusScope, setFocusScope] = useState<'all' | 'mine'>(() => {
+   501→    if (typeof window === 'undefined') return 'all'
+   502→    return window.localStorage.getItem('ems-focus-scope') === 'mine' ? 'mine' : 'all'
+   503→  })
+   504→  const [focusPending, setFocusPending] = useState(false)
+   505→
+   506→  const loadDashboard = useCallback(
+   507→    async (options?: { silent?: boolean }) => {
+   508→      if (!options?.silent) setLoading(true)
+   509→      try {
+   510→        const data = await api.get<{ stats: DashboardStatsDTO }>(
+   511→          `/dashboard${focusScope === 'mine' ? '?focus=mine' : ''}`
+   512→        )
+   513→        setStats(data.stats)
+   514→        setLastUpdated(Date.now())
+   515→      } catch {
+   516→        // Rendered empty state handles null stats below; silent refresh keeps last data.
+   517→      } finally {
+   518→        if (!options?.silent) setLoading(false)
+   519→        setFocusPending(false)
+   520→      }
+   521→    },
+   522→    [focusScope]
+   523→  )
+   524→
+   525→  // Initial load + refetch when the focus scope flips.
+   526→  useEffect(() => {
+   527→    void loadDashboard()
+   528→  }, [loadDashboard])
+   529→
+   530→  // Phase 6: auto-refresh every 30s (skips hidden tabs) + refresh on tab return.
+   531→  useEffect(() => {
+   532→    const interval = setInterval(() => {
+   533→      if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
+   534→    }, 30000)
+   535→    const onVisible = () => {
+   536→      if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
+   537→    }
+   538→    document.addEventListener('visibilitychange', onVisible)
+   539→    return () => {
+   540→      clearInterval(interval)
+   541→      document.removeEventListener('visibilitychange', onVisible)
+   542→    }
+   543→  }, [loadDashboard])
+   544→
+   545→  // Phase 7: LIVE dashboard — the realtime service echoes every board change
+   546→  // site-wide as a minimal {room, event} hint (never the payload, so nothing
+   547→  // role-restricted leaks). Bursts are debounced into a single silent refresh;
+   548→  // the refetch goes through the role-scoped REST API.
+   549→  useEffect(() => {
+   550→    const socket = getRealtimeSocket()
+   551→    if (!socket) return
+   552→    let timer: ReturnType<typeof setTimeout> | null = null
+   553→    const LIVE_EVENTS = new Set([
+   554→      'task:created',
+   555→      'task:updated',
+   556→      'task:deleted',
+   557→      'comment:added',
+   558→      'comment:deleted',
+   559→      'event:updated',
+   560→    ])
+   561→    const onEcho = (payload: RealtimeDataEcho) => {
+   562→      if (!LIVE_EVENTS.has(payload.event)) return
+   563→      if (timer) return
+   564→      timer = setTimeout(() => {
+   565→        timer = null
+   566→        if (document.visibilityState === 'visible') void loadDashboard({ silent: true })
+   567→      }, 900)
+   568→    }
+   569→    socket.on('data:echo', onEcho)
+   570→    return () => {
+   571→      socket.off('data:echo', onEcho)
+   572→      if (timer) clearTimeout(timer)
+   573→    }
+   574→  }, [loadDashboard])
+   575→
+   576→  // Ticker so the "Updated …" label stays honest between refreshes.
+   577→  useEffect(() => {
+   578→    const timer = setInterval(() => setTick((value) => value + 1), 20000)
+   579→    return () => clearInterval(timer)
+   580→  }, [])
+   581→
+   582→  const handleFocusScopeChange = (scope: 'all' | 'mine') => {
+   583→    if (scope === focusScope) return
+   584→    setFocusScope(scope)
+   585→    setFocusPending(true)
+   586→    try {
+   587→      window.localStorage.setItem('ems-focus-scope', scope)
+   588→    } catch {
+   589→      // Storage unavailable — the toggle still works for this session.
+   590→    }
+   591→  }
+   592→
+   593→  const statusData = useMemo(
+   594→    () => (stats?.tasksByStatus ?? []).map((entry) => ({ name: TASK_STATUS_LABELS[entry.status] ?? entry.status, count: entry.count, key: entry.status })),
+   595→    [stats]
+   596→  )
+   597→
+   598→  const priorityData = useMemo(
+   599→    () =>
+   600→      (stats?.tasksByPriority ?? [])
+   601→        .map((entry) => ({ name: PRIORITY_LABELS[entry.priority] ?? entry.priority, value: entry.count, key: entry.priority }))
+   602→        .sort((a, b) => {
+   603→          const rank = (key: string) => {
+   604→            const index = PRIORITY_RING_ORDER.indexOf(key as (typeof PRIORITY_RING_ORDER)[number])
+   605→            return index === -1 ? PRIORITY_RING_ORDER.length : index
+   606→          }
+   607→          return rank(a.key) - rank(b.key)
+   608→        }),
+   609→    [stats]
+   610→  )
+   611→
+   612→  const openTasks = stats ? stats.totals.tasks - stats.totals.completedTasks : 0
+   613→  const updatedLabel = lastUpdated
+   614→    ? Date.now() - lastUpdated < 20000
+   615→      ? 'just now'
+   616→      : `${formatDistanceToNow(new Date(lastUpdated), { addSuffix: true })}`
+   617→    : null
+   618→
+   619→  return (
+   620→    <div>
+   621→      <PageHeader
+   622→        title="Dashboard"
+   623→        subtitle={
+   624→          user
+   625→            ? `${greeting()}, ${user.fullName} — here's what's happening across your events.`
+   626→            : "Here's what's happening across your events."
+   627→        }
+   628→        actions={
+   629→          <>
+   630→            {updatedLabel ? (
+   631→              <span className="hidden text-xs text-muted-foreground sm:inline" title="Auto-refreshes every 30 seconds">
+   632→                Updated {updatedLabel}
+   633→              </span>
+   634→            ) : null}
+   635→            <Button
+   636→              variant="outline"
+   637→              size="sm"
+   638→              className="h-9 gap-1.5"
+   639→              onClick={() => void loadDashboard()}
+   640→              disabled={loading}
+   641→              aria-label="Refresh dashboard data"
+   642→            >
+   643→              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} aria-hidden="true" />
+   644→              Refresh
+   645→            </Button>
+   646→          </>
+   647→        }
+   648→      />
+   649→
+   650→      {/* ============ My focus strip ============ */}
+   651→      {loading ? (
+   652→        <Skeleton className="h-20 rounded-2xl" />
+   653→      ) : stats ? (
+   654→        <div className="mt-1 mb-4">
+   655→          <FocusStrip
+   656→            myFocus={stats.myFocus}
+   657→            scope={focusScope}
+   658→            pending={focusPending}
+   659→            onScopeChange={handleFocusScopeChange}
+   660→          />
+   661→        </div>
+   662→      ) : null}
+   663→
+   664→      {/* ============ Stat cards (Phase 6: click-through to filtered views) ============ */}
+   665→      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Key statistics">
+   666→        {loading || !stats ? (
+   667→          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+   668→        ) : (
+   669→          <>
+   670→            <StatCard
+   671→              icon={CalendarDays}
+   672→              label="Active Events"
+   673→              value={stats.totals.activeEvents}
+   674→              sub={`${stats.totals.events} events in total`}
+   675→              tint="emerald"
+   676→              onClick={() => navigate(ROUTES.EVENTS)}
+   677→              actionLabel="View all events"
+   678→            />
+   679→            <StatCard
+   680→              icon={ListTodo}
+   681→              label="Open Tasks"
+   682→              value={openTasks}
+   683→              sub={`${stats.totals.tasks} tasks tracked overall`}
+   684→              tint="amber"
+   685→              onClick={() => navigate(ROUTES.TASKS)}
+   686→              actionLabel="Open the task board"
+   687→            />
+   688→            <StatCard
+   689→              icon={CheckCircle2}
+   690→              label="Completed"
+   691→              value={stats.totals.completedTasks}
+   692→              sub={`${Math.round(stats.completionRate)}% completion rate`}
+   693→              tint="stone"
+   694→              progress={stats.completionRate}
+   695→              onClick={() => navigate(`${ROUTES.TASKS}?status=COMPLETED`)}
+   696→              actionLabel="View completed tasks"
+   697→            />
+   698→            <StatCard
+   699→              icon={AlertTriangle}
+   700→              label="Blocked"
+   701→              value={stats.totals.blockedTasks}
+   702→              sub={stats.totals.blockedTasks > 0 ? 'Needs immediate attention' : 'Nothing blocked — nice!'}
+   703→              tint="red"
+   704→              onClick={() => navigate(`${ROUTES.TASKS}?status=BLOCKED`)}
+   705→              actionLabel="View blocked tasks"
+   706→            />
+   707→            <StatCard
+   708→              icon={Clock}
+   709→              label="Overdue"
+   710→              value={stats.totals.overdueTasks}
+   711→              sub={stats.totals.overdueTasks > 0 ? 'Past their due date' : 'Everything on schedule'}
+   712→              tint="red"
+   713→              onClick={() => navigate(`${ROUTES.TASKS}?overdue=true`)}
+   714→              actionLabel="View overdue tasks"
+   715→            />
+   716→          </>
+   717→        )}
+   718→      </section>
+   719→
+   720→      {/* ============ Charts ============ */}
+   721→      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Task charts">
+   722→        <Card>
+   723→          <CardHeader>
+   724→            <CardTitle className="text-base">Tasks by status</CardTitle>
+   725→          </CardHeader>
+   726→          <CardContent>
+   727→            {loading ? (
+   728→              <Skeleton className="h-64 w-full rounded-lg" />
+   729→            ) : statusData.every((d) => d.count === 0) ? (
+   730→              <EmptyState icon={ListTodo} title="No tasks yet" hint="Create tasks to see the status breakdown here." />
+   731→            ) : (
+   732→              <div className="h-64 w-full">
+   733→                <ResponsiveContainer width="100%" height="100%">
+   734→                  <BarChart data={statusData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+   735→                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+   736→                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={0} />
+   737→                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+   738→                    <Tooltip
+   739→                      cursor={{ fill: 'rgba(16,185,129,0.08)' }}
+   740→                      contentStyle={{
+   741→                        borderRadius: 10,
+   742→                        border: '1px solid var(--border)',
+   743→                        backgroundColor: 'var(--card)',
+   744→                        color: 'var(--foreground)',
+   745→                        fontSize: 13,
+   746→                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+   747→                      }}
+   748→                      labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }}
+   749→                      itemStyle={{ color: 'var(--muted-foreground)' }}
+   750→                    />
+   751→                    <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={48}>
+   752→                      {statusData.map((entry) => (
+   753→                        <Cell key={entry.key} fill={STATUS_CHART_COLORS[scheme][entry.key] ?? '#78716c'} />
+   754→                      ))}
+   755→                    </Bar>
+   756→                  </BarChart>
+   757→                </ResponsiveContainer>
+   758→              </div>
+   759→            )}
+   760→          </CardContent>
+   761→        </Card>
+   762→
+   763→        <Card>
+   764→          <CardHeader>
+   765→            <CardTitle className="text-base">Tasks by priority</CardTitle>
+   766→            <CardDescription>Share of all tasks per priority level.</CardDescription>
+   767→          </CardHeader>
+   768→          <CardContent>
+   769→            {loading ? (
+   770→              <Skeleton className="h-64 w-full rounded-lg" />
+   771→            ) : priorityData.every((d) => d.value === 0) ? (
+   772→              <EmptyState icon={ListTodo} title="No tasks yet" hint="Priorities will appear once tasks exist." />
+   773→            ) : (
+   774→              <div className="flex h-64 flex-col items-center justify-center gap-6 sm:flex-row sm:gap-10">
+   775→                <PriorityRings data={priorityData} />
+   776→                <ul className="w-full max-w-72 space-y-4" aria-label="Priority legend">
+   777→                  {priorityData.map((entry) => (
+   778→                    <PriorityLegendRow key={entry.key} entry={entry} total={priorityData.reduce((sum, d) => sum + d.value, 0)} />
+   779→                  ))}
+   780→                </ul>
+   781→              </div>
+   782→            )}
+   783→          </CardContent>
+   784→        </Card>
+   785→      </section>
+   786→
+   787→      {/* ============ Phase 6: progress trend & blockers ============ */}
+   788→      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Progress and blockers">
+   789→        <Card>
+   790→          <CardHeader className="gap-1.5">
+   791→            <CardTitle className="flex items-center gap-2 text-base">
+   792→              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+   793→              Progress over time
+   794→            </CardTitle>
+   795→            <CardDescription>Daily created vs. completed tasks over the last 30 days.</CardDescription>
+   796→          </CardHeader>
+   797→          <CardContent>
+   798→            {loading ? (
+   799→              <Skeleton className="h-64 w-full rounded-lg" />
+   800→            ) : !stats || stats.progressOverTime.length === 0 ? (
+   801→              <EmptyState icon={TrendingUp} title="No trend yet" hint="Task activity over the last 30 days will appear here." />
+   802→            ) : (
+   803→              <ProgressTrendChart data={stats.progressOverTime} scheme={scheme} />
+   804→            )}
+   805→          </CardContent>
+   806→        </Card>
+   807→
+   808→        <Card>
+   809→          <CardHeader className="flex-row items-center justify-between space-y-0">
+   810→            <CardTitle className="flex items-center gap-2 text-base">
+   811→              <Siren className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
+   812→              Blockers
+   813→              {stats && stats.blockers.length > 0 ? (
+   814→                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
+   815→                  {stats.blockers.length}
+   816→                </span>
+   817→              ) : null}
+   818→            </CardTitle>
+   819→            {stats && stats.blockers.length > 0 ? (
+   820→              <Button
+   821→                variant="ghost"
+   822→                size="sm"
+   823→                className="h-8 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
+   824→                onClick={() => navigate(`${ROUTES.TASKS}?status=BLOCKED`)}
+   825→              >
+   826→                View board
+   827→                <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+   828→              </Button>
+   829→            ) : null}
+   830→          </CardHeader>
+   831→          <CardContent>
+   832→            {loading ? (
+   833→              <div className="space-y-3">
+   834→                {Array.from({ length: 3 }).map((_, i) => (
+   835→                  <Skeleton key={i} className="h-20 w-full rounded-lg" />
+   836→                ))}
+   837→              </div>
+   838→            ) : !stats || stats.blockers.length === 0 ? (
+   839→              <EmptyState
+   840→                icon={CheckCircle2}
+   841→                title="No blockers"
+   842→                hint="Everything is running smoothly — blocked tasks would land here."
+   843→              />
+   844→            ) : (
+   845→              <ul className="scrollbar-thin max-h-64 space-y-2.5 overflow-y-auto pr-1">
+   846→                {stats.blockers.map((blocker) => (
+   847→                  <li key={blocker.id}>
+   848→                    <button
+   849→                      type="button"
+   850→                      onClick={() => navigate(`/events/${blocker.eventId}`)}
+   851→                      className="w-full rounded-xl border border-red-200/70 bg-red-50/60 p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-red-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 dark:border-red-500/20 dark:bg-red-500/[0.07] dark:hover:border-red-500/40"
+   852→                      aria-label={`Blocked task ${blocker.title}. Open its event.`}
+   853→                    >
+   854→                      <div className="flex items-start justify-between gap-3">
+   855→                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{blocker.title}</p>
+   856→                        <span
+   857→                          className={cn(
+   858→                            'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
+   859→                            blocker.daysBlocked >= 3
+   860→                              ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+   861→                              : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+   862→                          )}
+   863→                        >
+   864→                          {blocker.daysBlocked === 0 ? 'Just now' : `${blocker.daysBlocked}d blocked`}
+   865→                        </span>
+   866→                      </div>
+   867→                      {blocker.latestComment ? (
+   868→                        <p className="mt-1 line-clamp-2 text-xs italic text-muted-foreground">
+   869→                          “{blocker.latestComment.content}”
+   870→                          {blocker.latestComment.authorName ? <span className="not-italic"> — {blocker.latestComment.authorName}</span> : null}
+   871→                        </p>
+   872→                      ) : (
+   873→                        <p className="mt-1 text-xs italic text-muted-foreground/70">No blocker reason recorded yet.</p>
+   874→                      )}
+   875→                      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+   876→                        <span
+   877→                          className={cn(
+   878→                            'h-1.5 w-1.5 rounded-full',
+   879→                            blocker.priority === 'HIGH' ? 'bg-red-500' : blocker.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-stone-400'
+   880→                          )}
+   881→                          aria-hidden="true"
+   882→                        />
+   883→                        <span className="truncate">{blocker.eventName ?? 'Unknown event'}</span>
+   884→                        {blocker.assigneeName ? <span className="truncate">· {blocker.assigneeName}</span> : <span>· Unassigned</span>}
+   885→                      </div>
+   886→                    </button>
+   887→                  </li>
+   888→                ))}
+   889→              </ul>
+   890→            )}
+   891→          </CardContent>
+   892→        </Card>
+   893→      </section>
+   894→
+   895→      {/* ============ Upcoming events & deadlines ============ */}
+   896→      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Upcoming work">
+   897→        <Card>
+   898→          <CardHeader>
+   899→            <CardTitle className="text-base">Upcoming events</CardTitle>
+   900→          </CardHeader>
+   901→          <CardContent>
+   902→            {loading ? (
+   903→              <div className="space-y-3">
+   904→                {Array.from({ length: 3 }).map((_, i) => (
+   905→                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+   906→                ))}
+   907→              </div>
+   908→            ) : !stats || stats.upcomingEvents.length === 0 ? (
+   909→              <EmptyState icon={CalendarDays} title="No upcoming events" hint="Events starting today or later will show up here." />
+   910→            ) : (
+   911→              <ul className="scrollbar-thin max-h-80 space-y-3 overflow-y-auto pr-1">
+   912→                {stats.upcomingEvents.map((event: EventDTO) => {
+   913→                  const start = new Date(event.startDate)
+   914→                  const total = event.taskStats?.total ?? event.taskCount ?? 0
+   915→                  const completed = event.taskStats?.completed ?? 0
+   916→                  const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+   917→                  return (
+   918→                    <li key={event.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+   919→                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 ring-1 ring-emerald-100">
+   920→                        <span className="text-[10px] font-semibold uppercase leading-none">{format(start, 'MMM')}</span>
+   921→                        <span className="text-lg font-bold leading-tight">{format(start, 'd')}</span>
+   922→                      </div>
+   923→                      <div className="min-w-0 flex-1">
+   924→                        <p className="truncate text-sm font-semibold text-foreground">{event.name}</p>
+   925→                        {event.location ? (
+   926→                          <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground" title={event.location}>
+   927→                            <MapPin className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+   928→                            <span className="truncate">{event.location}</span>
+   929→                          </p>
+   930→                        ) : null}
+   931→                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   932→                          <Badge variant="outline" className={cn('text-[10px]', EVENT_STATUS_CLASSES[event.status])}>
+   933→                            {EVENT_STATUS_LABELS[event.status] ?? event.status}
+   934→                          </Badge>
+   935→                          {event.team ? <Badge variant="outline" className="border-border bg-muted/50 text-[10px] text-muted-foreground">{event.team.name}</Badge> : null}
+   936→                        </div>
+   937→                      </div>
+   938→                      <div className="hidden w-28 shrink-0 sm:block">
+   939→                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+   940→                          <span>Tasks</span>
+   941→                          <span>
+   942→                            {completed}/{total}
+   943→                          </span>
+   944→                        </div>
+   945→                        <Progress value={percent} className="mt-1 h-1.5" aria-label={`${percent}% tasks completed`} />
+   946→                      </div>
+   947→                    </li>
+   948→                  )
+   949→                })}
+   950→              </ul>
+   951→            )}
+   952→          </CardContent>
+   953→        </Card>
+   954→
+   955→        <Card>
+   956→          <CardHeader className="flex-row items-center justify-between space-y-0">
+   957→            <CardTitle className="text-base">Upcoming deadlines</CardTitle>
+   958→            <Button
+   959→              variant="ghost"
+   960→              size="sm"
+   961→              className="h-8 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
+   962→              onClick={() => navigate(ROUTES.CALENDAR)}
+   963→            >
+   964→              <CalendarRange className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+   965→              View calendar
+   966→            </Button>
+   967→          </CardHeader>
+   968→          <CardContent>
+   969→            {loading ? (
+   970→              <div className="space-y-3">
+   971→                {Array.from({ length: 3 }).map((_, i) => (
+   972→                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+   973→                ))}
+   974→              </div>
+   975→            ) : !stats || stats.upcomingDeadlines.length === 0 ? (
+   976→              <EmptyState icon={Clock} title="No deadlines ahead" hint="Tasks with due dates will appear here." />
+   977→            ) : (
+   978→              <ul className="scrollbar-thin max-h-80 space-y-3 overflow-y-auto pr-1">
+   979→                {stats.upcomingDeadlines.map((task: TaskDTO) => {
+   980→                  const days = task.dueDate ? differenceInCalendarDays(new Date(task.dueDate), new Date()) : null
+   981→                  const overdue = days !== null && days < 0
+   982→                  const urgent = days !== null && days >= 0 && days < 3
+   983→                  return (
+   984→                    <li key={task.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+   985→                      <div className="min-w-0 flex-1">
+   986→                        <p className="truncate text-sm font-semibold text-foreground">{task.title}</p>
+   987→                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{task.event?.name ?? 'Unknown event'}</p>
+   988→                      </div>
+   989→                      {days !== null ? (
+   990→                        <Badge
+   991→                          variant="outline"
+   992→                          className={cn(
+   993→                            'shrink-0 text-[11px]',
+   994→                            overdue
+   995→                              ? 'border-red-200 bg-red-50 text-red-700'
+   996→                              : urgent
+   997→                                ? 'border-amber-200 bg-amber-50 text-amber-800'
+   998→                                : 'border-border bg-muted/50 text-muted-foreground'
+   999→                          )}
+  1000→                        >
+  1001→                          {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}
+  1002→                        </Badge>
+  1003→                      ) : null}
+  1004→                      <span
+  1005→                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground"
+  1006→                        title={task.assignee?.fullName ?? 'Unassigned'}
+  1007→                        aria-label={task.assignee ? `Assigned to ${task.assignee.fullName}` : 'Unassigned'}
+  1008→                      >
+  1009→                        {task.assignee ? initialsOf(task.assignee.fullName) : '—'}
+  1010→                      </span>
+  1011→                    </li>
+  1012→                  )
+  1013→                })}
+  1014→              </ul>
+  1015→            )}
+  1016→          </CardContent>
+  1017→        </Card>
+  1018→      </section>
+  1019→
+  1020→      {/* ============ Team workload & activity ============ */}
+  1021→      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Team workload and activity">
+  1022→        <Card>
+  1023→          <CardHeader className="gap-1.5">
+  1024→            <div className="flex items-center justify-between gap-2">
+  1025→              <CardTitle className="text-base">Team workload</CardTitle>
+  1026→              <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground" aria-hidden="true">
+  1027→                <span className="flex items-center gap-1.5">
+  1028→                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+  1029→                  Done
+  1030→                </span>
+  1031→                <span className="flex items-center gap-1.5">
+  1032→                  <span className="h-2 w-2 rounded-full bg-red-400" />
+  1033→                  Blocked
+  1034→                </span>
+  1035→                <span className="flex items-center gap-1.5">
+  1036→                  <span className="h-2 w-2 rounded-full bg-amber-400" />
+  1037→                  Open
+  1038→                </span>
+  1039→              </div>
+  1040→            </div>
+  1041→            <CardDescription>Completion, blockers and membership for every team.</CardDescription>
+  1042→          </CardHeader>
+  1043→          <CardContent>
+  1044→            {loading ? (
+  1045→              <div className="space-y-3">
+  1046→                {Array.from({ length: 3 }).map((_, i) => (
+  1047→                  <Skeleton key={i} className="h-[86px] w-full rounded-xl" />
+  1048→                ))}
+  1049→              </div>
+  1050→            ) : !stats || stats.teamWorkload.length === 0 ? (
+  1051→              <EmptyState icon={Users} title="No team data" hint="Create teams and assign tasks to see workload." />
+  1052→            ) : (
+  1053→              <ul className="space-y-3">
+  1054→                {stats.teamWorkload.map((team) => {
+  1055→                  const total = team.openTasks + team.completedTasks + team.blockedTasks
+  1056→                  const donePercent = total > 0 ? Math.round((team.completedTasks / total) * 100) : 0
+  1057→                  const blockedPercent = total > 0 ? Math.round((team.blockedTasks / total) * 100) : 0
+  1058→                  const openPercent = Math.max(0, 100 - donePercent - blockedPercent)
+  1059→                  return (
+  1060→                    <li key={team.teamId}>
+  1061→                      <button
+  1062→                        type="button"
+  1063→                        onClick={() => navigate(ROUTES.TEAMS)}
+  1064→                        title={`Open ${team.teamName} in Teams`}
+  1065→                        className="group w-full rounded-xl border border-border bg-card p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-600/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:hover:border-emerald-500/40"
+  1066→                      >
+  1067→                        <div className="flex items-center gap-3">
+  1068→                          <span
+  1069→                            className={cn(
+  1070→                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold',
+  1071→                              teamTone(team.teamName)
+  1072→                            )}
+  1073→                            aria-hidden="true"
+  1074→                          >
+  1075→                            {initialsOf(team.teamName)}
+  1076→                          </span>
+  1077→                          <div className="min-w-0 flex-1">
+  1078→                            <p className="truncate text-sm font-semibold text-foreground">{team.teamName}</p>
+  1079→                            <p className="mt-0.5 text-xs text-muted-foreground">
+  1080→                              <span className="font-semibold text-emerald-700 dark:text-emerald-300">{team.completedTasks} done</span>
+  1081→                              {' · '}
+  1082→                              <span className="font-semibold text-amber-700 dark:text-amber-300">{team.openTasks} open</span>
+  1083→                              {team.blockedTasks > 0 ? (
+  1084→                                <>
+  1085→                                  {' · '}
+  1086→                                  <span className="font-semibold text-red-700 dark:text-red-300">{team.blockedTasks} blocked</span>
+  1087→                                </>
+  1088→                              ) : null}
+  1089→                              {' · '}
+  1090→                              <span className="inline-flex items-center gap-0.5">
+  1091→                                <Users className="h-3 w-3" aria-hidden="true" />
+  1092→                                {team.memberCount}
+  1093→                              </span>
+  1094→                            </p>
+  1095→                          </div>
+  1096→                          <span
+  1097→                            className={cn(
+  1098→                              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums',
+  1099→                              completionPill(donePercent)
+  1100→                            )}
+  1101→                          >
+  1102→                            {donePercent}%
+  1103→                          </span>
+  1104→                          <ArrowUpRight
+  1105→                            className="h-4 w-4 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100"
+  1106→                            aria-hidden="true"
+  1107→                          />
+  1108→                        </div>
+  1109→                        <div
+  1110→                          className="mt-3 flex h-2 gap-0.5"
+  1111→                          role="img"
+  1112→                          aria-label={`${team.teamName}: ${donePercent}% complete — ${team.completedTasks} done, ${team.blockedTasks} blocked, ${team.openTasks} open, ${team.memberCount} members`}
+  1113→                        >
+  1114→                          {total > 0 ? (
+  1115→                            <>
+  1116→                              <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${donePercent}%` }} />
+  1117→                              {blockedPercent > 0 ? (
+  1118→                                <div className="h-full rounded-full bg-red-400/90 transition-all duration-500" style={{ width: `${blockedPercent}%` }} />
+  1119→                              ) : null}
+  1120→                              <div className="h-full rounded-full bg-amber-400/90 transition-all duration-500" style={{ width: `${openPercent}%` }} />
+  1121→                            </>
+  1122→                          ) : null}
+  1123→                        </div>
+  1124→                      </button>
+  1125→                    </li>
+  1126→                  )
+  1127→                })}
+  1128→              </ul>
+  1129→            )}
+  1130→          </CardContent>
+  1131→        </Card>
+  1132→
+  1133→        <Card>
+  1134→          <CardHeader>
+  1135→            <CardTitle className="flex items-center justify-between gap-2 text-base">
+  1136→              <span className="flex items-center gap-2">
+  1137→                <ActivityIcon className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+  1138→                Recent activity
+  1139→              </span>
+  1140→              <Button
+  1141→                variant="ghost"
+  1142→                size="sm"
+  1143→                className="h-8 gap-1 px-2 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+  1144→                onClick={() => navigate(ROUTES.ACTIVITY)}
+  1145→              >
+  1146→                View all
+  1147→                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+  1148→              </Button>
+  1149→            </CardTitle>
+  1150→          </CardHeader>
+  1151→          <CardContent>
+  1152→            {loading ? (
+  1153→              <div className="space-y-4">
+  1154→                {Array.from({ length: 5 }).map((_, i) => (
+  1155→                  <Skeleton key={i} className="h-10 w-full rounded-lg" />
+  1156→                ))}
+  1157→              </div>
+  1158→            ) : !stats || stats.recentActivity.length === 0 ? (
+  1159→              <EmptyState icon={ActivityIcon} title="No activity yet" hint="Actions across the workspace will appear here." />
+  1160→            ) : (
+  1161→              <ul className="scrollbar-thin max-h-80 overflow-y-auto pr-1">
+  1162→                {stats.recentActivity.map((activity: ActivityLogDTO) => (
+  1163→                  <ActivityItem key={activity.id} activity={activity} />
+  1164→                ))}
+  1165→              </ul>
+  1166→            )}
+  1167→          </CardContent>
+  1168→        </Card>
+  1169→      </section>
+  1170→
+  1171→      {/* ============ Phase 6: top performers (managers & leaders only) ============ */}
+  1172→      {canSeePerformance ? (
+  1173→        <section className="mt-6" aria-label="Top performers">
+  1174→          <Card>
+  1175→            <CardHeader className="gap-1.5">
+  1176→              <CardTitle className="flex items-center gap-2 text-base">
+  1177→                <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+  1178→                Top performers
+  1179→              </CardTitle>
+  1180→              <CardDescription>
+  1181→                {user?.role === 'TEAM_LEADER' && user.teamId
+  1182→                  ? 'Completion leaderboard for your team, over all assigned tasks.'
+  1183→                  : 'Completion leaderboard across everyone with assigned tasks.'}
+  1184→              </CardDescription>
+  1185→            </CardHeader>
+  1186→            <CardContent>
+  1187→              {loading ? (
+  1188→                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  1189→                  {Array.from({ length: 5 }).map((_, i) => (
+  1190→                    <Skeleton key={i} className="h-28 w-full rounded-xl" />
+  1191→                  ))}
+  1192→                </div>
+  1193→              ) : !stats || stats.topPerformers.length === 0 ? (
+  1194→                <EmptyState icon={Trophy} title="No assigned tasks yet" hint="Assign tasks to team members to build the leaderboard." />
+  1195→              ) : (
+  1196→                <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  1197→                  {stats.topPerformers.map((performer, index) => {
+  1198→                    const rank = index + 1
+  1199→                    const rankStyles =
+  1200→                      rank === 1
+  1201→                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 ring-amber-300/60 dark:ring-amber-500/30'
+  1202→                        : rank === 2
+  1203→                          ? 'bg-stone-100 text-stone-700 dark:bg-stone-500/15 dark:text-stone-300 ring-stone-300/60 dark:ring-stone-500/30'
+  1204→                          : rank === 3
+  1205→                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-300 ring-orange-300/60 dark:ring-orange-500/30'
+  1206→                            : 'bg-muted text-muted-foreground ring-border'
+  1207→                    return (
+  1208→                      <li key={performer.userId}>
+  1209→                        <button
+  1210→                          type="button"
+  1211→                          onClick={() => navigate(`${ROUTES.TASKS}?assignee=${performer.userId}`)}
+  1212→                          title={`View ${performer.fullName}'s tasks`}
+  1213→                          className="group w-full rounded-xl border border-border bg-card p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-600/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:hover:border-emerald-500/40"
+  1214→                          aria-label={`Rank ${rank}: ${performer.fullName}, ${performer.completionRate}% completion`}
+  1215→                        >
+  1216→                          <div className="flex items-center gap-2.5">
+  1217→                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" aria-hidden="true">
+  1218→                              {initialsOf(performer.fullName)}
+  1219→                            </span>
+  1220→                            <div className="min-w-0 flex-1">
+  1221→                              <p className="truncate text-sm font-semibold text-foreground">{performer.fullName}</p>
+  1222→                              <p className="text-[11px] text-muted-foreground">
+  1223→                                {performer.completedTasks}/{performer.totalTasks} done
+  1224→                                {performer.blockedTasks > 0 ? (
+  1225→                                  <span className="ml-1 font-semibold text-red-700 dark:text-red-300">· {performer.blockedTasks} blocked</span>
+  1226→                                ) : null}
+  1227→                              </p>
+  1228→                            </div>
+  1229→                            <span
+  1230→                              className={cn(
+  1231→                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ring-1',
+  1232→                                rankStyles
+  1233→                              )}
+  1234→                              aria-hidden="true"
+  1235→                            >
+  1236→                              {rank}
+  1237→                            </span>
+  1238→                          </div>
+  1239→                          <div className="mt-2.5">
+  1240→                            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+  1241→                              <span>Completion</span>
+  1242→                              <span className="font-bold tabular-nums text-foreground">{performer.completionRate}%</span>
+  1243→                            </div>
+  1244→                            <Progress value={performer.completionRate} className="mt-1 h-1.5" aria-hidden="true" />
+  1245→                          </div>
+  1246→                        </button>
+  1247→                      </li>
+  1248→                    )
+  1249→                  })}
+  1250→                </ol>
+  1251→              )}
+  1252→            </CardContent>
+  1253→          </Card>
+  1254→        </section>
+  1255→      ) : null}
+  1256→    </div>
+  1257→  )
+  1258→}
+  1259→

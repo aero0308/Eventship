@@ -917,3 +917,21 @@ Verification:
 Stage Summary:
 - Dark mode now sits between the two previous extremes: clearly saturated accents (~80% stock chroma) on dark surfaces, per the user's "not too punchy and not too dull" target.
 - File: src/app/globals.css (.dark block only). If further tuning is requested, the knobs are the per-family --color-* chroma values and --primary/--chart-* tokens; ~80% of stock chroma is the calibrated sweet spot.
+
+---
+Task ID: 29
+Agent: Z.ai Code (main)
+Task: User follow-up — dark-mode colors on authenticated pages were still too dull, with graphs called out explicitly ("fix it such that its not too punchy and not too dull in dark mode authenticated pages (the colors in graphs are still dull)").
+
+Work Log:
+- Root cause: Task 28 lifted the CSS token palette in globals.css but MISSED the hardcoded hex chart palettes in DashboardPage.tsx — STATUS_CHART_COLORS.dark / TREND_COLORS.dark / PRIORITY_CHART_COLORS.dark still carried Task 17's muted calibration (#d3a04c amber, #cf6f66 red, #31af8c emerald), so the "Tasks by status" bars, priority rings + legend rows, and the "Progress over time" line chart stayed gray-ish while the rest of the UI got livelier.
+- Fix: converted the exact calibrated .dark oklch values from globals.css into their sRGB hex equivalents with a throwaway script (.qa/oklch-to-hex.ts, hand-rolled OKLab→sRGB) so charts now visually match the token palette: emerald-400 #2acf94 (COMPLETED + Completed line), amber-400 #f2b100 (IN_PROGRESS + Created line), red-400 #fb7570 (BLOCKED + HIGH), warm stone #9c9890 (NOT_STARTED + LOW), cumulative trend gray #a9a49b. Dark schemes only — light schemes keep stock #f59e0b/#ef4444/#10b981.
+- Scope sweep: grepped all authenticated components for other hardcoded hex colors — only AuthLayout/HomePage body backgrounds (intentional) remain; calendar/events/tasks colors ride the already-lifted Tailwind tokens, so charts were the one remaining dull spot.
+Verification:
+- eslint 0 problems; tsc clean (src only); dev.log clean of errors/warnings.
+- agent-browser dark-mode walkthrough (demo admin, localStorage theme=dark): dashboard "Tasks by status" bars now amber/coral/emerald and clearly readable (qa-dark-charts-status.png), priority rings + trend lines pop (qa-dark-charts-bottom.png), team workload + top performers lively (qa-dark-workload.png); tasks board stat tiles/column accents/priority badges vivid (qa-dark-tasks.png, qa-dark-tasks-cards.png); events status chips + accent bars (qa-dark-events.png); calendar summary pills + chips (qa-dark-calendar.png). Nothing glows — same ~80%-chroma calibration as the rest of the dark theme.
+- Light-mode regression: dashboard charts re-checked with theme=light — stock Tailwind hues unchanged (qa-light-charts-regression.png).
+Stage Summary:
+- Dark-mode graphs now match the balanced calibration: clearly saturated, never neon, never gray. The per-theme hex palettes are the knobs if further tuning is requested (STATUS_CHART_COLORS / TREND_COLORS / PRIORITY_CHART_COLORS in DashboardPage.tsx).
+- Files: src/components/pages/DashboardPage.tsx (dark palettes only), .qa/oklch-to-hex.ts (throwaway converter).
+- Next candidates: consolidate all chart colors into CSS vars (--chart-*) so theme retunes never require hex edits again; area-gradient under the trend lines; per-room accent color theming.
