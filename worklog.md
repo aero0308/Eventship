@@ -952,3 +952,21 @@ Stage Summary:
 - The product is now "Eventship" end-to-end: UI wordmarks, metadata/SEO, emails, export filenames, ICS PRODID, package name, seed data and tests all agree. Seed script is now FK-safe on enforcing engines (unblocks the Postgres/Vercel migration path from the deployment guide).
 - Files: ~25 files across src/**, prisma/seed.ts, prisma/migrate-rooms.ts, mini-services comment, package.json, tests.
 - Next candidates: favicon/logo.svg still generic (could brand an "E" mark); OG image asset missing; deployment guide demo emails are now @eventship.io.
+
+---
+Task ID: 30-verify
+Agent: Z.ai Code (main)
+Task: Post-compaction re-verification of Task 30 (Eventship rename) + deployment-readiness checks + deliver the free Vercel hosting guide.
+
+Work Log:
+- Confirmed Task 30 was fully landed before context switch: rg across src/prisma/tests/public shows ZERO eventflow/EVENT OS/eventos tokens; package.json name "eventship"; APP_NAME='Eventship'; seed.ts all @eventship.io.
+- DB check via Prisma client: 9 demo users on @eventship.io inside room "Eventship Demo HQ" (EVT-DEM258) + old qa.eventship.io test accounts (roomless, invisible to the app — left in place).
+- Recreated missing webDevReview cron (job 394034, `0 */15 * * * ?`, tz Asia/Calcutta, priority 10).
+- agent-browser re-QA: landing nav wordmark EVENTSHIP; login page demo box "admin@eventship.io / password123"; one-click demo login → dashboard header "Eventship" + LIVE badge connected + charts/data rendering + footer "© 2026 Eventship. Plan events. Coordinate teams. Ship on time." Screenshots .qa/qa-task30-dashboard{,-bottom}.png. dev.log clean.
+- eslint 0 problems; tsc --noEmit clean.
+- Deployment-readiness findings for the Vercel guide: (1) schema.prisma line 10 `provider = "sqlite"` is the single line to flip to "postgresql"; (2) ONLY runtime env var is DATABASE_URL (checked process.env usage); (3) .gitignore does NOT cover db/ — SQLite file with password hashes would be pushed → guide instructs adding db/ + *.db to .gitignore; (4) next.config.ts uses output:"standalone" + package.json build script has self-hosting cp steps → guide overrides Vercel Build Command to `npx prisma generate && next build`; (5) no "seed" npm script → guide uses `npx tsx prisma/seed.ts`; (6) realtime socket.io mini-service can't run on Vercel serverless → app's polling fallback (~30s) covers it.
+
+Stage Summary:
+- Eventship rename verified end-to-end post-compaction; app fully working (login → dashboard with live data, zero console/log errors).
+- Vercel guide delivered with project-specific steps: GitHub → Neon (pooled/direct strings) → one-line provider flip → db push + seed locally → Vercel import with DATABASE_URL (pooled) → build override.
+- Risks/next: favicon/logo.svg + OG image still unbranded (from Task 30 next-candidates); legacy qa.eventship.io rows in local SQLite only (never leave the sandbox).
