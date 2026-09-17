@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
+  Camera,
   CheckCircle2,
   Clock,
   Globe,
   History,
+  ImagePlus,
   KeyRound,
   Link2,
   Loader2,
@@ -28,8 +31,10 @@ import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import { initialsOf } from '@/components/shared/ActivityFeed'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { profileBackgroundByKey } from '@/lib/constants'
+import { UserAvatar } from '@/components/shared/UserAvatar'
+import { BackgroundGrid, ProfileAppearanceCard } from '@/components/profile/ProfileAppearanceCard'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -109,6 +114,9 @@ export function ProfilePage() {
 
   const setUser = useAuthStore((s) => s.setUser)
   const [guardSaving, setGuardSaving] = useState(false)
+  // ---- profile appearance (photo + cover) ----------------------------------
+  const [appearanceBusy, setAppearanceBusy] = useState(false)
+  const heroFileInputRef = useRef<HTMLInputElement>(null)
 
   // ---- session manager -----------------------------------------------------
   const [sessions, setSessions] = useState<SessionRow[]>([])
@@ -186,6 +194,78 @@ export function ProfilePage() {
     } finally {
       setGuardSaving(false)
     }
+  }
+
+  /** Read an image file and cover-crop it to a 256×256 JPEG data URL. */
+  const fileToAvatarDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('Please choose an image file (JPG, PNG or WebP).'))
+        return
+      }
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error('Could not read the file.'))
+      reader.onload = () => {
+        const img = new window.Image()
+        img.onerror = () => reject(new Error('Could not decode that image.'))
+        img.onload = () => {
+          const size = 256
+          const canvas = document.createElement('canvas')
+          canvas.width = size
+          canvas.height = size
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            reject(new Error('Image processing is unavailable in this browser.'))
+            return
+          }
+          // Cover-crop: scale the source so it fully covers the square, centered.
+          const scale = Math.max(size / img.width, size / img.height)
+          const w = img.width * scale
+          const h = img.height * scale
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+          resolve(canvas.toDataURL('image/jpeg', 0.85))
+        }
+        img.src = String(reader.result)
+      }
+      reader.readAsDataURL(file)
+    })
+
+  /** Shared optimistic PATCH for avatar / cover changes. */
+  const patchAppearance = useCallback(
+    async (payload: { avatarUrl?: string | null; profileBg?: string | null }, successTitle: string) => {
+      if (!user) return
+      const previous = user
+      setAppearanceBusy(true)
+      setUser({ ...user, ...payload })
+      try {
+        const data = await api.patch<{ user: UserDTO }>('/auth/me', payload)
+        setUser(data.user)
+        toast({ title: successTitle })
+      } catch (error) {
+        setUser(previous)
+        const message = error instanceof ApiClientError ? error.message : 'Failed to update your profile.'
+        toast({ title: 'Could not update your profile', description: message, variant: 'destructive' })
+      } finally {
+        setAppearanceBusy(false)
+      }
+    },
+    [user, setUser, toast]
+  )
+
+  const handlePhotoUpload = async (file: File) => {
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file)
+      await patchAppearance({ avatarUrl: dataUrl }, 'Profile photo updated')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not process that image.'
+      toast({ title: 'Could not use that photo', description: message, variant: 'destructive' })
+    }
+  }
+
+  const handleHeroFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) void handlePhotoUpload(file)
   }
 
   const loadAll = useCallback(async () => {
@@ -273,20 +353,73 @@ export function ProfilePage() {
 
   if (!user) return null
 
+  const coverBg = profileBackgroundByKey(user.profileBg)
+
   return (
     <div className="space-y-6">
       {/* Hero card */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
         <Card className="overflow-hidden py-0">
           <div className="relative">
-            <div className="h-24 w-full bg-gradient-to-r from-emerald-600/90 via-emerald-500/80 to-teal-500/90" aria-hidden="true" />
+            {/* Cover: chosen background image (or default gradient) */}
+            <div className="relative h-28 w-full overflow-hidden sm:h-32" aria-hidden="true">
+              {coverBg ? (
+                <Image
+                  src={coverBg.url}
+                  alt=""
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 100vw, 900px"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="h-full w-full bg-gradient-to-r from-emerald-600/90 via-emerald-500/80 to-teal-500/90" />
+              )}
+              {/* Change cover (popover picker) */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-3 top-3 h-9 gap-1.5 bg-black/35 px-3 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/55 hover:text-white"
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
+                    Change background
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72">
+                  <p className="mb-2 text-xs font-semibold text-foreground">Choose a cover background</p>
+                  <BackgroundGrid value={user.profileBg} onPick={(key) => void patchAppearance({ profileBg: key }, 'Cover background updated')} disabled={appearanceBusy} />
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="flex flex-col gap-4 px-6 pb-6 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
-                <Avatar className="-mt-8 h-20 w-20 border-4 border-card shadow-md">
-                  <AvatarFallback className="bg-emerald-600 text-2xl font-bold text-white">
-                    {initialsOf(user.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                {/* Avatar with photo-upload overlay */}
+                <div className="relative -mt-10 sm:-mt-12">
+                  <UserAvatar
+                    fullName={user.fullName}
+                    avatarUrl={user.avatarUrl}
+                    className="h-20 w-20 border-4 border-card shadow-md sm:h-24 sm:w-24"
+                    fallbackClassName="bg-emerald-600 text-2xl font-bold text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => heroFileInputRef.current?.click()}
+                    disabled={appearanceBusy}
+                    aria-label={user.avatarUrl ? 'Change profile photo' : 'Upload a profile photo'}
+                    title={user.avatarUrl ? 'Change photo' : 'Upload photo'}
+                    className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md ring-2 ring-card transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+                  >
+                    {appearanceBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                  <input ref={heroFileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleHeroFile} />
+                </div>
                 <div className="pb-1">
                   <h1 className="text-xl font-bold tracking-tight text-foreground">{user.fullName}</h1>
                   <p className="text-sm text-muted-foreground">{user.email}</p>
@@ -482,6 +615,17 @@ export function ProfilePage() {
               </p>
             </CardContent>
           </Card>
+
+          {/* Profile appearance (photo + cover background) */}
+          <ProfileAppearanceCard
+            fullName={user.fullName}
+            avatarUrl={user.avatarUrl}
+            profileBg={user.profileBg}
+            busy={appearanceBusy}
+            onUploadPhoto={(file) => void handlePhotoUpload(file)}
+            onRemovePhoto={() => void patchAppearance({ avatarUrl: null }, 'Profile photo removed')}
+            onPickBackground={(key) => void patchAppearance({ profileBg: key }, 'Cover background updated')}
+          />
 
           {/* My teams */}
           <Card className="py-0">

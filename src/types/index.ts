@@ -30,6 +30,10 @@ export interface UserDTO {
   needsOnboarding: boolean
   /** Workflow guard: block completing tasks whose dependencies are unfinished. */
   strictDependencyGuard: boolean
+  /** Self-uploaded profile photo (data URL), or null for the initials fallback. */
+  avatarUrl: string | null
+  /** Chosen cover background key from the preset gallery, or null for default. */
+  profileBg: string | null
   createdAt: string
   updatedAt: string
 }

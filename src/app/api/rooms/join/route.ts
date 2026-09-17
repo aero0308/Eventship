@@ -35,7 +35,9 @@ export async function POST(request: Request) {
       throw new ApiError(409, 'This room is full — ask the owner to raise the member limit')
     }
 
-    await db.user.update({ where: { id: user.id }, data: { roomId: room.id } })
+    // Joining (re-)activates a deactivated account: onboarding is their path
+    // back into a workspace after an event manager removed them from one.
+    await db.user.update({ where: { id: user.id }, data: { roomId: room.id, isActive: true } })
     await logActivity(user.id, ACTIVITY_ACTIONS.ROOM_JOINED, { roomName: room.name, roomCode: room.roomCode }, room.id)
 
     const full = await db.room.findUniqueOrThrow({ where: { id: room.id }, include: roomDetailInclude })

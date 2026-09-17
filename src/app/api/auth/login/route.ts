@@ -23,7 +23,10 @@ export async function POST(request: Request) {
     if (!user || !verifyPassword(body.password, user.hashedPassword)) {
       throw new ApiError(401, 'Invalid email or password')
     }
-    if (!user.isActive) throw new ApiError(401, 'Account is deactivated')
+    // Deactivated accounts still sign in: they land on onboarding and must
+    // create a room or join one with a Room ID + password. Room-less accounts
+    // cannot read or write any workspace data (requireRoomUser() 403 wall).
+    // Joining or creating a room re-activates the account.
 
     await createSession(user.id, request.headers.get('user-agent'))
     await logActivity(user.id, ACTIVITY_ACTIONS.USER_LOGIN, { email: user.email })

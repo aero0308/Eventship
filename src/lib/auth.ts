@@ -69,7 +69,9 @@ export async function getSessionUser() {
       await db.session.delete({ where: { id: session.id } }).catch(() => undefined)
       return null
     }
-    if (!session.user.isActive) return null
+    // NOTE: deactivated (isActive=false) users may still hold a session — they
+    // sign in and land on onboarding (create/join a room). Room-less accounts
+    // are walled off from all data endpoints by requireRoomUser()'s 403.
     // Opportunistic liveness tracking for the profile session manager —
     // refreshed at most once per minute per session.
     if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
@@ -109,6 +111,8 @@ export function toPublicUser(user: {
   roomId?: string | null
   room?: { id: string; roomCode: string; name: string } | null
   strictDependencyGuard: boolean
+  avatarUrl?: string | null
+  profileBg?: string | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -125,6 +129,8 @@ export function toPublicUser(user: {
     room: user.room ?? null,
     needsOnboarding: !user.roomId,
     strictDependencyGuard: user.strictDependencyGuard,
+    avatarUrl: user.avatarUrl ?? null,
+    profileBg: user.profileBg ?? null,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   }

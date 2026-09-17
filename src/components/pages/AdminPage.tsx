@@ -596,8 +596,9 @@ export function AdminPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {deactivateTarget?.fullName}?</AlertDialogTitle>
             <AlertDialogDescription>
-              They will be signed out immediately and lose access until reactivated. Their tasks and history stay intact —
-              nothing is deleted.
+              They will be signed out immediately and removed from this room — they lose access to all workspace data.
+              They can still sign in, but must create a new room or join one with a Room ID and password. Their tasks and
+              history here stay intact — nothing is deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

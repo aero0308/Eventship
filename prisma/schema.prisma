@@ -34,6 +34,10 @@ model User {
   // Workflow guard: when true, this user cannot mark a task COMPLETED while any
   // of its dependencies is unfinished (enforced server-side, 409).
   strictDependencyGuard Boolean @default(false)
+  // Profile customization: self-uploaded photo (client-resized data URL, JPEG,
+  // max ~256px) and a chosen cover background key from the preset gallery.
+  avatarUrl    String?
+  profileBg    String?
 
   sessions       Session[]
   resetTokens    PasswordResetToken[]

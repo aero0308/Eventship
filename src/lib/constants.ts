@@ -204,3 +204,25 @@ export const ACTIVITY_GROUP_ACTIONS: Record<string, string[] | null> = {
   TEAMS: ['TEAM_CREATED', 'TEAM_UPDATED', 'TEAM_DELETED'],
   USERS: ['USER_REGISTERED', 'USER_LOGIN', 'PASSWORD_CHANGED', 'PASSWORD_RESET_REQUESTED', 'PASSWORD_RESET', 'SESSION_REVOKED', 'SESSIONS_REVOKED_OTHERS', 'USER_UPDATED', 'USER_ROLE_CHANGED', 'USER_DEACTIVATED', 'USER_REACTIVATED'],
 }
+
+// ============ PROFILE APPEARANCE ============
+
+/** Preset profile cover backgrounds (gallery shown on the profile page). */
+export const PROFILE_BACKGROUNDS = [
+  { key: 'aurora', label: 'Aurora', url: '/images/profile-bgs/aurora.png' },
+  { key: 'ember', label: 'Ember', url: '/images/profile-bgs/ember.png' },
+  { key: 'dunes', label: 'Dunes', url: '/images/profile-bgs/dunes.png' },
+  { key: 'tide', label: 'Tide', url: '/images/profile-bgs/tide.png' },
+  { key: 'meadow', label: 'Meadow', url: '/images/profile-bgs/meadow.png' },
+  { key: 'slate', label: 'Slate', url: '/images/profile-bgs/slate.png' },
+] as const
+
+export type ProfileBackgroundKey = (typeof PROFILE_BACKGROUNDS)[number]['key']
+
+export const PROFILE_BG_KEYS = PROFILE_BACKGROUNDS.map((b) => b.key) as readonly string[]
+
+/** Look up a preset background by key (null = default gradient cover). */
+export function profileBackgroundByKey(key: string | null | undefined) {
+  if (!key) return null
+  return PROFILE_BACKGROUNDS.find((b) => b.key === key) ?? null
+}

@@ -13,8 +13,9 @@ export async function GET() {
 }
 
 /**
- * PATCH — self-service updates for the signed-in user (workflow preferences).
- * Role/team/active stay admin-managed (see /api/users/[id]).
+ * PATCH — self-service updates for the signed-in user (workflow preferences,
+ * profile photo, cover background). Role/team/active stay admin-managed
+ * (see /api/users/[id]).
  */
 export async function PATCH(request: Request) {
   try {
@@ -26,8 +27,13 @@ export async function PATCH(request: Request) {
         ...(body.strictDependencyGuard !== undefined
           ? { strictDependencyGuard: body.strictDependencyGuard }
           : {}),
+        ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
+        ...(body.profileBg !== undefined ? { profileBg: body.profileBg } : {}),
       },
-      include: { team: { select: { id: true, name: true } } },
+      include: {
+        team: { select: { id: true, name: true } },
+        room: { select: { id: true, roomCode: true, name: true } },
+      },
     })
     return ok({ user: toPublicUser(updated) })
   } catch (error) {

@@ -8,6 +8,11 @@ import { requireRoomUser } from '@/lib/room'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
+/** True when this PATCH transitions the target from active → deactivated. */
+function deactivatingTarget(next: boolean | undefined, current: boolean): boolean {
+  return next === false && current
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { user: admin, roomId } = await requireRoomUser()
@@ -41,6 +46,24 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
+    // The room owner cannot be deactivated — they hold the room credentials
+    // and the only delete/regenerate powers. Transfer ownership first.
+    const owningRoom = await db.room.findFirst({ where: { id: roomId } })
+    if (deactivatingTarget(body.isActive, target.isActive) && owningRoom?.ownerId === target.id) {
+      throw new ApiError(400, "The room owner's account cannot be deactivated")
+    }
+
+    // Deactivating the last active manager would orphan the workspace —
+    // same guard as demotion, mirrored for the isActive flag.
+    if (deactivatingTarget(body.isActive, target.isActive) && target.role === 'EVENT_MANAGER') {
+      const remainingManagers = await db.user.count({
+        where: { role: 'EVENT_MANAGER', isActive: true, roomId, id: { not: target.id } },
+      })
+      if (remainingManagers === 0) {
+        throw new ApiError(400, 'At least one active event manager is required — promote someone else first')
+      }
+    }
+
     if (body.teamId) {
       const team = await db.team.findFirst({ where: { id: body.teamId, roomId } })
       if (!team) throw new ApiError(404, 'Team not found in your event room')
@@ -57,6 +80,11 @@ export async function PATCH(request: Request, context: RouteContext) {
         ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         ...(body.teamId !== undefined ? { teamId: body.teamId } : {}),
         ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
+        // Deactivation removes the account from the workspace: the user keeps
+        // their credentials but loses room access entirely. On their next
+        // sign-in they land on onboarding and must create a room or join one
+        // with a Room ID + password (which re-activates the account).
+        ...(deactivating ? { roomId: null, teamId: null } : {}),
       },
       include: { team: { select: { id: true, name: true } } },
     })

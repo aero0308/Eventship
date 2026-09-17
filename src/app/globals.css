@@ -482,6 +482,13 @@
   border-radius: 4px;
 }
 
+/* Command palette (Ctrl+K) input: auto-focused on open, so the global ring
+   paints a heavy green border around the whole search field. The wrapper's
+   border-b already communicates focus; keyboard users still see the caret. */
+[data-slot='command-input']:focus-visible {
+  outline: none;
+}
+
 /* ---- Blog article — light editorial scope -------------------------------
    The article page is a warm-cream publication shell (deliberately NOT the
    dark landing or the app shell). Ink-colored focus ring + dark-on-cream

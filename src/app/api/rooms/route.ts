@@ -63,7 +63,9 @@ export async function POST(request: Request) {
       })
       await tx.user.update({
         where: { id: user.id },
-        data: { roomId: created.id, role: 'EVENT_MANAGER' },
+        // Creating a room also (re-)activates a deactivated account: they are
+        // leaving onboarding and re-entering a workspace as its owner.
+        data: { roomId: created.id, role: 'EVENT_MANAGER', isActive: true },
       })
       return created
     })

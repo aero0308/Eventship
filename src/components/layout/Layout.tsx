@@ -45,7 +45,7 @@ import { useKeyboardShortcuts, formatShortcut } from '@/hooks/use-keyboard-short
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { UserAvatar } from '@/components/shared/UserAvatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -156,7 +156,6 @@ export function Layout({ children }: LayoutProps) {
   const [prefsOpen, setPrefsOpen] = useState(false)
   const shortcutMod = useShortcutModifier()
 
-  const initials = useMemo(() => (user ? initialsOf(user.fullName) : ''), [user])
   const navItems = useMemo(
     () => (user?.role === 'EVENT_MANAGER' ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS),
     [user]
@@ -524,9 +523,12 @@ export function Layout({ children }: LayoutProps) {
                   className="flex min-h-11 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-accent"
                   aria-label="Open user menu"
                 >
-                  <Avatar className="h-8 w-8 border border-border">
-                    <AvatarFallback className="bg-emerald-600 text-xs font-semibold text-white">{initials}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    fullName={user?.fullName ?? ''}
+                    avatarUrl={user?.avatarUrl}
+                    className="h-8 w-8 border border-border"
+                    fallbackClassName="bg-emerald-600 text-xs font-semibold text-white"
+                  />
                   <span className="hidden max-w-32 truncate text-sm font-medium text-foreground lg:block">
                     {user?.fullName}
                   </span>
@@ -621,9 +623,12 @@ export function Layout({ children }: LayoutProps) {
                 </nav>
                 <Separator />
                 <div className="flex items-center gap-3 p-4">
-                  <Avatar className="h-9 w-9 border border-border">
-                    <AvatarFallback className="bg-emerald-600 text-xs font-semibold text-white">{initials}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    fullName={user?.fullName ?? ''}
+                    avatarUrl={user?.avatarUrl}
+                    className="h-9 w-9 border border-border"
+                    fallbackClassName="bg-emerald-600 text-xs font-semibold text-white"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{user?.fullName}</p>
                     <p className="truncate text-xs text-muted-foreground">{user ? ROLE_LABELS[user.role] : ''}</p>

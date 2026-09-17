@@ -3,7 +3,7 @@
  * Enum unions are imported from constants so backend and frontend stay in sync.
  */
 import { z } from 'zod'
-import { EVENT_STATUSES, NOTIFICATION_TYPES, ROLES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/constants'
+import { EVENT_STATUSES, NOTIFICATION_TYPES, PROFILE_BG_KEYS, ROLES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/constants'
 
 // ============ field helpers ============
 
@@ -95,6 +95,20 @@ export const resetPasswordSchema = z.object({
 export const updateSelfSchema = z
   .object({
     strictDependencyGuard: z.boolean().optional(),
+    // Self-uploaded profile photo: client-resized JPEG/PNG/WebP data URL.
+    // ~450k chars ≈ 330 KB binary — plenty for a 256px square photo.
+    avatarUrl: z
+      .string()
+      .regex(/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/, 'Photo must be a PNG, JPEG or WebP image')
+      .max(450_000, 'Photo is too large — please choose a smaller image')
+      .nullable()
+      .optional(),
+    // Cover background: a preset gallery key, or null to reset to the default.
+    profileBg: z
+      .string()
+      .refine((v) => PROFILE_BG_KEYS.includes(v), 'Unknown background')
+      .nullable()
+      .optional(),
   })
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: 'Nothing to update',
