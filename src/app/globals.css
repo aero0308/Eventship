@@ -104,100 +104,104 @@
   --card-foreground: oklch(0.955 0.004 90);
   --popover: oklch(0.17 0.004 80);
   --popover-foreground: oklch(0.955 0.004 90);
-  --primary: oklch(0.71 0.12 163);
+  --primary: oklch(0.75 0.15 163);
   --primary-foreground: oklch(0.14 0.02 163);
   --secondary: oklch(0.22 0.006 80);
   --secondary-foreground: oklch(0.955 0.004 90);
   --muted: oklch(0.2 0.005 80);
   --muted-foreground: oklch(0.68 0.008 85);
-  --accent: oklch(0.24 0.012 150);
-  --accent-foreground: oklch(0.93 0.03 160);
-  --destructive: oklch(0.62 0.14 26);
+  --accent: oklch(0.25 0.02 155);
+  --accent-foreground: oklch(0.93 0.045 160);
+  --destructive: oklch(0.66 0.19 26);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.71 0.12 163 / 55%);
-  --chart-1: oklch(0.70 0.12 163);
-  --chart-2: oklch(0.78 0.12 82);
-  --chart-3: oklch(0.64 0.13 26);
-  --chart-4: oklch(0.73 0.10 176);
-  --chart-5: oklch(0.67 0.11 55);
+  --ring: oklch(0.75 0.15 163 / 55%);
+  --chart-1: oklch(0.74 0.15 163);
+  --chart-2: oklch(0.81 0.15 82);
+  --chart-3: oklch(0.66 0.17 26);
+  --chart-4: oklch(0.76 0.13 182);
+  --chart-5: oklch(0.70 0.14 55);
   --sidebar: oklch(0.12 0.004 80);
   --sidebar-foreground: oklch(0.955 0.004 90);
-  --sidebar-primary: oklch(0.71 0.12 163);
+  --sidebar-primary: oklch(0.75 0.15 163);
   --sidebar-primary-foreground: oklch(0.14 0.02 163);
   --sidebar-accent: oklch(0.22 0.008 80);
   --sidebar-accent-foreground: oklch(0.955 0.004 90);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.71 0.12 163 / 55%);
+  --sidebar-ring: oklch(0.75 0.15 163 / 55%);
 
-  /* ---- Dark-optimized palette (eye-comfort pass) -----------------------
-     Tailwind v4 utilities compile to var(--color-*) references, so
-     overriding the stock palette here softens EVERY red/amber/emerald/teal/
-     orange/rose/lime utility at once: chroma dropped ~35-45% so saturated
-     hues stop glowing on the pure-black canvas, and the light 50/100/200
-     steps become dark tinted surfaces so any spot missing an explicit
-     dark: variant still reads as a muted surface instead of a pastel
-     glare. Light mode is untouched (overrides live only in .dark). */
-  --color-red-50: oklch(0.24 0.03 25);
-  --color-red-100: oklch(0.28 0.045 25);
-  --color-red-200: oklch(0.35 0.065 25);
-  --color-red-300: oklch(0.75 0.10 23);
-  --color-red-400: oklch(0.70 0.115 24);
-  --color-red-500: oklch(0.65 0.13 26);
-  --color-red-600: oklch(0.60 0.125 27);
-  --color-red-700: oklch(0.54 0.115 27);
-  --color-red-800: oklch(0.45 0.095 27);
-  --color-red-900: oklch(0.39 0.08 26);
+  /* ---- Dark-optimized palette (balance pass) ----------------------------
+     Tailwind v4 utilities compile to var(--color-*) references, so overriding
+     the stock palette here retunes EVERY red/amber/emerald/teal/orange/rose/
+     lime utility at once — dark mode only, light mode untouched.
 
-  --color-amber-50: oklch(0.25 0.035 85);
-  --color-amber-100: oklch(0.29 0.05 85);
-  --color-amber-200: oklch(0.36 0.07 85);
-  --color-amber-300: oklch(0.82 0.115 88);
-  --color-amber-400: oklch(0.78 0.125 82);
-  --color-amber-500: oklch(0.74 0.125 70);
-  --color-amber-600: oklch(0.67 0.12 58);
-  --color-amber-700: oklch(0.58 0.11 49);
-  --color-amber-800: oklch(0.48 0.095 46);
-  --color-amber-900: oklch(0.42 0.08 46);
+     Two goals, calibrated against user feedback (the first pass muted chroma
+     35-45% and read as gray/dull; full stock chroma glowed on the black
+     canvas):
+     • 50/100/200 stay dark tinted SURFACES (chairs, not lights) — any spot
+       missing an explicit dark: variant still reads as a muted panel.
+     • 300-900 accents sit at ~80% of stock chroma and a touch more lightness:
+       clearly lively (badges, dots, links, charts pop) without neon bloom. */
+  --color-red-50: oklch(0.24 0.04 25);
+  --color-red-100: oklch(0.28 0.055 25);
+  --color-red-200: oklch(0.35 0.075 25);
+  --color-red-300: oklch(0.78 0.13 23);
+  --color-red-400: oklch(0.72 0.165 24);
+  --color-red-500: oklch(0.66 0.19 26);
+  --color-red-600: oklch(0.61 0.185 27);
+  --color-red-700: oklch(0.53 0.16 27);
+  --color-red-800: oklch(0.46 0.125 27);
+  --color-red-900: oklch(0.40 0.10 26);
 
-  --color-emerald-50: oklch(0.25 0.03 165);
-  --color-emerald-100: oklch(0.29 0.045 164);
-  --color-emerald-200: oklch(0.36 0.065 164);
-  --color-emerald-300: oklch(0.79 0.105 165);
-  --color-emerald-400: oklch(0.73 0.12 163);
-  --color-emerald-500: oklch(0.68 0.12 162);
-  --color-emerald-600: oklch(0.60 0.115 163);
-  --color-emerald-700: oklch(0.53 0.10 166);
-  --color-emerald-800: oklch(0.44 0.08 167);
-  --color-emerald-900: oklch(0.38 0.065 169);
+  --color-amber-50: oklch(0.25 0.045 85);
+  --color-amber-100: oklch(0.29 0.06 85);
+  --color-amber-200: oklch(0.36 0.08 85);
+  --color-amber-300: oklch(0.84 0.15 88);
+  --color-amber-400: oklch(0.80 0.165 82);
+  --color-amber-500: oklch(0.75 0.16 70);
+  --color-amber-600: oklch(0.68 0.15 58);
+  --color-amber-700: oklch(0.59 0.135 49);
+  --color-amber-800: oklch(0.49 0.115 46);
+  --color-amber-900: oklch(0.43 0.095 46);
 
-  --color-teal-100: oklch(0.29 0.045 195);
-  --color-teal-200: oklch(0.36 0.065 194);
-  --color-teal-300: oklch(0.78 0.09 187);
-  --color-teal-400: oklch(0.72 0.095 189);
-  --color-teal-500: oklch(0.66 0.10 192);
-  --color-teal-600: oklch(0.58 0.09 195);
-  --color-teal-700: oklch(0.50 0.08 197);
+  --color-emerald-50: oklch(0.25 0.04 165);
+  --color-emerald-100: oklch(0.29 0.06 164);
+  --color-emerald-200: oklch(0.36 0.08 164);
+  --color-emerald-300: oklch(0.81 0.13 165);
+  --color-emerald-400: oklch(0.76 0.155 163);
+  --color-emerald-500: oklch(0.71 0.15 162);
+  --color-emerald-600: oklch(0.64 0.145 163);
+  --color-emerald-700: oklch(0.54 0.12 166);
+  --color-emerald-800: oklch(0.45 0.10 167);
+  --color-emerald-900: oklch(0.40 0.085 169);
 
-  --color-orange-100: oklch(0.29 0.045 55);
-  --color-orange-200: oklch(0.36 0.065 55);
-  --color-orange-300: oklch(0.79 0.095 58);
-  --color-orange-400: oklch(0.74 0.11 55);
-  --color-orange-500: oklch(0.69 0.12 52);
-  --color-orange-600: oklch(0.62 0.12 48);
-  --color-orange-700: oklch(0.54 0.105 45);
+  --color-teal-100: oklch(0.29 0.06 195);
+  --color-teal-200: oklch(0.36 0.08 194);
+  --color-teal-300: oklch(0.81 0.12 187);
+  --color-teal-400: oklch(0.75 0.13 189);
+  --color-teal-500: oklch(0.69 0.125 192);
+  --color-teal-600: oklch(0.61 0.115 195);
+  --color-teal-700: oklch(0.53 0.095 197);
 
-  --color-rose-100: oklch(0.29 0.045 15);
-  --color-rose-200: oklch(0.36 0.06 15);
-  --color-rose-300: oklch(0.78 0.09 16);
-  --color-rose-500: oklch(0.65 0.12 15);
-  --color-rose-700: oklch(0.52 0.10 15);
+  --color-orange-100: oklch(0.29 0.06 55);
+  --color-orange-200: oklch(0.36 0.08 55);
+  --color-orange-300: oklch(0.81 0.13 58);
+  --color-orange-400: oklch(0.76 0.155 55);
+  --color-orange-500: oklch(0.71 0.17 52);
+  --color-orange-600: oklch(0.64 0.17 48);
+  --color-orange-700: oklch(0.56 0.145 45);
 
-  --color-lime-100: oklch(0.30 0.045 115);
-  --color-lime-200: oklch(0.37 0.06 118);
-  --color-lime-300: oklch(0.80 0.10 120);
-  --color-lime-500: oklch(0.72 0.12 125);
-  --color-lime-700: oklch(0.55 0.10 130);
+  --color-rose-100: oklch(0.29 0.06 15);
+  --color-rose-200: oklch(0.36 0.075 15);
+  --color-rose-300: oklch(0.80 0.13 16);
+  --color-rose-500: oklch(0.66 0.19 15);
+  --color-rose-700: oklch(0.54 0.16 15);
+
+  --color-lime-100: oklch(0.30 0.06 115);
+  --color-lime-200: oklch(0.37 0.075 118);
+  --color-lime-300: oklch(0.83 0.14 120);
+  --color-lime-500: oklch(0.75 0.17 125);
+  --color-lime-700: oklch(0.56 0.13 130);
 }
 
 @layer base {

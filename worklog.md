@@ -904,3 +904,16 @@ Stage Summary:
 - Search palette is ring-free; deactivation is now "removed from workspace, sign back in via onboarding" with owner/last-manager protections; profile photos upload app-wide (header + profile) with a 6-image cover gallery on profile + settings.
 - Files: globals.css, api/auth/login+me, api/users/[id], api/rooms+join, lib/auth.ts, lib/schemas.ts, lib/constants.ts, types/index.ts, layout.tsx (Layout), ProfilePage, ProfileAppearanceCard (new), UserAvatar (new), AdminPage dialog copy, prisma/schema.prisma, public/images/profile-bgs/*.
 - Next candidates: avatar display in comments/task assignee chips/teams members (swap initials discs → UserAvatar); cover background per-room branding; "deactivated members" tombstone list for admins (cross-room privacy makes this tricky); allow custom cover uploads alongside presets.
+
+---
+Task ID: 28
+Agent: Z.ai Code (main)
+Task: User feedback — dark mode on authenticated pages was "too dull"; rebalance so it is neither punchy (neon glow on black) nor dull (grayish).
+
+Work Log:
+- Root cause: Task 17's "eye-comfort pass" cut chroma 35-45% below Tailwind stock for every emerald/teal/red/amber/orange/rose/lime step in .dark, leaving accents grayish. Fixed in globals.css's .dark block with a "balance pass": 50/100/200 steps stay dark tinted surfaces (slightly richer: chroma +~0.01-0.015) so panels never glare, while 300-900 accents move to ~80% of stock chroma with a small lightness lift (e.g. emerald-500 oklch(0.68 0.12 162) → oklch(0.71 0.15 162); red-500 0.13→0.19; amber-400 0.125→0.165). Dark theme tokens punched to match: --primary/--sidebar-primary 0.71/0.12 → 0.75/0.15, --ring + --sidebar-ring synced, --destructive 0.62/0.14 → 0.66/0.19, --accent slightly greener (0.25 0.02 155), --accent-foreground chroma up, and all five --chart-* colors lifted (charts/donut previously read muted). Light mode untouched (all overrides scoped to .dark).
+Verification:
+- eslint clean. agent-browser dark-mode walkthrough: dashboard (bars, donut, stat icons now lively without bloom — qa-dark-dashboard.png), tasks board (column headers/status/priority badges vivid + readable — qa-dark-tasks.png), profile (tinted stat tiles, emerald switch, OWNER/role badges pop — qa-dark-profile.png). Light mode regression: toggled back, rendered identically to before (qa-light-profile-regression.png). Console 0 errors; dev.log clean.
+Stage Summary:
+- Dark mode now sits between the two previous extremes: clearly saturated accents (~80% stock chroma) on dark surfaces, per the user's "not too punchy and not too dull" target.
+- File: src/app/globals.css (.dark block only). If further tuning is requested, the knobs are the per-family --color-* chroma values and --primary/--chart-* tokens; ~80% of stock chroma is the calibrated sweet spot.
