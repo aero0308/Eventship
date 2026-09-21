@@ -67,6 +67,37 @@ export function handleApiError(error: unknown) {
   if (message.includes('Foreign key constraint')) {
     return fail('Referenced record does not exist', 404)
   }
+  // Deployment diagnostics: translate the classic "fresh deploy" failures into
+  // actionable 503s so the Network tab tells the operator what to fix instead
+  // of a bare 500. (Matched on message substrings thrown by Prisma/engines.)
+  if (message.includes('Environment variable not found: DATABASE_URL')) {
+    return fail(
+      'Database not configured: set the DATABASE_URL environment variable on your host (see .env.example and the Deploying section of the README).',
+      503
+    )
+  }
+  if (message.includes('did not initialize yet') || message.includes('prisma generate')) {
+    return fail(
+      'Prisma client is not generated: run `npx prisma generate` and redeploy (a `postinstall` script handles this automatically).',
+      503
+    )
+  }
+  if (
+    message.includes('unable to open database file') ||
+    message.includes('SQLITE_CANT_OPEN') ||
+    message.includes('Error code 14')
+  ) {
+    return fail(
+      'SQLite database cannot be opened on this host: serverless platforms (Vercel/Netlify) have a read-only filesystem — switch to PostgreSQL (see README Deploying) or deploy to a host with a writable persistent disk.',
+      503
+    )
+  }
+  if (message.includes("Can't reach database server") || message.includes('P1001')) {
+    return fail(
+      'Database unreachable: verify DATABASE_URL and that the database server is running and network-accessible from your deployment.',
+      503
+    )
+  }
   console.error('[api-error]', error)
   return fail('Internal server error', 500)
 }

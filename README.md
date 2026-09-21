@@ -206,6 +206,22 @@ Short version; do these in order:
 > ℹ️ On Vercel the LIVE badge uses polling fallback (~30 s) since serverless can't host websockets. Everything else works identically.
 > Neon free tier sleeps after ~5 min idle — the first request after a pause takes 1–2 s to wake it.
 
+### 🩺 Deployed site returns 500 on login/register? Self-diagnose
+
+Open **`/api/health`** on the deployed URL. It runs four checks in order and names the exact fix:
+
+| Failed check | Meaning | Fix |
+|---|---|---|
+| `databaseUrl` | `DATABASE_URL` env var missing on the host | Add it in host dashboard (Vercel → Settings → Environment Variables), then **redeploy** |
+| `databaseUrl.hint` mentions serverless | SQLite selected on a read-only/ephemeral filesystem | Do step 1 (switch to `postgresql`) — SQLite **cannot** work on Vercel/Netlify |
+| `prismaClient` | Prisma client wasn't generated during install | Run `npx prisma generate` locally + commit, or set build command to `npx prisma generate && next build` (a `postinstall` script now handles this automatically) |
+| `database` | DB unreachable (wrong host / asleep / allow-list) | Check the connection string (pooled for Vercel), DB is awake, network access |
+| `schema` | DB reachable but tables missing | `npx prisma db push` against that database, then optionally seed |
+
+Auth endpoints also return these same hints as `503` messages (visible in the browser Network tab) instead of a bare `500`.
+
+**Self-hosting with SQLite instead** (Render / Railway / Fly / VPS): keep `provider = "sqlite"`, set `DATABASE_URL="file:./db/custom.db"` on a **persistent writable disk**, run `npx prisma db push && npx tsx prisma/seed.ts` once, then `npm run build && npm start`. Never commit a live database in production use.
+
 ---
 
 ## 🧪 Testing
