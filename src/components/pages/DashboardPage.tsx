@@ -50,6 +50,7 @@ import {
 } from '@/lib/constants'
 import { api } from '@/lib/api-client'
 import { navigate } from '@/hooks/use-hash-route'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -145,11 +146,12 @@ interface RingEntry {
  * with the total count in the middle. Animated on mount, respects colors
  * from PRIORITY_CHART_COLORS.
  */
-function PriorityRings({ data }: { data: RingEntry[] }) {
+function PriorityRings({ data, compact = false }: { data: RingEntry[]; compact?: boolean }) {
   const total = data.reduce((sum, entry) => sum + entry.value, 0)
-  const size = 208
-  const stroke = 15
-  const ringGap = 9
+  // Smaller canvas on phones so the rings + legend stack stays inside the card.
+  const size = compact ? 168 : 208
+  const stroke = compact ? 13 : 15
+  const ringGap = compact ? 8 : 9
   const scheme = useChartScheme()
   const colors = PRIORITY_CHART_COLORS[scheme]
 
@@ -196,7 +198,7 @@ function PriorityRings({ data }: { data: RingEntry[] }) {
         ))}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
-        <span className="text-[2rem] font-bold leading-none tabular-nums text-foreground">{total}</span>
+        <span className={cn('font-bold leading-none tabular-nums text-foreground', compact ? 'text-[1.65rem]' : 'text-[2rem]')}>{total}</span>
         <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">tasks</span>
       </div>
     </div>
@@ -254,6 +256,7 @@ const TREND_TOOLTIP_STYLE: CSSProperties = {
  */
 function ProgressTrendChart({ data, scheme }: { data: ProgressOverTimeDTO[]; scheme: 'light' | 'dark' }) {
   const colors = TREND_COLORS[scheme]
+  const isMobile = useIsMobile()
   const chartData = data.map((day) => ({
     date: format(new Date(`${day.date}T00:00:00`), 'MMM d'),
     Created: day.created,
@@ -271,16 +274,30 @@ function ProgressTrendChart({ data, scheme }: { data: ProgressOverTimeDTO[]; sch
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.completed }} /> Completed ({totalCompleted})</span>
         <span className="flex items-center gap-1.5"><span className="h-0 w-3 border-t-2 border-dashed" style={{ borderColor: colors.cumulative }} /> Total done</span>
       </div>
-      <div className="h-64 w-full">
+      <div className="h-56 w-full sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 8, right: isMobile ? 14 : 8, left: isMobile ? -8 : -16, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={4} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+            {/* Mobile: sparser ticks (every 9th day), smaller type and a slim
+                Y-axis so 30 data points breathe instead of colliding. */}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: isMobile ? 10 : 11, fill: 'var(--muted-foreground)' }}
+              tickLine={false}
+              axisLine={{ stroke: 'var(--border)' }}
+              interval={isMobile ? 9 : 4}
+            />
+            <YAxis
+              allowDecimals={false}
+              width={isMobile ? 30 : 40}
+              tick={{ fontSize: isMobile ? 10 : 11, fill: 'var(--muted-foreground)' }}
+              tickLine={false}
+              axisLine={false}
+            />
             <Tooltip contentStyle={TREND_TOOLTIP_STYLE} labelStyle={{ color: 'var(--foreground)', fontWeight: 600, marginBottom: 2 }} itemStyle={{ color: 'var(--muted-foreground)' }} />
-            <Line type="monotone" dataKey="Created" stroke={colors.created} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Completed" stroke={colors.completed} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Total done" stroke={colors.cumulative} strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Created" stroke={colors.created} strokeWidth={isMobile ? 1.8 : 2} dot={false} activeDot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Completed" stroke={colors.completed} strokeWidth={isMobile ? 1.8 : 2} dot={false} activeDot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Total done" stroke={colors.cumulative} strokeWidth={isMobile ? 1.8 : 2} strokeDasharray="5 5" dot={false} activeDot={{ r: 3 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -349,21 +366,24 @@ function FocusStrip({
       )}
     >
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
-            <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">My focus</h2>
-            <p className="text-xs text-muted-foreground">Tap a bucket to see what needs attention.</p>
+        {/* Mobile: header + scope toggle share one row (the sm:contents trick
+            restores the original side-by-side flow on larger screens). */}
+        <div className="flex items-center justify-between gap-3 sm:contents">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+              <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground">My focus</h2>
+              <p className="hidden text-xs text-muted-foreground sm:block">Tap a bucket to see what needs attention.</p>
+            </div>
           </div>
-        </div>
-        {/* Scope toggle: everyone's tasks vs. only mine */}
-        <div
-          className="inline-flex h-8 shrink-0 items-center rounded-full border border-border/70 bg-card/80 p-0.5"
-          role="group"
-          aria-label="Focus scope"
-        >
+          {/* Scope toggle: everyone's tasks vs. only mine */}
+          <div
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-border/70 bg-card/80 p-0.5"
+            role="group"
+            aria-label="Focus scope"
+          >
           {(
             [
               { value: 'all', label: 'All tasks', icon: Users },
@@ -386,8 +406,10 @@ function FocusStrip({
               {option.label}
             </button>
           ))}
+          </div>
         </div>
-        <div className="flex flex-1 flex-wrap items-center justify-start gap-2 sm:justify-end" role="group" aria-label="Focus buckets">
+        {/* Mobile: three equal buckets on one row; sm+: inline chips, end-aligned */}
+        <div className="grid flex-1 grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-2" role="group" aria-label="Focus buckets">
           {buckets.map((bucket) => {
             const meta = FOCUS_META[bucket.key]
             const isActive = open === bucket.key
@@ -398,17 +420,19 @@ function FocusStrip({
                 aria-pressed={isActive}
                 onClick={() => setOpen(isActive ? null : bucket.key)}
                 className={cn(
-                  'group flex min-h-11 items-center gap-2.5 rounded-xl border px-3.5 py-2 text-left transition-all',
+                  'group flex min-h-11 flex-col items-start justify-center gap-1 rounded-xl border px-3 py-2 text-left transition-all sm:flex-row sm:items-center sm:gap-2.5 sm:px-3.5',
                   isActive
                     ? 'border-transparent shadow-sm ' + meta.activeChip
                     : 'border-border/70 bg-card/80 text-foreground hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-sm dark:hover:border-emerald-500/40'
                 )}
               >
-                <span className={cn('h-2 w-2 shrink-0 rounded-full', meta.dot, bucket.count === 0 && 'opacity-30')} aria-hidden="true" />
-                <span className="text-xl font-bold leading-none tabular-nums">{bucket.count}</span>
-                <span className="text-xs font-medium leading-tight">{meta.label}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className={cn('h-2 w-2 shrink-0 rounded-full', meta.dot, bucket.count === 0 && 'opacity-30')} aria-hidden="true" />
+                  <span className="text-lg font-bold leading-none tabular-nums sm:text-xl">{bucket.count}</span>
+                </span>
+                <span className="w-full text-[11px] font-medium leading-tight sm:w-auto sm:truncate sm:text-xs">{meta.label}</span>
                 <ChevronDown
-                  className={cn('h-3.5 w-3.5 shrink-0 opacity-50 transition-transform', isActive && 'rotate-180 opacity-80')}
+                  className={cn('hidden h-3.5 w-3.5 shrink-0 opacity-50 transition-transform sm:block', isActive && 'rotate-180 opacity-80')}
                   aria-hidden="true"
                 />
               </button>
@@ -487,6 +511,7 @@ function FocusStrip({
 
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
+  const isMobile = useIsMobile()
   const [stats, setStats] = useState<DashboardStatsDTO | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
@@ -661,10 +686,15 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {/* ============ Stat cards (Phase 6: click-through to filtered views) ============ */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Key statistics">
+      {/* ============ Stat cards (Phase 6: click-through to filtered views).
+          Mobile: two compact columns (Overdue spans both) instead of five
+          stacked full-width cards. ============ */}
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Key statistics">
         {loading || !stats ? (
-          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+          <>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl sm:h-32" />)}
+            <Skeleton className="col-span-2 h-24 rounded-xl sm:col-span-1 sm:h-32" />
+          </>
         ) : (
           <>
             <StatCard
@@ -712,6 +742,7 @@ export function DashboardPage() {
               tint="red"
               onClick={() => navigate(`${ROUTES.TASKS}?overdue=true`)}
               actionLabel="View overdue tasks"
+              wrapperClassName="col-span-2 sm:col-span-1"
             />
           </>
         )}
@@ -731,9 +762,19 @@ export function DashboardPage() {
             ) : (
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statusData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <BarChart data={statusData} margin={{ top: 8, right: 8, left: -16, bottom: isMobile ? 4 : 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={0} />
+                    {/* Mobile: angled ticks so the four status names never collide. */}
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: isMobile ? 10 : 12, fill: 'var(--muted-foreground)' }}
+                      tickLine={false}
+                      axisLine={{ stroke: 'var(--border)' }}
+                      interval={0}
+                      angle={isMobile ? -32 : 0}
+                      textAnchor={isMobile ? 'end' : 'middle'}
+                      height={isMobile ? 56 : 30}
+                    />
                     <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
                     <Tooltip
                       cursor={{ fill: 'rgba(16,185,129,0.08)' }}
@@ -771,9 +812,9 @@ export function DashboardPage() {
             ) : priorityData.every((d) => d.value === 0) ? (
               <EmptyState icon={ListTodo} title="No tasks yet" hint="Priorities will appear once tasks exist." />
             ) : (
-              <div className="flex h-64 flex-col items-center justify-center gap-6 sm:flex-row sm:gap-10">
-                <PriorityRings data={priorityData} />
-                <ul className="w-full max-w-72 space-y-4" aria-label="Priority legend">
+              <div className="flex flex-col items-center justify-center gap-5 py-2 sm:h-64 sm:flex-row sm:gap-10 sm:py-0">
+                <PriorityRings data={priorityData} compact={isMobile} />
+                <ul className="w-full max-w-72 space-y-3 sm:space-y-4" aria-label="Priority legend">
                   {priorityData.map((entry) => (
                     <PriorityLegendRow key={entry.key} entry={entry} total={priorityData.reduce((sum, d) => sum + d.value, 0)} />
                   ))}

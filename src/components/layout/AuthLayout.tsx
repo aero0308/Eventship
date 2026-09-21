@@ -7,6 +7,7 @@ import { Check, X } from 'lucide-react'
 import { APP_NAME, ROUTES } from '@/lib/constants'
 import { navigate } from '@/hooks/use-hash-route'
 import { Card, CardContent } from '@/components/ui/card'
+import { BrandMark } from '@/components/shared/BrandMark'
 
 interface AuthLayoutProps {
   title: string
@@ -68,10 +69,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
         <div className="relative flex h-full flex-col justify-between p-10 xl:p-14">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden="true"
-              className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
-            />
+            <BrandMark variant="indigo" size={26} glow />
             <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
           </div>
 
@@ -136,10 +134,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
 
         {/* Mobile brand row (the aside is desktop-only) */}
         <div className="auth-brand relative z-10 mb-5 flex items-center gap-2.5 lg:hidden">
-          <span
-            aria-hidden="true"
-            className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
-          />
+          <BrandMark variant="indigo" size={26} glow />
           <span className="auth-brand-name text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
         </div>
 

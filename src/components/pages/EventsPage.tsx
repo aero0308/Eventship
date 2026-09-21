@@ -26,6 +26,7 @@ import {
 } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
+import { DateInput } from '@/components/shared/DateInput'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -398,7 +399,7 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div
-            className="flex min-w-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5"
+            className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 sm:flex-nowrap"
             role="group"
             aria-label="Filter by start date range"
           >
@@ -411,13 +412,15 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
             <label className="sr-only" htmlFor="filter-date-from">
               Start date from
             </label>
-            <Input
+            <DateInput
               id="filter-date-from"
-              type="date"
               value={dateFrom}
               max={dateTo || undefined}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-7 w-[9.5rem] min-w-0 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+              className="min-w-0 flex-1 basis-28 sm:w-[9.5rem] sm:flex-none sm:basis-auto"
+              inputClassName="h-7 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+              placeholderClassName="left-1 text-[11px]"
+              iconClassName="right-0.5 h-3.5 w-3.5"
             />
             {/* Fixed-size flex-centered chip keeps the arrow perfectly centered */}
             <span
@@ -429,13 +432,15 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
             <label className="sr-only" htmlFor="filter-date-to">
               Start date to
             </label>
-            <Input
+            <DateInput
               id="filter-date-to"
-              type="date"
               value={dateTo}
               min={dateFrom || undefined}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-7 w-[9.5rem] min-w-0 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:[color-scheme:dark]"
+              className="min-w-0 flex-1 basis-28 sm:w-[9.5rem] sm:flex-none sm:basis-auto"
+              inputClassName="h-7 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+              placeholderClassName="left-1 text-[11px]"
+              iconClassName="right-0.5 h-3.5 w-3.5"
             />
           </div>
 
@@ -666,23 +671,21 @@ export function EventsPage({ searchPlaceholder }: EventsPageProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="event-start">Start date</Label>
-                <Input
+                <DateInput
                   id="event-start"
-                  type="date"
                   value={form.startDate}
                   onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="event-end">End date</Label>
-                <Input
+                <DateInput
                   id="event-end"
-                  type="date"
                   value={form.endDate}
                   onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                   required
                 />
               </div>

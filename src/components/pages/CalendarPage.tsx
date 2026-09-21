@@ -33,6 +33,7 @@ import {
   type BoardChangePayload,
 } from '@/lib/realtime-client'
 import { LiveBadge } from '@/components/shared/RealtimeChrome'
+import { DateInput } from '@/components/shared/DateInput'
 import { buildIcs, downloadIcs } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
@@ -391,11 +392,10 @@ export function CalendarPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="max-sm:space-y-7 sm:space-y-5">
       <PageHeader
         title="Calendar"
         subtitle="Every deadline and event on one month grid."
-        className="mb-0"
         actions={
           <>
             <Button variant="outline" onClick={() => void load()} disabled={loading} className="min-h-11">
@@ -795,8 +795,7 @@ function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, o
                               <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                                 <CalendarArrowDown className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                                 <span className="sr-only">Due date for {task.title}</span>
-                                <input
-                                  type="date"
+                                <DateInput
                                   value={task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : ''}
                                   onChange={(e) => {
                                     const value = e.target.value
@@ -804,7 +803,10 @@ function AgendaDialog({ date, tasks, events, loading, onClose, onStatusChange, o
                                     const [y, m, d] = value.split('-').map(Number)
                                     onReschedule(task, new Date(y, m - 1, d, 12, 0))
                                   }}
-                                  className="h-8 rounded-md border border-border bg-transparent px-2 text-xs text-foreground outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 [&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[color-scheme:dark]"
+                                  placeholder=""
+                                  className="w-auto shrink-0"
+                                  inputClassName="h-8 w-auto rounded-md border border-border bg-transparent px-2 text-xs outline-none transition-colors focus:border-emerald-500 focus-visible:ring-emerald-500/40 dark:[color-scheme:dark]"
+                                  iconClassName="right-1 h-3.5 w-3.5"
                                   aria-label={`Reschedule ${task.title}`}
                                 />
                               </label>

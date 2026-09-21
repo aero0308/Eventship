@@ -25,6 +25,7 @@ import { EVENT_STATUS_CLASSES, EVENT_STATUS_LABELS, PRIORITY_LABELS, ROUTES, ROL
 import { api } from '@/lib/api-client'
 import { navigate } from '@/hooks/use-hash-route'
 import { useShortcutModifier } from '@/hooks/use-platform'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import {
@@ -56,6 +57,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { resolvedTheme, setTheme } = useTheme()
   // Platform-aware hint in the input placeholder (⌘K vs Ctrl+K); 'Ctrl' during SSR.
   const shortcutMod = useShortcutModifier()
+  // Touch users have no keyboard — hide the shortcut hint + kbd footer there.
+  const isMobile = useIsMobile()
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResultDTO | null>(null)
@@ -165,7 +168,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <DialogDescription>Jump to a page or search across events, tasks, teams and people.</DialogDescription>
         </DialogHeader>
         <Command shouldFilter={false} className="[&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4">
-          <CommandInput placeholder={`Search events, tasks, teams, people… (${shortcutMod === '⌘' ? '⌘K' : 'Ctrl+K'})`} value={query} onValueChange={setQuery} />
+          <CommandInput placeholder={isMobile ? 'Search events, tasks, teams, people…' : `Search events, tasks, teams, people… (${shortcutMod === '⌘' ? '⌘K' : 'Ctrl+K'})`} value={query} onValueChange={setQuery} />
           <CommandList className="max-h-[26rem]">
             {query.trim().length >= 2 && !hasResults ? (
               searching ? (
@@ -238,11 +241,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </CommandGroup>
           </CommandList>
 
-          {/* Keyboard hints footer */}
-          <div
-            className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground"
-            aria-hidden="true"
-          >
+          {/* Keyboard hints footer — desktop only (meaningless on touch) */}
+          {!isMobile ? (
+            <div
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground"
+              aria-hidden="true"
+            >
             <span className="inline-flex items-center gap-1.5">
               <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-semibold">↑↓</kbd>
               navigate
@@ -263,6 +267,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </span>
             <span className="ml-auto hidden sm:inline">Search is live — results stream in as you type</span>
           </div>
+          ) : null}
         </Command>
       </DialogContent>
     </Dialog>

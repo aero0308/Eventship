@@ -171,7 +171,6 @@ export function AdminPage() {
       <PageHeader
         title="User management"
         subtitle="Roles, team assignments and account access across the workspace."
-        className="mb-0"
         actions={
           <Button variant="outline" onClick={() => void load()} disabled={loading} className="min-h-11">
             <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />
@@ -512,7 +511,7 @@ export function AdminPage() {
                             disabled={isSelf || busy}
                             onValueChange={(role) => void patchUser(u, { role: role as UserWithStatsDTO['role'] }, 'Role updated')}
                           >
-                            <SelectTrigger aria-label={`Role for ${u.fullName}`} className="h-10 text-xs">
+                            <SelectTrigger aria-label={`Role for ${u.fullName}`} className="h-10 w-full text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -533,7 +532,7 @@ export function AdminPage() {
                               void patchUser(u, { teamId: teamId === 'none' ? null : teamId }, 'Team updated')
                             }
                           >
-                            <SelectTrigger aria-label={`Team for ${u.fullName}`} className="h-10 text-xs">
+                            <SelectTrigger aria-label={`Team for ${u.fullName}`} className="h-10 w-full text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -547,16 +546,16 @@ export function AdminPage() {
                           </Select>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <ListChecks className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                           {u.stats.openTasks} open
                           {u.stats.overdueTasks > 0 ? (
-                            <span className="font-semibold text-red-600 dark:text-red-300">· {u.stats.overdueTasks} overdue</span>
+                            <span className="whitespace-nowrap font-semibold text-red-600 dark:text-red-300">· {u.stats.overdueTasks} overdue</span>
                           ) : null}
                         </span>
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
+                          <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                           {u.lastLoginAt ? formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true }) : 'never'}
                         </span>
                       </div>

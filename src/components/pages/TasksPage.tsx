@@ -53,6 +53,7 @@ import {
   type PresenceUser,
 } from '@/lib/realtime-client'
 import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
+import { DateInput } from '@/components/shared/DateInput'
 import { DependencyChain } from '@/components/shared/DependencyChain'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
@@ -1848,7 +1849,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                           type="button"
                           onClick={() => setDetailId(task.id)}
                           className={cn(
-                            'min-w-0 flex-1 text-left text-sm font-semibold text-foreground hover:text-emerald-700 dark:hover:text-emerald-300',
+                            'min-w-0 flex-1 basis-44 text-left text-sm font-semibold text-foreground hover:text-emerald-700 dark:hover:text-emerald-300',
                             task.status === 'COMPLETED' && 'line-through decoration-stone-300'
                           )}
                         >
@@ -1857,7 +1858,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                             <span className="block text-[11px] font-normal text-muted-foreground/70">{task.event.name}</span>
                           ) : null}
                         </button>
-                        <span className="flex shrink-0 items-center gap-2">
+                        <span className="flex min-w-0 flex-1 basis-44 flex-wrap items-center gap-x-2 gap-y-1.5 sm:basis-0 sm:flex-nowrap sm:justify-end">
                           {chip ? (
                             <Badge variant="outline" className={cn('gap-1 text-[10px] font-normal', chip.classes)}>
                               <Clock className="h-3 w-3" aria-hidden="true" />
@@ -1879,7 +1880,7 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                           <Select value={task.status} onValueChange={(value) => requestMove(task, value as TaskStatus)}>
                             <SelectTrigger
                               size="sm"
-                              className="h-8 w-36"
+                              className="h-9 w-full min-w-0 sm:h-8 sm:w-36"
                               aria-label={`Change status of ${task.title}`}
                             >
                               <SelectValue />
@@ -2057,22 +2058,20 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                   <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                   Start date
                 </Label>
-                <Input
+                <DateInput
                   id="task-start"
-                  type="date"
                   value={form.startDate}
                   onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="task-due">Due date</Label>
-                <Input
+                <DateInput
                   id="task-due"
-                  type="date"
                   value={form.dueDate}
                   onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
             </div>
@@ -2186,23 +2185,27 @@ export function TasksPage({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="space-y-2">
+                {/* Task 41: hour fields restored to their natural half-width
+                    (the Task 40 max-w cap and 12-col split are gone) and
+                    placed BELOW the Start/Due date row on every viewport —
+                    desktop included. Dates always own their full-width rows. */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 min-w-0 space-y-2">
                     <Label htmlFor="edit-start" className="flex items-center gap-1">
                       <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                       Start
                     </Label>
-                    <Input id="edit-start" type="date" value={edit.startDate} onChange={(e) => setEdit((f) => (f ? { ...f, startDate: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
+                    <DateInput id="edit-start" value={edit.startDate} onChange={(e) => setEdit((f) => (f ? { ...f, startDate: e.target.value } : f))} inputClassName="h-10 dark:[color-scheme:dark]" disabled={!canDeleteTask} />
                   </div>
-                  <div className="space-y-2">
+                  <div className="col-span-2 min-w-0 space-y-2">
                     <Label htmlFor="edit-due">Due date</Label>
-                    <Input id="edit-due" type="date" value={edit.dueDate} onChange={(e) => setEdit((f) => (f ? { ...f, dueDate: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
+                    <DateInput id="edit-due" value={edit.dueDate} onChange={(e) => setEdit((f) => (f ? { ...f, dueDate: e.target.value } : f))} inputClassName="h-10 dark:[color-scheme:dark]" disabled={!canDeleteTask} />
                   </div>
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="edit-estimate">Est. hours</Label>
                     <Input id="edit-estimate" type="number" min="0" step="0.5" value={edit.estimatedHours} onChange={(e) => setEdit((f) => (f ? { ...f, estimatedHours: e.target.value } : f))} className="h-10" disabled={!canDeleteTask} />
                   </div>
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="edit-actual">Actual hours</Label>
                     <Input id="edit-actual" type="number" min="0" step="0.5" value={edit.actualHours} onChange={(e) => setEdit((f) => (f ? { ...f, actualHours: e.target.value } : f))} className="h-10" disabled={readOnlyEditor} />
                   </div>

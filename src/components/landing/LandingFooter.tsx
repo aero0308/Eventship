@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import { Check, Github, Linkedin, Send } from 'lucide-react'
+import { ArrowUpRight, Check, Github, Linkedin, Send, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { BrandMark } from '@/components/shared/BrandMark'
+import { AboutModal } from '@/components/landing/AboutModal'
 import { scrollToSection, scrollToTop } from '@/components/landing/scroll'
 
 interface FooterLink {
@@ -21,13 +23,6 @@ const PRODUCT_LINKS: FooterLink[] = [
   { label: 'Pricing', action: () => scrollToSection('cta') },
   { label: 'Changelog', action: () => scrollToSection('blog') },
   { label: 'Docs', action: () => scrollToSection('faq') },
-]
-
-const COMPANY_LINKS: FooterLink[] = [
-  { label: 'About', action: () => scrollToTop() },
-  { label: 'Blog', action: () => scrollToSection('blog') },
-  { label: 'Testimonials', action: () => scrollToSection('testimonials') },
-  { label: 'Contact', action: () => scrollToSection('faq') },
 ]
 
 const LEGAL_LINKS = ['Privacy', 'Terms', 'Security'] as const
@@ -49,6 +44,15 @@ const SOCIALS: SocialLink[] = [
 export function LandingFooter() {
   const [email, setEmail] = useState('')
   const [subscribed, setSubscribed] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
+
+  // Needs to live in the component: "About" opens the developer modal.
+  const companyLinks: FooterLink[] = [
+    { label: 'About', action: () => setAboutOpen(true) },
+    { label: 'Blog', action: () => scrollToSection('blog') },
+    { label: 'Testimonials', action: () => scrollToSection('testimonials') },
+    { label: 'Contact', action: () => scrollToSection('faq') },
+  ]
 
   const onSubscribe = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -63,7 +67,7 @@ export function LandingFooter() {
           {/* Brand + tagline + socials + newsletter */}
           <div>
             <button type="button" onClick={scrollToTop} className="flex items-center gap-2.5" aria-label="Eventship — back to top">
-              <span aria-hidden="true" className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]" />
+              <BrandMark variant="indigo" size={26} glow />
               <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
             </button>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-fora-text-2">
@@ -135,7 +139,7 @@ export function LandingFooter() {
           <nav aria-label="Company">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-fora-muted">Company</p>
             <ul className="mt-5 space-y-3.5">
-              {COMPANY_LINKS.map((link) => (
+              {companyLinks.map((link) => (
                 <li key={link.label}>
                   <button type="button" onClick={link.action} className="text-sm text-fora-text-2 transition-colors duration-200 hover:text-white">
                     {link.label}
@@ -163,8 +167,25 @@ export function LandingFooter() {
           </div>
         </div>
 
+        {/* About the developer — standalone link above the copyright row */}
+        <div className="mt-14">
+          <button
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            className="group inline-flex items-center gap-2 rounded-full border border-fora-border bg-fora-surface px-4 py-2 text-sm text-fora-text-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-white focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:outline-none"
+            aria-haspopup="dialog"
+          >
+            <UserRound aria-hidden="true" className="h-4 w-4 text-violet-400" />
+            About the developer
+            <ArrowUpRight
+              aria-hidden="true"
+              className="h-3.5 w-3.5 text-fora-muted transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-violet-400"
+            />
+          </button>
+        </div>
+
         {/* Bottom row */}
-        <div className="mt-16 flex flex-col items-center justify-between gap-3 border-t border-fora-border pt-8 sm:flex-row">
+        <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-fora-border pt-8 sm:flex-row">
           <p className="text-xs text-fora-muted">© {new Date().getFullYear()} Eventship · Made for event teams</p>
           <p className="flex items-center gap-2 text-xs text-fora-muted">
             <span aria-hidden="true" className="fora-pulse-ring h-1.5 w-1.5 rounded-full bg-fora-accent" />
@@ -172,6 +193,8 @@ export function LandingFooter() {
           </p>
         </div>
       </div>
+
+      <AboutModal open={aboutOpen} onOpenChange={setAboutOpen} />
     </footer>
   )
 }

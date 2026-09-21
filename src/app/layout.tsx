@@ -9,9 +9,9 @@ export const metadata: Metadata = {
     "Eventship brings event planning, team coordination, task boards and notifications together — run flawless events from one place.",
   keywords: ["Eventship", "event management", "teams", "tasks", "kanban", "planning", "Next.js"],
   authors: [{ name: "Eventship" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
+  // Icon <link> tags come from the file-convention assets src/app/icon.png
+  // (favicon) and src/app/apple-icon.png (iOS home screen) — the sailboat
+  // brand artwork used everywhere (Task 36).
   openGraph: {
     title: "Eventship — Event Management System",
     description: "Plan events. Coordinate teams. Ship on time.",
@@ -42,6 +42,9 @@ export default function RootLayout({
           if unreachable, the system-font fallback stacks defined on :root in
           globals.css take over (display=swap keeps text visible throughout).
         */}
+        {/* Mobile browser UI tint — matches the sailboat brand tile's navy
+            background so the tab/chrome area reads as part of the brand. */}
+        <meta name="theme-color" content="#13112e" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router: this root-layout head IS global for all pages */}

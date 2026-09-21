@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import { Bell, CalendarDays, LayoutDashboard, ListTodo, Lock, Search, Users, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { BrandMark } from '@/components/shared/BrandMark'
 
 const SIDEBAR_ITEMS: ReadonlyArray<{ icon: LucideIcon; label: string; active?: boolean }> = [
   { icon: LayoutDashboard, label: 'Dashboard', active: true },
@@ -66,7 +67,7 @@ export function DashboardMockup() {
           className="hidden w-36 shrink-0 flex-col border-r border-fora-border bg-fora-surface-2/40 p-3 sm:flex md:w-40"
         >
           <div className="mb-4 flex items-center gap-2 px-2 pt-1">
-            <span className="h-2 w-2 rotate-45 rounded-[2px] bg-fora-accent" />
+            <BrandMark variant="indigo" size={18} />
             <span className="text-[11px] font-semibold tracking-tight text-white">EVENTSHIP</span>
           </div>
           <nav className="space-y-1">

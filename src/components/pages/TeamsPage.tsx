@@ -852,14 +852,14 @@ export function TeamsPage() {
                         (detail.members ?? []).map((member) => (
                           <li
                             key={member.id}
-                            className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/50"
+                            className="group flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/50"
                           >
                             <Avatar className="h-8 w-8">
                               <AvatarFallback className="bg-teal-600 text-[10px] font-semibold text-white">
                                 {initialsOf(member.fullName)}
                               </AvatarFallback>
                             </Avatar>
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0 flex-1 basis-40 sm:basis-0">
                               <p className="truncate text-sm font-medium text-foreground">{member.fullName}</p>
                               <p className="truncate text-xs text-muted-foreground/70">{member.email}</p>
                             </div>

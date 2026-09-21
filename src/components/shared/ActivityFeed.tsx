@@ -24,7 +24,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import type { ActivityLogDTO, EventStatus, TaskStatus } from '@/types'
 import {
   ACTIVITY_ACTION_LABELS,
@@ -97,13 +97,29 @@ function Chip({ children, className }: { children: React.ReactNode; className?: 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium',
         className
       )}
     >
       {children}
     </span>
   )
+}
+
+/**
+ * Compact relative time for tight mobile rows: "13h ago" instead of
+ * "about 13 hours ago". The full phrasing stays available via title/dateTime.
+ */
+export function compactTimeAgo(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return format(d, 'MMM d')
 }
 
 export function initialsOf(name: string): string {
@@ -123,10 +139,10 @@ export function ActivityDetails({ activity }: { activity: ActivityLogDTO }) {
   return (
     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       {entityName ? (
-        <span className="max-w-[22rem] truncate font-medium text-foreground/80">{entityName}</span>
+        <span className="max-w-full truncate font-medium text-foreground/80 sm:max-w-[22rem]">{entityName}</span>
       ) : null}
       {activity.action === 'EVENT_STATUS_CHANGED' && d.from && d.to ? (
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
           <Chip className={EVENT_STATUS_CLASSES[d.from as EventStatus] ?? ''}>
             {EVENT_STATUS_LABELS[d.from] ?? d.from}
           </Chip>
@@ -136,19 +152,23 @@ export function ActivityDetails({ activity }: { activity: ActivityLogDTO }) {
           </Chip>
         </span>
       ) : null}
-      {(activity.action === 'TASK_STATUS_CHANGED' || activity.action === 'TASK_COMPLETED') && d.from && d.to ? (
-        <span className="inline-flex items-center gap-1.5">
-          <Chip className={TASK_STATUS_CLASSES[d.from as TaskStatus] ?? ''}>
-            {TASK_STATUS_LABELS[d.from] ?? d.from}
-          </Chip>
-          <span aria-hidden="true">→</span>
-          <Chip className={TASK_STATUS_CLASSES[d.to as TaskStatus] ?? ''}>
-            {TASK_STATUS_LABELS[d.to] ?? d.to}
-          </Chip>
+      {activity.action === 'TASK_STATUS_CHANGED' || activity.action === 'TASK_COMPLETED' ? (
+        <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
+          {d.from ? (
+            <Chip className={TASK_STATUS_CLASSES[d.from as TaskStatus] ?? ''}>
+              {TASK_STATUS_LABELS[d.from] ?? d.from}
+            </Chip>
+          ) : null}
+          {d.from && d.to ? <span aria-hidden="true">→</span> : null}
+          {d.to ? (
+            <Chip className={TASK_STATUS_CLASSES[d.to as TaskStatus] ?? ''}>
+              {TASK_STATUS_LABELS[d.to] ?? d.to}
+            </Chip>
+          ) : null}
         </span>
       ) : null}
       {activity.action === 'USER_ROLE_CHANGED' && d.from && d.to ? (
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
           <Chip className={ROLE_BADGE_CLASSES[d.from] ?? ''}>
             {ROLE_LABELS[d.from] ?? d.from}
           </Chip>
@@ -217,9 +237,9 @@ export function ActivityItem({ activity, assigneeNames }: ActivityItemProps) {
       <time
         dateTime={activity.timestamp}
         title={new Date(activity.timestamp).toLocaleString()}
-        className="shrink-0 pt-1.5 text-[11px] text-muted-foreground/70"
+        className="shrink-0 whitespace-nowrap pt-1.5 text-[11px] text-muted-foreground/70"
       >
-        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+        {compactTimeAgo(activity.timestamp)}
       </time>
     </li>
   )

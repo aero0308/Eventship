@@ -240,6 +240,36 @@
   --ring: rgba(99, 102, 241, 0.55);
 }
 
+/* ---- About modal — dark shell for the portaled dialog --------------------
+   Radix portals mount at <body>, i.e. OUTSIDE .fora-root, and the app-level
+   theme may be light — so the AboutModal surface carries this scope that
+   remaps the shadcn tokens onto the landing's dark palette (violet accent,
+   per the panel's design spec). Scoped: zero effect anywhere else. */
+.fora-modal {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+  --card: #111111;
+  --card-foreground: #ffffff;
+  --popover: #1c1c1c;
+  --popover-foreground: #ffffff;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #ffffff;
+  --muted: #161616;
+  --muted-foreground: #a0a0a0;
+  --accent: #1f1f1f;
+  --accent-foreground: #ffffff;
+  --destructive: #f87171;
+  --border: #262626;
+  --input: #2e2e2e;
+  --ring: rgba(139, 92, 246, 0.55);
+}
+.fora-modal ::selection {
+  background: rgba(139, 92, 246, 0.35);
+}
+
 /* Shared components hardcode a few light-theme utilities whose dark: variants
    need a `.dark` ancestor — the fora-auth shell intentionally doesn't use one,
    so lift the key hues here (scoped: zero effect on the app). */
@@ -555,6 +585,58 @@
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------------------------------------------------------------------------
+ * DateInput (src/components/shared/DateInput.tsx) — Task 36
+ * The component renders its own visible calendar affordance inset from the
+ * right edge and its own "DD/MM/YY" placeholder, so the native equivalents
+ * are muted here:
+ *  1. The native picker indicator is invisible on desktop but still clickable
+ *     (it sits under the component's CalendarDays icon). On touch devices it
+ *     is removed outright (Task 39) — several mobile engines kept painting it
+ *     on top of the custom icon — and tap-to-open survives via native field
+ *     taps plus the component's showPicker() fallback.
+ *  2. While the field is empty and NOT focused, the native ghost text
+ *     (dd/mm/yyyy) is transparent — the component's high-contrast placeholder
+ *     shows instead (iOS Safari renders no ghost at all; Chrome's ghost would
+ *     otherwise double up under the custom one).
+ * ------------------------------------------------------------------------- */
+input.es-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  input.es-date-input {
+    position: relative;
+    /* Task 39: drop the native dropdown/calendar affordance on touch —
+       several mobile engines still paint it even at opacity:0, and the
+       field already carries its own CalendarDays icon. appearance:none is
+       what lets Chromium 121+ remove it from layout entirely. */
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Task 39: the indicator is gone for good on touch (it used to be an
+     invisible full-field tap overlay). Opening the picker still works:
+     mobile engines open it on a bare field tap, and DateInput.tsx calls
+     showPicker() on tap as a belt-and-braces fallback. */
+  input.es-date-input::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+
+  /* Chromium-on-Android lays the date editor out across the full field,
+     ignoring the input's padding-right — the value slides under the
+     CalendarDays affordance (Task 38). Constrain the shadow editor itself
+     so the text can never reach the icon zone on touch devices. */
+  input.es-date-input::-webkit-datetime-edit {
+    margin-right: 1.75rem;
+  }
+}
+
+.es-date-wrap[data-empty='true'] .es-date-input:not(:focus) {
+  color: transparent;
 }
 
 /* Print: strip chrome, keep the content. */

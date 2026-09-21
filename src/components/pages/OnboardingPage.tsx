@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { PasswordInput } from '@/components/shared/PasswordInput'
+import { BrandMark } from '@/components/shared/BrandMark'
 
 /*
  * Mandatory onboarding gate ("How do you want to get started?").
@@ -167,10 +168,7 @@ export function OnboardingPage() {
       {/* Top bar: brand + signed-in identity */}
       <header className="relative z-10 flex items-center justify-between px-5 py-5 sm:px-10">
         <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden="true"
-            className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-fora-accent shadow-[0_0_14px_rgba(99,102,241,0.9)]"
-          />
+          <BrandMark variant="indigo" size={26} glow />
           <span className="text-[15px] font-semibold tracking-tight text-white">EVENTSHIP</span>
         </div>
         <div className="flex items-center gap-4">

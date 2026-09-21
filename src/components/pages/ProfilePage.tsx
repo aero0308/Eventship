@@ -17,12 +17,16 @@ import {
   LogOut,
   Monitor,
   MonitorSmartphone,
+  Moon,
   ShieldCheck,
   Smartphone,
+  Sun,
+  SunMoon,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
+import { useTheme } from 'next-themes'
 import type { ActivityLogDTO, TaskDTO, TeamDTO, UserDTO } from '@/types'
 import { ROLE_BADGE_CLASSES, ROLE_LABELS, ROUTES } from '@/lib/constants'
 import { api, ApiClientError } from '@/lib/api-client'
@@ -102,6 +106,11 @@ function describeDevice(ua: string | null): { label: string; icon: LucideIcon } 
 export function ProfilePage() {
   const { toast } = useToast()
   const user = useAuthStore((s) => s.user)
+
+  // ---- theme appearance (moved from the mobile drawer — Task 36) -----------
+  const { resolvedTheme, setTheme } = useTheme()
+  const [themeMounted, setThemeMounted] = useState(false)
+  useEffect(() => setThemeMounted(true), [])
 
   const [myTasks, setMyTasks] = useState<TaskDTO[]>([])
   const [teams, setTeams] = useState<TeamDTO[]>([])
@@ -446,7 +455,7 @@ export function ProfilePage() {
         </Card>
       </motion.div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left column */}
         <div className="space-y-6 lg:col-span-2">
           {/* My work stats */}
@@ -616,6 +625,55 @@ export function ProfilePage() {
             </CardContent>
           </Card>
 
+          {/* Appearance — light/dark (moved here from the mobile drawer, Task 36) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <SunMoon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                Appearance
+              </CardTitle>
+              <CardDescription>Pick light or dark — it applies instantly and is remembered on this device.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3" role="group" aria-label="Color theme">
+                {(
+                  [
+                    { value: 'light', label: 'Light', hint: 'Bright & classic', icon: Sun },
+                    { value: 'dark', label: 'Dark', hint: 'Low-glare nights', icon: Moon },
+                  ] as const
+                ).map((option) => {
+                  const active = themeMounted && resolvedTheme === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setTheme(option.value)}
+                      className={cn(
+                        'flex min-h-[5.5rem] flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600',
+                        active
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-600/30 dark:border-emerald-500 dark:bg-emerald-500/10 dark:ring-emerald-400/30'
+                          : 'border-border bg-card hover:border-emerald-400/60 hover:bg-muted/40'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+                          active ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        <option.icon className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">{option.label}</span>
+                      <span className="text-[11px] text-muted-foreground">{option.hint}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Profile appearance (photo + cover background) */}
           <ProfileAppearanceCard
             fullName={user.fullName}
@@ -780,7 +838,7 @@ export function ProfilePage() {
                             'h-8 shrink-0 text-xs',
                             row.isCurrent
                               ? 'text-muted-foreground'
-                              : 'text-red-600 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 dark:text-red-400'
+                              : 'text-red-600 transition-opacity focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 dark:text-red-400'
                           )}
                           onClick={() => void revokeSession(row)}
                           disabled={busySessionId === row.id}

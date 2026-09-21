@@ -46,6 +46,7 @@ import {
   type PresenceUser,
 } from '@/lib/realtime-client'
 import { LiveBadge, PresenceStack } from '@/components/shared/RealtimeChrome'
+import { DateInput } from '@/components/shared/DateInput'
 import { downloadCsv, csvDateStamp } from '@/lib/csv'
 import { buildIcs, downloadIcs, googleCalendarUrl, slugifyFilename } from '@/lib/ics'
 import { navigate } from '@/hooks/use-hash-route'
@@ -936,7 +937,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
             {canManage ? (
               <>
                 <Select value={event.status} onValueChange={(value) => void handleStatusChange(value as EventStatus)} disabled={statusUpdating}>
-                  <SelectTrigger className="h-11 w-40" aria-label="Change event status">
+                  <SelectTrigger className="h-11 w-full min-w-0 sm:w-40" aria-label="Change event status">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1074,9 +1075,9 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                   <PresenceStack viewers={viewers} />
                 </span>
               </h2>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                 {/* View mode segmented control */}
-                <div className="inline-flex h-9 items-center rounded-lg border border-border bg-muted/60 p-0.5" role="tablist" aria-label="Task view mode">
+                <div className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-muted/60 p-0.5" role="tablist" aria-label="Task view mode">
                   {(
                     [
                       { value: 'list', icon: List, label: 'List' },
@@ -1113,7 +1114,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                       setTasksShown(8)
                     }}
                     placeholder="Filter by title…"
-                    className="h-9 w-40 pl-8 text-xs sm:w-48"
+                    className="h-9 min-w-0 flex-1 basis-40 pl-8 text-xs sm:w-48 sm:flex-none sm:basis-auto"
                     aria-label="Filter tasks by title"
                   />
                 </div>
@@ -1122,7 +1123,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     setSortBy(value as TaskSort)
                     setTasksShown(8)
                   }}>
-                    <SelectTrigger className="h-9 w-44 text-xs" aria-label="Sort tasks">
+                    <SelectTrigger className="h-9 min-w-0 flex-1 basis-40 text-xs sm:w-44 sm:flex-none sm:basis-auto" aria-label="Sort tasks">
                       <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
                       <SelectValue />
                     </SelectTrigger>
@@ -1152,7 +1153,7 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
                     }}
                     aria-pressed={active}
                     className={cn(
-                      'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+                      'inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors sm:px-3 sm:text-xs',
                       active
                         ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
                         : 'border-border bg-background text-muted-foreground hover:border-emerald-300 hover:text-foreground dark:hover:border-emerald-500/40'
@@ -1367,22 +1368,20 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="edit-start">Start date</Label>
-                <Input
+                <DateInput
                   id="edit-start"
-                  type="date"
                   value={edit.startDate}
                   onChange={(e) => setEdit((f) => ({ ...f, startDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-end">End date</Label>
-                <Input
+                <DateInput
                   id="edit-end"
-                  type="date"
                   value={edit.endDate}
                   onChange={(e) => setEdit((f) => ({ ...f, endDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
             </div>
@@ -1491,22 +1490,20 @@ export function EventDetailPage({ eventId }: EventDetailPageProps) {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="task-start">Start date</Label>
-                <Input
+                <DateInput
                   id="task-start"
-                  type="date"
                   value={taskForm.startDate}
                   onChange={(e) => setTaskForm((f) => ({ ...f, startDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="task-due">Due date</Label>
-                <Input
+                <DateInput
                   id="task-due"
-                  type="date"
                   value={taskForm.dueDate}
                   onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
-                  className="h-11"
+                  inputClassName="h-11"
                 />
               </div>
               <div className="space-y-2">

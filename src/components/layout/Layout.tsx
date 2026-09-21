@@ -10,6 +10,7 @@ import {
   CalendarRange,
   CheckCircle2,
   CheckSquare,
+  ChevronUp,
   Clock,
   Inbox,
   LayoutDashboard,
@@ -24,6 +25,7 @@ import {
   User,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useTheme } from 'next-themes'
@@ -41,11 +43,13 @@ import {
 } from '@/lib/realtime-client'
 import { useHashRoute, navigate } from '@/hooks/use-hash-route'
 import { useShortcutModifier } from '@/hooks/use-platform'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useKeyboardShortcuts, formatShortcut } from '@/hooks/use-keyboard-shortcuts'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { UserAvatar } from '@/components/shared/UserAvatar'
+import { BrandMark } from '@/components/shared/BrandMark'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -63,7 +67,7 @@ interface LayoutProps {
 const subscribeNoop = () => () => undefined
 
 /** Light/dark switcher. Renders a stable placeholder until hydrated to avoid mismatch. */
-function ThemeToggle() {
+function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme()
   // subscribe-only store: false during SSR/hydration pass, true on the client after mount.
   const mounted = useSyncExternalStore(
@@ -77,12 +81,181 @@ function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      className="h-11 w-11 text-muted-foreground hover:text-foreground"
+      className={cn('h-11 w-11 text-muted-foreground hover:text-foreground', className)}
       aria-label={mounted ? `Switch to ${isDark ? 'light' : 'dark'} mode` : 'Toggle color theme'}
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
     >
       {mounted && isDark ? <Sun className="h-5 w-5" aria-hidden="true" /> : <Moon className="h-5 w-5" aria-hidden="true" />}
     </Button>
+  )
+}
+
+/**
+ * Theme switcher for the mobile drawer (Task 38, compacted in Task 39): an
+ * explicit Light/Dark segmented control — full-width, vertically stacked so
+ * it can never overflow the 18rem drawer (the Task 35 lesson), styled like
+ * the drawer's active nav pill. The "Theme" caption and the tall 44px
+ * segments are gone (Task 39): the Sun/Moon icons make the control
+ * self-explanatory and the group carries an aria-label instead. Shares
+ * next-themes state with the Appearance card in Profile & settings, so both
+ * surfaces always agree.
+ */
+function DrawerThemeRow() {
+  const { resolvedTheme, setTheme } = useTheme()
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  )
+  const isDark = mounted && resolvedTheme === 'dark'
+
+  const options = [
+    { value: 'light', label: 'Light', icon: Sun },
+    { value: 'dark', label: 'Dark', icon: Moon },
+  ] as const
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+    >
+      {options.map((opt) => {
+        const active = isDark === (opt.value === 'dark')
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={!mounted}
+            onClick={() => setTheme(opt.value)}
+            className={cn(
+              'flex h-9 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-all duration-150',
+              active
+                ? 'bg-emerald-600 text-white shadow-[0_4px_14px_-4px_rgba(16,185,129,0.6)]'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+          >
+            <opt.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Notification list shared by the desktop popover and the mobile bottom
+ * sheet (Task 36) — identical header actions and rows on both surfaces.
+ */
+function NotificationsPanel({
+  notifications,
+  unreadCount,
+  notifLoading,
+  onMarkRead,
+  onMarkAllRead,
+  onOpenPrefs,
+  onClose,
+}: {
+  notifications: NotificationDTO[]
+  unreadCount: number
+  notifLoading: boolean
+  onMarkRead: (id: string) => Promise<void>
+  onMarkAllRead: () => Promise<void>
+  onOpenPrefs: () => void
+  onClose?: () => void
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <p className="text-sm font-semibold text-foreground">Notifications</p>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            aria-label="Notification preferences"
+            onClick={onOpenPrefs}
+          >
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-emerald-700 hover:text-emerald-800"
+            onClick={() => void onMarkAllRead()}
+            disabled={unreadCount === 0}
+          >
+            <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            Mark all read
+          </Button>
+          {onClose ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Close notifications"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <div className="scrollbar-thin max-h-96 overflow-y-auto">
+        {notifLoading && notifications.length === 0 ? (
+          <div className="flex items-center justify-center py-10 text-muted-foreground/70">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+            <Inbox className="h-8 w-8 text-stone-300" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">You&apos;re all caught up.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {notifications.map((n) => {
+              const style = NOTIFICATION_STYLE[n.type] ?? NOTIFICATION_STYLE.COMMENT_ADDED
+              const Icon = style.icon
+              return (
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => void onMarkRead(n.id)}
+                    className={cn(
+                      'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50',
+                      !n.read && 'bg-emerald-50/50'
+                    )}
+                    title={n.read ? undefined : 'Mark as read'}
+                  >
+                    <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', style.classes)}>
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-xs font-semibold uppercase tracking-wide text-foreground">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
+                        {!n.read ? (
+                          <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label="unread">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" aria-hidden="true" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block text-sm leading-snug text-foreground">{n.message}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground/70">
+                        {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -152,8 +325,11 @@ export function Layout({ children }: LayoutProps) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifLoading, setNotifLoading] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [prefsOpen, setPrefsOpen] = useState(false)
+  const [notifSheetOpen, setNotifSheetOpen] = useState(false)
+  const isMobile = useIsMobile()
   const shortcutMod = useShortcutModifier()
 
   const navItems = useMemo(
@@ -356,9 +532,7 @@ export function Layout({ children }: LayoutProps) {
               className="flex min-h-11 items-center gap-2.5 rounded-md"
               aria-label="Eventship home"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
-                <CalendarRange className="h-5 w-5" aria-hidden="true" />
-              </span>
+              <BrandMark variant="emerald" size={36} />
               <span className="text-lg font-bold tracking-tight text-foreground">Eventship</span>
             </button>
 
@@ -374,7 +548,7 @@ export function Layout({ children }: LayoutProps) {
                   className={cn(
                     'inline-flex h-10 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-colors min-[1400px]:px-3',
                     isActive(item.path)
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                      ? 'bg-emerald-600 text-white shadow-[0_4px_14px_-4px_rgba(16,185,129,0.55)]'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
@@ -416,107 +590,83 @@ export function Layout({ children }: LayoutProps) {
               <Search className="h-5 w-5" aria-hidden="true" />
             </Button>
             {/* Realtime connection indicator (Phase 7: visible app-wide) */}
-            <LiveBadge className="hidden sm:inline-flex" />
-            {/* Theme toggle */}
-            <ThemeToggle />
-            {/* Notifications */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative h-11 w-11 text-muted-foreground hover:text-foreground"
-                  aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+            <LiveBadge className="hidden md:inline-flex" />
+            {/* Theme toggle — md+ only; on phones the theme lives in the
+                drawer (Task 38) and in Profile & settings (Task 36). */}
+            <ThemeToggle className="hidden md:inline-flex" />
+            {/* Notifications — a bottom sheet on phones (a popover anchored
+                to the bell hugs the left edge on narrow screens), the classic
+                popover on md+. */}
+            {isMobile ? (
+              <Sheet open={notifSheetOpen} onOpenChange={setNotifSheetOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-11 w-11 text-muted-foreground hover:text-foreground"
+                    aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+                  >
+                    <Bell className="h-5 w-5" aria-hidden="true" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    ) : null}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="bottom"
+                  className="rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)] [&>button]:hidden"
                 >
-                  <Bell className="h-5 w-5" aria-hidden="true" />
-                  {unreadCount > 0 ? (
-                    <span className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  ) : null}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[22rem] p-0">
-                <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold text-foreground">Notifications</p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      aria-label="Notification preferences"
-                      onClick={() => setPrefsOpen(true)}
-                    >
-                      <Settings2 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs text-emerald-700 hover:text-emerald-800"
-                      onClick={() => void markAllRead()}
-                      disabled={unreadCount === 0}
-                    >
-                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                      Mark all read
-                    </Button>
+                  <SheetTitle className="sr-only">Notifications</SheetTitle>
+                  <div className="max-h-[82dvh] overflow-y-auto overscroll-contain">
+                    <NotificationsPanel
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      notifLoading={notifLoading}
+                      onMarkRead={markRead}
+                      onMarkAllRead={markAllRead}
+                      onOpenPrefs={() => setPrefsOpen(true)}
+                      onClose={() => setNotifSheetOpen(false)}
+                    />
                   </div>
-                </div>
-                <div className="scrollbar-thin max-h-96 overflow-y-auto">
-                  {notifLoading && notifications.length === 0 ? (
-                    <div className="flex items-center justify-center py-10 text-muted-foreground/70">
-                      <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-                      <Inbox className="h-8 w-8 text-stone-300" aria-hidden="true" />
-                      <p className="text-sm text-muted-foreground">You&apos;re all caught up.</p>
-                    </div>
-                  ) : (
-                    <ul className="divide-y divide-border/60">
-                      {notifications.map((n) => {
-                        const style = NOTIFICATION_STYLE[n.type] ?? NOTIFICATION_STYLE.COMMENT_ADDED
-                        const Icon = style.icon
-                        return (
-                          <li key={n.id}>
-                            <button
-                              type="button"
-                              onClick={() => void markRead(n.id)}
-                              className={cn(
-                                'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50',
-                                !n.read && 'bg-emerald-50/50'
-                              )}
-                              title={n.read ? undefined : 'Mark as read'}
-                            >
-                              <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', style.classes)}>
-                                <Icon className="h-4 w-4" aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="flex items-center gap-2">
-                                  <span className="truncate text-xs font-semibold uppercase tracking-wide text-foreground">{n.type.replace(/_/g, ' ').toLowerCase()}</span>
-                                  {!n.read ? (
-                                    <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label="unread">
-                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" aria-hidden="true" />
-                                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <span className="mt-0.5 block text-sm leading-snug text-foreground">{n.message}</span>
-                                <span className="mt-1 block text-xs text-muted-foreground/70">
-                                  {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
+                </SheetContent>
+              </Sheet>
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-11 w-11 text-muted-foreground hover:text-foreground"
+                    aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+                  >
+                    <Bell className="h-5 w-5" aria-hidden="true" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    ) : null}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[22rem] p-0">
+                  <NotificationsPanel
+                    notifications={notifications}
+                    unreadCount={unreadCount}
+                    notifLoading={notifLoading}
+                    onMarkRead={markRead}
+                    onMarkAllRead={markAllRead}
+                    onOpenPrefs={() => setPrefsOpen(true)}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
 
-            {/* User dropdown */}
-            <DropdownMenu>
+            {/* User dropdown — md+ only; on phones the account menu lives in
+                the mobile drawer (profile row), keeping the navbar to
+                search + notifications + menu. */}
+            <div className="hidden md:block">
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
@@ -585,6 +735,7 @@ export function Layout({ children }: LayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
 
             {/* Mobile hamburger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -596,9 +747,7 @@ export function Layout({ children }: LayoutProps) {
               <SheetContent side="left" className="w-72 p-0">
                 <SheetHeader className="border-b border-border p-4 text-left">
                   <SheetTitle className="flex items-center gap-2.5">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
-                      <CalendarRange className="h-5 w-5" aria-hidden="true" />
-                    </span>
+                    <BrandMark variant="emerald" size={36} />
                     <span className="text-lg font-bold tracking-tight">Eventship</span>
                   </SheetTitle>
                 </SheetHeader>
@@ -610,38 +759,112 @@ export function Layout({ children }: LayoutProps) {
                       onClick={() => handleNavigate(item.path)}
                       aria-current={isActive(item.path) ? 'page' : undefined}
                       className={cn(
-                        'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                        'relative flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors',
                         isActive(item.path)
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          ? 'bg-emerald-600 font-semibold text-white shadow-[0_6px_18px_-6px_rgba(16,185,129,0.65)]'
+                          : 'font-medium text-muted-foreground hover:bg-accent hover:text-foreground'
                       )}
                     >
-                      <item.icon className="h-4 w-4" aria-hidden="true" />
+                      <item.icon className={cn('h-4 w-4 shrink-0', isActive(item.path) && 'text-white')} aria-hidden="true" />
                       {item.label}
+                      {isActive(item.path) ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white/70"
+                        />
+                      ) : null}
                     </button>
                   ))}
                 </nav>
                 <Separator />
-                <div className="flex items-center gap-3 p-4">
-                  <UserAvatar
-                    fullName={user?.fullName ?? ''}
-                    avatarUrl={user?.avatarUrl}
-                    className="h-9 w-9 border border-border"
-                    fallbackClassName="bg-emerald-600 text-xs font-semibold text-white"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-foreground">{user?.fullName}</p>
-                    <p className="truncate text-xs text-muted-foreground">{user ? ROLE_LABELS[user.role] : ''}</p>
+                <div className="space-y-3 p-4">
+                  {/* Theme (Task 38, compacted in Task 39) — quick Light/Dark
+                      switch at the top of the drawer footer, above the
+                      account row. */}
+                  <DrawerThemeRow />
+                  {/* Account row — tapping the profile opens the account menu
+                      (Popover). Nav destinations and logout already live in
+                      this drawer, so the menu only carries the account-level
+                      actions that aren't duplicated. */}
+                  <div className="flex items-center gap-1">
+                    <Popover open={accountOpen} onOpenChange={setAccountOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent"
+                          aria-label="Open account menu"
+                          aria-expanded={accountOpen}
+                        >
+                          <UserAvatar
+                            fullName={user?.fullName ?? ''}
+                            avatarUrl={user?.avatarUrl}
+                            className="h-9 w-9 border border-border"
+                            fallbackClassName="bg-emerald-600 text-xs font-semibold text-white"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-foreground">{user?.fullName}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{user ? ROLE_LABELS[user.role] : ''}</span>
+                          </span>
+                          <ChevronUp
+                            className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200', accountOpen && 'rotate-180')}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-64 p-0">
+                        <div className="border-b border-border px-3 py-3">
+                          <p className="truncate text-sm font-semibold text-foreground">{user?.fullName}</p>
+                          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {user ? (
+                              <Badge variant="outline" className={cn('text-[11px]', ROLE_BADGE_CLASSES[user.role])}>
+                                {ROLE_LABELS[user.role] ?? user.role}
+                              </Badge>
+                            ) : null}
+                            {user?.team ? (
+                              <Badge variant="outline" className="border-border bg-muted/50 text-[11px] text-muted-foreground">
+                                <Users className="mr-1 h-3 w-3" aria-hidden="true" />
+                                {user.team.name}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="p-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAccountOpen(false)
+                              handleNavigate(ROUTES.PROFILE)
+                            }}
+                            className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground transition-colors hover:bg-accent"
+                          >
+                            <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            Profile &amp; settings
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAccountOpen(false)
+                              handleNavigate(ROUTES.ROOM_SETTINGS)
+                            }}
+                            className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground transition-colors hover:bg-accent"
+                          >
+                            <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            My Room
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 shrink-0 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      onClick={() => void handleLogout()}
+                      aria-label="Log out"
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    onClick={() => void handleLogout()}
-                    aria-label="Log out"
-                  >
-                    <LogOut className="h-4 w-4" aria-hidden="true" />
-                  </Button>
                 </div>
               </SheetContent>
             </Sheet>

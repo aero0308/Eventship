@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# local sqlite database (contains password hashes — never commit)
+db/
+*.db
 
 # vercel
 .vercel
@@ -52,6 +57,3 @@ prompt
 server.log
 # Skills directory
 /skills/
-
-db/
-*.db

@@ -193,6 +193,12 @@ export default function Page() {
     }
   }, [initialized, user, pathname, eventDetailId])
 
+  // Favicon note (Task 36): the browser-tab icon is now the static sailboat
+  // artwork served by the file-convention assets src/app/icon.png and
+  // src/app/apple-icon.png — no client-side link management is needed (the
+  // old per-route purple/green switcher was removed together with its
+  // /public/icon-{purple,green}.* assets).
+
   if (!initialized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">

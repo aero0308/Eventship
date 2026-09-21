@@ -6,12 +6,12 @@ import type { ActivityFeedDTO, UserDTO } from '@/types'
 import { ACTIVITY_FILTER_GROUPS, ACTIVITY_GROUP_ACTIONS, API_BASE, ROUTES } from '@/lib/constants'
 import { api, ApiClientError, qs } from '@/lib/api-client'
 import { csvDateStamp } from '@/lib/csv'
+import { DateInput } from '@/components/shared/DateInput'
 import { navigate } from '@/hooks/use-hash-route'
 import { useAuthStore } from '@/stores/auth-store'
 import { useToast } from '@/hooks/use-toast'
 import { getRealtimeSocket, type RealtimeDataEcho } from '@/lib/realtime-client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Card, CardContent } from '@/components/ui/card'
@@ -185,7 +185,6 @@ export function ActivityPage() {
       <PageHeader
         title="Activity"
         subtitle="A live trail of everything happening across your workspace."
-        className="mb-0"
         actions={
           <>
             {canExport ? (
@@ -210,22 +209,24 @@ export function ActivityPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="export-from" className="text-[11px] text-muted-foreground">From</Label>
-                        <Input
+                        <DateInput
                           id="export-from"
-                          type="date"
                           value={exportFrom}
                           onChange={(e) => setExportFrom(e.target.value)}
-                          className="h-9 text-xs dark:[color-scheme:dark]"
+                          inputClassName="h-9 text-xs"
+                          iconClassName="right-2 h-3.5 w-3.5"
+                          placeholderClassName="text-[11px]"
                         />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="export-to" className="text-[11px] text-muted-foreground">To</Label>
-                        <Input
+                        <DateInput
                           id="export-to"
-                          type="date"
                           value={exportTo}
                           onChange={(e) => setExportTo(e.target.value)}
-                          className="h-9 text-xs dark:[color-scheme:dark]"
+                          inputClassName="h-9 text-xs"
+                          iconClassName="right-2 h-3.5 w-3.5"
+                          placeholderClassName="text-[11px]"
                         />
                       </div>
                     </div>
